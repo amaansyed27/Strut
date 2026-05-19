@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Strut Mascot Puzzle</title>
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="game-panel" aria-label="Strut mascot puzzle">
+        <header class="topbar">
+          <div>
+            <p>Strut runtime demo</p>
+            <h1>Glyph Trail</h1>
+          </div>
+          <div class="level-count" data-level-count>Level 1 / 5</div>
+        </header>
+
+        <section class="playfield">
+          <div class="brief">
+            <span data-level-kicker>Warm up</span>
+            <h2 data-level-title>Level title</h2>
+            <p data-level-copy>Find the trail.</p>
+          </div>
+
+          <div class="sequence" aria-label="Target glyph sequence" data-sequence></div>
+
+          <div class="board-wrap">
+            <div class="board" data-board></div>
+          </div>
+
+          <div class="actions">
+            <button type="button" data-reset>Restart level</button>
+            <button type="button" data-next disabled>Next level</button>
+          </div>
+        </section>
+
+        <aside class="status-panel" aria-label="Game status">
+          <div class="mascot-card">
+            <div class="mini-mascot" data-mini-mascot></div>
+            <div>
+              <strong data-mascot-name>Strut mascot</strong>
+              <span data-mascot-status>Watching the trail</span>
+            </div>
+          </div>
+
+          <div class="score-grid">
+            <div>
+              <span>Cleared</span>
+              <strong data-cleared>0</strong>
+            </div>
+            <div>
+              <span>Streak</span>
+              <strong data-streak>0</strong>
+            </div>
+            <div>
+              <span>Mistakes</span>
+              <strong data-mistakes>0</strong>
+            </div>
+          </div>
+
+          <div class="hint-box" data-hint>
+            Tap the glyphs in the order shown. The mascot celebrates every solved level.
+          </div>
+        </aside>
+      </section>
+
+      <div class="screen-mascot" data-screen-mascot>
+        <div class="speech" data-speech>Ready when you are.</div>
+        <div class="mascot-stage" data-mascot-stage></div>
+      </div>
+    </main>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -13,6 +13,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let document = match path.file_stem().and_then(|stem| stem.to_str()) {
+        Some(stem) if stem.contains("owl") || stem.contains("mascot") => {
+            strut_core::Document::sample_owl_mascot()
+        }
         Some(stem) if stem.contains("bot") => strut_core::Document::sample_minimal_bot(),
         _ => strut_core::Document::sample_login_button(),
     };

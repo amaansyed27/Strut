@@ -38,7 +38,8 @@
     "test": "cargo test --workspace",
     "test:ui": "python tests/ui/studio_bot_smoke.py",
     "test:runtime-ui": "python tests/ui/runtime_bot_smoke.py",
-    "test:all": "npm run check && npm run test && npm run test:ui && npm run test:runtime-ui",
+    "test:mascot-puzzle": "python tests/ui/mascot_puzzle_smoke.py",
+    "test:all": "npm run check && npm run test && npm run test:ui && npm run test:runtime-ui && npm run test:mascot-puzzle",
     "runtime:build": "npm --workspace @strut/runtime-web run build && npm --workspace @strut/react run build && npm --workspace @strut/next run build",
     "studio:dev": "npm --workspace @strut/studio run tauri -- dev",
     "studio:build": "npm --workspace @strut/studio run tauri -- build"
