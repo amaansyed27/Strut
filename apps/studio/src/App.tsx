@@ -25,6 +25,8 @@ type StudioStatus = {
   app: string;
   core_version: string;
   format_version: string;
+  sample_name: string;
+  sample_source: string;
   sample_artboards: number;
   sample_state_machines: number;
 };
@@ -155,7 +157,9 @@ function App() {
 
         <section className="stage-column">
           <div className="stage-toolbar">
-            <span>login-button.strut</span>
+            <span title={status?.sample_source ?? "generated sample"}>
+              {status?.sample_name ?? "login-button.strut"}
+            </span>
             <div>
               <button type="button">100%</button>
               <button type="button">Fit</button>
