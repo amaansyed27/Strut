@@ -60,3 +60,30 @@ generate an opaque image that cannot be edited
 ```
 
 The goal is always an editable animation component.
+
+## Desktop Runtime
+
+Provider features run in the Strut desktop app, not in the browser preview.
+
+The Vite browser preview is useful for checking layout and basic interactions, but it cannot:
+
+- run local CLI commands
+- call BYOK providers from the Tauri backend
+- save provider config on disk
+- route generation through a local model or cloud provider
+
+For real provider work, run:
+
+```powershell
+npm run studio:dev
+```
+
+## Current Provider Flow
+
+In the desktop app, the provider panel has two modes.
+
+**Local CLI** checks installed tools on your `PATH` and runs a real `--version` command for adapters such as Codex, Claude Code, Gemini CLI, Copilot CLI, Kiro, Antigravity, and Ollama.
+
+**BYOK APIs** accepts a provider, API key, base URL, and model. Strut saves the provider endpoint/model locally and keeps the API key in the current app session. Test Connection makes a real provider request from the Tauri backend.
+
+Character generation is routed through the selected BYOK provider when credentials are configured. Ollama generation uses the local Ollama HTTP API. The built-in generator is only a fallback when no provider is selected or when the browser preview is being used.

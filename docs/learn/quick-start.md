@@ -23,14 +23,22 @@ npm run test
 npm run studio:dev
 ```
 
-The desktop app should open with:
+The desktop app opens on the Strut home screen.
 
-- a layer list
-- a central stage
-- a sample animated bot
-- a timeline
-- state-machine controls
-- an agent panel
+Create a project first:
+
+1. Name the project.
+2. Choose or enter a location.
+3. Click **Create project**.
+
+Strut creates a project folder with:
+
+- `strut.project.json`
+- `scenes/starter.strut.json`
+- `assets/`
+- `exports/`
+
+After that, the main workspace opens with chat in the center, files on the left, and preview/editor controls on the right.
 
 ## Preview In The Browser During Development
 
@@ -48,13 +56,17 @@ http://127.0.0.1:1420
 
 ## What To Try First
 
-Click the state buttons in the left panel:
+In the chat box, ask Strut to make a character:
 
-- Idle
-- Hover
-- Pressed
-- Loading
-- Success
-- Error
+```txt
+make a minimalist waving robot character like the reference image
+make an owl mascot like Duo from Duolingo
+```
 
-This first shell is not the final editor. It is the visible frame for the core workflows that are being built next.
+Then open:
+
+- **Files** to see project files.
+- **Editor** to inspect layers and timelines.
+- **AI** to select the built-in planner, local CLI tools, or BYOK providers.
+
+The browser preview is only for frontend inspection. Use the desktop app for real project creation, local CLI checks, BYOK provider calls, and provider-routed generation.
