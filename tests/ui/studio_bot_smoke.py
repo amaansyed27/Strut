@@ -67,7 +67,10 @@ def run_smoke() -> None:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 920})
             page.goto(URL, wait_until="networkidle")
+            page.evaluate("window.localStorage.clear()")
+            page.reload(wait_until="networkidle")
 
+            expect(page.get_by_role("button", name="Home", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="New chat", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="New project", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
@@ -77,7 +80,9 @@ def run_smoke() -> None:
             expect(page.get_by_role("button", name="Chat only", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Chat + preview", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Editor", exact=True)).to_be_visible()
-            expect(page.get_by_role("heading", name="What should we build in Strut?")).to_be_visible()
+            expect(page.get_by_role("heading", name="Start a motion project")).to_be_visible()
+            expect(page.get_by_role("button", name="Select folder")).to_be_visible()
+            expect(page.get_by_role("button", name="Start chat")).to_be_visible()
             page.screenshot(path=str(output_dir / "studio-home-redesign.png"), full_page=True)
 
             page.get_by_role("button", name="Search", exact=True).click()
@@ -134,11 +139,19 @@ def run_smoke() -> None:
             for state in ["Idle", "Float", "Wave", "Blink", "Scan", "Celebrate", "Sleep"]:
                 page.get_by_role("button", name=state).click()
                 expect(preview).to_have_attribute("data-state", state.lower())
+            page.screenshot(path=str(output_dir / "studio-editor-smoke.png"), full_page=True)
 
             page.get_by_role("button", name="Settings", exact=True).click()
             expect(page.get_by_role("heading", name="Settings")).to_be_visible()
             expect(page.get_by_text("Current provider")).to_be_visible()
             expect(page.get_by_label("Generation mode")).to_be_visible()
+            page.screenshot(path=str(output_dir / "studio-settings-smoke.png"), full_page=True)
+            page.get_by_role("radio", name="Dark").click()
+            expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+            page.get_by_role("radio", name="Light").click()
+            expect(page.locator("html")).to_have_attribute("data-theme", "light")
+            page.get_by_role("radio", name="Auto").click()
+            expect(page.locator("html")).to_have_attribute("data-theme", "system")
 
             page.get_by_role("button", name="Chat + preview", exact=True).click()
             page.get_by_label("Character prompt").fill("make a small waving robot like the reference image")
@@ -146,6 +159,18 @@ def run_smoke() -> None:
             expect(page.get_by_text("Minimal Bot preview is ready")).to_be_visible()
             expect(preview).to_have_attribute("data-character", "bot")
             expect(preview).to_have_attribute("data-state", "wave")
+
+            page.reload(wait_until="networkidle")
+            expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).to_be_visible()
+            expect(page.get_by_text("Minimal Bot preview is ready")).to_be_visible()
+            expect(page.locator("html")).to_have_attribute("data-theme", "system")
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
+            expect(preview).to_have_attribute("data-character", "bot")
+
+            page.locator('button[aria-label^="Delete chat make an owl"]').click()
+            expect(page.get_by_role("heading", name="Start a motion project")).to_be_visible()
+            page.get_by_role("button", name="Remove project Smoke Mascot").click()
+            expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).not_to_be_visible()
 
             page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
             browser.close()

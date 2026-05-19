@@ -41,6 +41,8 @@ Strut creates a project folder with:
 
 After that, Strut adds the project to the sidebar and opens a project chat. Use **New chat** for a fresh conversation, or the plus button on a project to start a chat inside that project.
 
+Chats stay in the sidebar and are restored when you reopen the Studio preview. Use the delete button beside a chat to remove only that chat, or the remove button beside a project to remove the project from the sidebar.
+
 ## Preview In The Browser During Development
 
 When you only want to inspect the frontend shell:
@@ -69,6 +71,6 @@ Then open:
 - **Chat + preview** to see the animated character beside the conversation.
 - **Editor** to inspect project files, layers, parts, state machines, and motion states.
 - **Providers** in the sidebar to select the built-in planner, local CLI tools, Ollama, or BYOK providers.
-- **Settings** in the sidebar footer to change workspace, generation, and editor defaults.
+- **Settings** in the sidebar footer to change appearance, workspace, generation, and editor defaults. Appearance supports **Auto**, **Light**, and **Dark**.
 
 The browser preview is only for frontend inspection. Use the desktop app for real project creation, local CLI checks, BYOK provider calls, and provider-routed generation.

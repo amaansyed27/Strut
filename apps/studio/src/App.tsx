@@ -6,8 +6,11 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  Home,
   Layers3,
   MessageSquarePlus,
+  Monitor,
+  Moon,
   PanelRight,
   Play,
   Plus,
@@ -17,6 +20,8 @@ import {
   Send,
   Settings2,
   Square,
+  Sun,
+  Trash2,
   WandSparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -78,6 +83,7 @@ type ProjectInfo = {
 type ProviderMode = "built-in" | "local" | "byok";
 type ViewMode = "chat" | "preview" | "editor";
 type MainPanel = "chat" | "providers" | "settings";
+type ThemeMode = "system" | "light" | "dark";
 
 type LocalAdapter = {
   id: string;
@@ -130,6 +136,9 @@ type ChatThread = {
   title: string;
   projectId: string;
   updated: string;
+  messages: ChatMessage[];
+  document: StrutDocument;
+  activeState: string;
 };
 
 type ProjectRecord = {
@@ -143,6 +152,13 @@ type ViewModeOption = {
   id: ViewMode;
   Icon: LucideIcon;
   label: string;
+};
+
+type WorkspaceState = {
+  projects: ProjectRecord[];
+  activeProjectId: string | null;
+  activeChatId: string | null;
+  themeMode: ThemeMode;
 };
 
 const fallbackDocument: StrutDocument = {
@@ -210,21 +226,53 @@ const owlDocument: StrutDocument = {
   events: [{ name: "wing_wave_started" }, { name: "celebration_complete" }],
 };
 
+const STORAGE_KEY = "strut-studio-workspace-v3";
+
+function starterMessages(text = "What should we build in Strut? Describe a character, attach a mockup later, or ask for a plan first."): ChatMessage[] {
+  return [{ id: Date.now() + Math.random(), role: "assistant", text }];
+}
+
+function createChat(projectId: string, title: string, messages = starterMessages()): ChatThread {
+  return {
+    id: `chat-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+    title,
+    projectId,
+    updated: "now",
+    messages,
+    document: fallbackDocument,
+    activeState: "wave",
+  };
+}
+
 const initialProjects: ProjectRecord[] = [
   {
     id: "strut",
     name: "Strut",
     path: "D:\\Strut Projects\\Strut",
     chats: [
-      { id: "strut-plan", title: "Strut Plan", projectId: "strut", updated: "now" },
-      { id: "bot-test", title: "Build bot character", projectId: "strut", updated: "1h" },
+      {
+        ...createChat("strut", "Strut Plan"),
+        id: "strut-plan",
+      },
+      {
+        ...createChat("strut", "Build bot character", starterMessages("A minimal robot character is ready to iterate on.")),
+        id: "bot-test",
+        updated: "1h",
+      },
     ],
   },
   {
     id: "brand-motion",
     name: "Brand motion",
     path: "D:\\Strut Projects\\Brand motion",
-    chats: [{ id: "owl-guide", title: "Owl guide animation", projectId: "brand-motion", updated: "2d" }],
+    chats: [
+      {
+        ...createChat("brand-motion", "Owl guide animation", starterMessages("Owl guide animation brief saved.")),
+        id: "owl-guide",
+        updated: "2d",
+        document: owlDocument,
+      },
+    ],
   },
 ];
 
@@ -245,6 +293,117 @@ const byokProviders: ByokProvider[] = [
 ];
 
 const defaultPrompt = "make a minimalist waving robot character like the reference image";
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === "system" || value === "light" || value === "dark";
+}
+
+function isStrutDocument(value: unknown): value is StrutDocument {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && Array.isArray((value as StrutDocument).artboards)
+      && Array.isArray((value as StrutDocument).state_machines),
+  );
+}
+
+function normalizeMessages(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) {
+    return starterMessages();
+  }
+
+  const messages = value
+    .filter((message) => message && typeof message === "object")
+    .map((message) => {
+      const candidate = message as Partial<ChatMessage>;
+      const role: ChatMessage["role"] =
+        candidate.role === "user" || candidate.role === "system" || candidate.role === "assistant"
+          ? candidate.role
+          : "assistant";
+      return {
+        id: typeof candidate.id === "number" ? candidate.id : Date.now() + Math.random(),
+        role,
+        text: typeof candidate.text === "string" ? candidate.text : "",
+      };
+    })
+    .filter((message) => message.text.trim().length > 0);
+
+  return messages.length > 0 ? messages : starterMessages();
+}
+
+function normalizeProjects(value: unknown): ProjectRecord[] {
+  if (!Array.isArray(value)) {
+    return initialProjects;
+  }
+
+  const projects = value
+    .filter((project) => project && typeof project === "object")
+    .map((project) => {
+      const candidate = project as Partial<ProjectRecord>;
+      const id = typeof candidate.id === "string" && candidate.id ? candidate.id : `project-${Date.now()}-${Math.random()}`;
+      const chats = Array.isArray(candidate.chats)
+        ? candidate.chats
+            .filter((chat) => chat && typeof chat === "object")
+            .map((chat) => {
+              const chatCandidate = chat as Partial<ChatThread>;
+              return {
+                id: typeof chatCandidate.id === "string" && chatCandidate.id ? chatCandidate.id : `chat-${Date.now()}-${Math.random()}`,
+                title: typeof chatCandidate.title === "string" && chatCandidate.title ? chatCandidate.title : "Untitled chat",
+                projectId: id,
+                updated: typeof chatCandidate.updated === "string" ? chatCandidate.updated : "now",
+                messages: normalizeMessages(chatCandidate.messages),
+                document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : fallbackDocument,
+                activeState: typeof chatCandidate.activeState === "string" ? chatCandidate.activeState : "wave",
+              };
+            })
+        : [];
+
+      return {
+        id,
+        name: typeof candidate.name === "string" && candidate.name ? candidate.name : "Untitled project",
+        path: typeof candidate.path === "string" ? candidate.path : "D:\\Strut Projects",
+        chats,
+      };
+    });
+
+  return projects.length > 0 ? projects : initialProjects;
+}
+
+function loadWorkspaceState(): WorkspaceState {
+  if (typeof window === "undefined") {
+    return { projects: initialProjects, activeProjectId: null, activeChatId: null, themeMode: "system" };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return { projects: initialProjects, activeProjectId: null, activeChatId: null, themeMode: "system" };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
+    const projects = normalizeProjects(parsed.projects);
+    const activeProjectId = projects.some((project) => project.id === parsed.activeProjectId) ? parsed.activeProjectId ?? null : null;
+    const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+    const activeChatId = activeProject?.chats.some((chat) => chat.id === parsed.activeChatId) ? parsed.activeChatId ?? null : null;
+
+    return {
+      projects,
+      activeProjectId,
+      activeChatId,
+      themeMode: isThemeMode(parsed.themeMode) ? parsed.themeMode : "system",
+    };
+  } catch {
+    return { projects: initialProjects, activeProjectId: null, activeChatId: null, themeMode: "system" };
+  }
+}
+
+function promptTitle(prompt: string) {
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return "New character chat";
+  }
+  return compact.length > 34 ? `${compact.slice(0, 31)}...` : compact;
+}
 
 function titleCase(value: string) {
   return value
@@ -313,11 +472,13 @@ function CharacterPreview({ document, activeState }: { document: StrutDocument; 
 }
 
 function App() {
+  const [initialWorkspace] = useState<WorkspaceState>(() => loadWorkspaceState());
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [desktopRuntime, setDesktopRuntime] = useState(true);
-  const [projects, setProjects] = useState<ProjectRecord[]>(initialProjects);
-  const [activeProjectId, setActiveProjectId] = useState("strut");
-  const [activeChatId, setActiveChatId] = useState("strut-plan");
+  const [baseDocument, setBaseDocument] = useState<StrutDocument>(fallbackDocument);
+  const [projects, setProjects] = useState<ProjectRecord[]>(initialWorkspace.projects);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(initialWorkspace.activeProjectId);
+  const [activeChatId, setActiveChatId] = useState<string | null>(initialWorkspace.activeChatId);
   const [mainPanel, setMainPanel] = useState<MainPanel>("chat");
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -325,14 +486,9 @@ function App() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Strut Project");
   const [projectLocation, setProjectLocation] = useState("");
-  const [document, setDocument] = useState<StrutDocument>(fallbackDocument);
-  const [activeState, setActiveState] = useState("wave");
   const [partsVisible, setPartsVisible] = useState(true);
   const [activeTool, setActiveTool] = useState("select");
   const [prompt, setPrompt] = useState(defaultPrompt);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 1, role: "assistant", text: "What should we build in Strut? Describe a character, attach a mockup later, or ask for a plan first." },
-  ]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("built-in");
   const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(fallbackLocalAdapters);
   const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("ollama");
@@ -341,6 +497,7 @@ function App() {
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
   const [providerModel, setProviderModel] = useState(byokProviders[0].model);
   const [activity, setActivity] = useState("Built-in planner ready");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.themeMode);
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status")
@@ -358,15 +515,34 @@ function App() {
         setDesktopRuntime(false);
         setProjectLocation("D:\\Strut Projects");
       });
-    invoke<StrutDocument>("sample_document").then(setDocument).catch(() => setDocument(fallbackDocument));
+    invoke<StrutDocument>("sample_document").then(setBaseDocument).catch(() => setBaseDocument(fallbackDocument));
     invoke<LocalAdapter[]>("local_agent_adapters").then(setLocalAdapters).catch(() => setDesktopRuntime(false));
   }, []);
 
-  const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
-  const activeChat = activeProject.chats.find((chat) => chat.id === activeChatId) ?? activeProject.chats[0];
-  const files = projectFiles(activeProject);
-  const activeArtboard = document.artboards[0] ?? fallbackDocument.artboards[0];
-  const activeMachine = document.state_machines[0] ?? fallbackDocument.state_machines[0];
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ projects, activeProjectId, activeChatId, themeMode }),
+    );
+  }, [projects, activeProjectId, activeChatId, themeMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.document.documentElement.dataset.theme = themeMode;
+  }, [themeMode]);
+
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+  const activeChat = activeProject?.chats.find((chat) => chat.id === activeChatId) ?? null;
+  const currentDocument = activeChat?.document ?? baseDocument;
+  const currentActiveState = activeChat?.activeState ?? "wave";
+  const files = activeProject ? projectFiles(activeProject) : [];
+  const activeArtboard = currentDocument.artboards[0] ?? fallbackDocument.artboards[0];
+  const activeMachine = currentDocument.state_machines[0] ?? fallbackDocument.state_machines[0];
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const viewModes: ViewModeOption[] = [
@@ -402,8 +578,32 @@ function App() {
     };
   }
 
+  function updateChat(projectId: string, chatId: string, updater: (chat: ChatThread) => ChatThread) {
+    setProjects((current) =>
+      current.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              chats: project.chats.map((chat) => (chat.id === chatId ? updater(chat) : chat)),
+            }
+          : project,
+      ),
+    );
+  }
+
+  function updateCurrentChat(updater: (chat: ChatThread) => ChatThread) {
+    if (!activeProjectId || !activeChatId) {
+      return;
+    }
+    updateChat(activeProjectId, activeChatId, updater);
+  }
+
   function appendMessage(role: ChatMessage["role"], text: string) {
-    setMessages((current) => [...current, { id: Date.now() + Math.random(), role, text }]);
+    updateCurrentChat((chat) => ({
+      ...chat,
+      updated: "now",
+      messages: [...chat.messages, { id: Date.now() + Math.random(), role, text }],
+    }));
   }
 
   function openChat(projectId: string, chatId: string) {
@@ -412,56 +612,92 @@ function App() {
     setMainPanel("chat");
   }
 
-  function newChat(projectId = activeProjectId) {
-    const project = projects.find((item) => item.id === projectId) ?? activeProject;
-    const chat: ChatThread = {
-      id: `chat-${Date.now()}`,
-      title: "New character chat",
-      projectId: project.id,
-      updated: "now",
-    };
+  function openProject(projectId: string) {
+    const project = projects.find((item) => item.id === projectId);
+    setActiveProjectId(projectId);
+    setActiveChatId(project?.chats[0]?.id ?? null);
+    setMainPanel("chat");
+  }
+
+  function newChat(projectId = activeProjectId ?? projects[0]?.id ?? null) {
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      setNewProjectOpen(true);
+      return;
+    }
+    const chat = createChat(project.id, "New character chat", starterMessages("New chat ready. Tell Strut what to design or ask for a plan."));
     setProjects((current) =>
       current.map((item) => (item.id === project.id ? { ...item, chats: [chat, ...item.chats] } : item)),
     );
     setActiveProjectId(project.id);
     setActiveChatId(chat.id);
     setMainPanel("chat");
-    setMessages([{ id: Date.now(), role: "assistant", text: "New chat ready. Tell Strut what to design or ask for a plan." }]);
+  }
+
+  function deleteChat(projectId: string, chatId: string) {
+    setProjects((current) =>
+      current.map((project) =>
+        project.id === projectId
+          ? { ...project, chats: project.chats.filter((chat) => chat.id !== chatId) }
+          : project,
+      ),
+    );
+    if (activeProjectId === projectId && activeChatId === chatId) {
+      setActiveChatId(null);
+    }
+  }
+
+  function removeProject(projectId: string) {
+    setProjects((current) => current.filter((project) => project.id !== projectId));
+    if (activeProjectId === projectId) {
+      setActiveProjectId(null);
+      setActiveChatId(null);
+    }
+  }
+
+  function setCurrentActiveState(state: string) {
+    updateCurrentChat((chat) => ({ ...chat, activeState: state, updated: "now" }));
   }
 
   async function createProject() {
     if (!desktopRuntime) {
       const id = `project-${Date.now()}`;
+      const chat = createChat(id, "Project brief", [
+        { id: Date.now(), role: "assistant", text: "Project brief ready. Tell Strut what character or interaction to design first." },
+        { id: Date.now() + 1, role: "system", text: "Browser preview opened an in-memory project. Run the desktop app to create files on disk." },
+      ]);
       const project: ProjectRecord = {
         id,
         name: projectName.trim() || "Untitled Strut Project",
         path: projectLocation,
-        chats: [{ id: `${id}-chat`, title: "Project brief", projectId: id, updated: "now" }],
+        chats: [chat],
       };
       setProjects((current) => [project, ...current]);
       setActiveProjectId(id);
-      setActiveChatId(project.chats[0].id);
+      setActiveChatId(chat.id);
       setNewProjectOpen(false);
       setActivity("Browser preview project. Disk was not written.");
-      appendMessage("system", "Browser preview opened an in-memory project. Run the desktop app to create files on disk.");
       return;
     }
 
     try {
       const created = await invoke<ProjectInfo>("create_project", { name: projectName, location: projectLocation });
       const id = `project-${Date.now()}`;
+      const chat = createChat(id, "Project brief", [
+        { id: Date.now(), role: "assistant", text: "Project created. Tell Strut what character or interaction to design first." },
+        { id: Date.now() + 1, role: "system", text: `Project created: ${created.path}` },
+      ]);
       const project: ProjectRecord = {
         id,
         name: created.name,
         path: created.path,
-        chats: [{ id: `${id}-chat`, title: "Project brief", projectId: id, updated: "now" }],
+        chats: [chat],
       };
       setProjects((current) => [project, ...current]);
       setActiveProjectId(id);
-      setActiveChatId(project.chats[0].id);
+      setActiveChatId(chat.id);
       setNewProjectOpen(false);
       setActivity(`Project created at ${created.path}`);
-      appendMessage("system", `Project created: ${created.path}`);
     } catch (error) {
       setActivity(String(error));
     }
@@ -509,14 +745,24 @@ function App() {
     if (!trimmed) {
       return;
     }
+    if (!activeProjectId || !activeChatId) {
+      newChat();
+      setActivity("Start a chat first");
+      return;
+    }
     appendMessage("user", trimmed);
     setActivity("Generating");
 
     try {
       const args = providerPayload() ? { prompt: trimmed, provider: providerPayload() } : { prompt: trimmed };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
-      setDocument(result.document);
-      setActiveState(result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle");
+      updateChat(activeProjectId, activeChatId, (chat) => ({
+        ...chat,
+        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed) : chat.title,
+        updated: "now",
+        document: result.document,
+        activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
+      }));
       setActivity(`${result.source}: ${result.message}`);
       appendMessage("assistant", `${result.document.name} is ready. I created editable layers, states, timelines, bindings, and events.`);
     } catch (error) {
@@ -526,8 +772,13 @@ function App() {
         return;
       }
       const generated = fallbackGenerateCharacter(trimmed);
-      setDocument(generated);
-      setActiveState("wave");
+      updateChat(activeProjectId, activeChatId, (chat) => ({
+        ...chat,
+        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed) : chat.title,
+        updated: "now",
+        document: generated,
+        activeState: "wave",
+      }));
       setActivity("Browser preview used built-in generator");
       appendMessage("assistant", `${generated.name} preview is ready. Open the desktop app for real provider-routed generation.`);
     }
@@ -542,6 +793,14 @@ function App() {
         </div>
 
         <div className="sidebar-actions">
+          <button type="button" onClick={() => {
+            setActiveProjectId(null);
+            setActiveChatId(null);
+            setMainPanel("chat");
+          }}>
+            <Home size={16} />
+            Home
+          </button>
           <button type="button" onClick={() => newChat()}>
             <MessageSquarePlus size={16} />
             New chat
@@ -572,7 +831,7 @@ function App() {
           {filteredProjects.map((project) => (
             <div className="project-group" key={project.id}>
               <div className="project-button">
-                <button className="project-open" type="button" onClick={() => openChat(project.id, project.chats[0]?.id ?? activeChatId)}>
+                <button className="project-open" type="button" onClick={() => openProject(project.id)}>
                   <Folder size={15} />
                   <span>{project.name}</span>
                 </button>
@@ -587,17 +846,34 @@ function App() {
                 >
                   <Plus size={13} />
                 </button>
+                <button
+                  aria-label={`Remove project ${project.name}`}
+                  className="inline-delete"
+                  type="button"
+                  onClick={() => removeProject(project.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
               {project.chats.map((chat) => (
-                <button
-                  className={chat.id === activeChatId ? "chat-link active" : "chat-link"}
-                  key={chat.id}
-                  type="button"
-                  onClick={() => openChat(project.id, chat.id)}
-                >
-                  <span>{chat.title}</span>
-                  <em>{chat.updated}</em>
-                </button>
+                <div className={chat.id === activeChatId ? "chat-row active" : "chat-row"} key={chat.id}>
+                  <button
+                    className="chat-link"
+                    type="button"
+                    onClick={() => openChat(project.id, chat.id)}
+                  >
+                    <span>{chat.title}</span>
+                    <em>{chat.updated}</em>
+                  </button>
+                  <button
+                    aria-label={`Delete chat ${chat.title}`}
+                    className="chat-delete"
+                    type="button"
+                    onClick={() => deleteChat(project.id, chat.id)}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               ))}
             </div>
           ))}
@@ -635,8 +911,8 @@ function App() {
             ))}
           </nav>
           <div className="workspace-context">
-            <strong>{activeChat?.title ?? "New chat"}</strong>
-            <span>{activeProject.name} / {status?.format_version ?? "browser preview"}</span>
+            <strong>{activeChat?.title ?? "Home"}</strong>
+            <span>{activeProject?.name ?? "No project selected"} / {status?.format_version ?? "browser preview"}</span>
           </div>
         </header>
 
@@ -719,6 +995,31 @@ function App() {
             <div className="settings-list">
               <section className="settings-section">
                 <div>
+                  <h2>Appearance</h2>
+                  <p>Choose the Studio theme or follow your system setting.</p>
+                </div>
+                <div className="theme-options" role="radiogroup" aria-label="Theme">
+                  {[
+                    { id: "system", label: "Auto", Icon: Monitor },
+                    { id: "light", label: "Light", Icon: Sun },
+                    { id: "dark", label: "Dark", Icon: Moon },
+                  ].map(({ id, label, Icon }) => (
+                    <button
+                      aria-checked={themeMode === id}
+                      className={themeMode === id ? "active" : ""}
+                      key={id}
+                      role="radio"
+                      type="button"
+                      onClick={() => setThemeMode(id as ThemeMode)}
+                    >
+                      <Icon size={15} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section className="settings-section">
+                <div>
                   <h2>Workspace</h2>
                   <p>Project creation and local file defaults.</p>
                 </div>
@@ -732,18 +1033,20 @@ function App() {
                   <h2>Generation</h2>
                   <p>Choose the provider Strut should use for new character work.</p>
                 </div>
-                <label>
-                  <span>Generation mode</span>
-                  <select aria-label="Generation mode" value={providerMode} onChange={(event) => setProviderMode(event.currentTarget.value as ProviderMode)}>
-                    <option value="built-in">Built-in planner</option>
-                    <option value="local">Local CLI</option>
-                    <option value="byok">BYOK provider</option>
-                  </select>
-                </label>
-                <div className="status-line">
-                  <span>Current provider</span>
-                  <strong>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
-                  <em>{activity}</em>
+                <div className="settings-controls">
+                  <label>
+                    <span>Generation mode</span>
+                    <select aria-label="Generation mode" value={providerMode} onChange={(event) => setProviderMode(event.currentTarget.value as ProviderMode)}>
+                      <option value="built-in">Built-in planner</option>
+                      <option value="local">Local CLI</option>
+                      <option value="byok">BYOK provider</option>
+                    </select>
+                  </label>
+                  <div className="status-line">
+                    <span>Current provider</span>
+                    <strong>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
+                    <em>{activity}</em>
+                  </div>
                 </div>
               </section>
               <section className="settings-section">
@@ -751,28 +1054,39 @@ function App() {
                   <h2>Editor</h2>
                   <p>Default panels and viewport behavior.</p>
                 </div>
-                <label className="toggle-row">
-                  <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
-                  <span>Show character parts in editor</span>
-                </label>
-                <label className="toggle-row">
-                  <input defaultChecked type="checkbox" />
-                  <span>Preview motion when switching states</span>
-                </label>
+                <div className="settings-controls compact">
+                  <label className="toggle-row">
+                    <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
+                    <span>Show character parts in editor</span>
+                  </label>
+                  <label className="toggle-row">
+                    <input defaultChecked type="checkbox" />
+                    <span>Preview motion when switching states</span>
+                  </label>
+                </div>
               </section>
             </div>
           </section>
         ) : null}
 
-        {mainPanel === "chat" && viewMode !== "editor" ? (
+        {mainPanel === "chat" && !activeChat ? (
+          <HomePanel
+            projects={projects}
+            onNewProject={() => setNewProjectOpen(true)}
+            onOpenProviders={() => setMainPanel("providers")}
+            onStartChat={() => newChat(projects[0]?.id ?? null)}
+          />
+        ) : null}
+
+        {mainPanel === "chat" && activeChat && viewMode !== "editor" ? (
           <section className={viewMode === "preview" ? "chat-layout with-preview" : "chat-layout"}>
             <div className="chat-panel">
               <div className="message-stack">
                 <div className="home-heading">
                   <h1>What should we build in Strut?</h1>
-                  <p>{activeProject.name} is ready for a prompt, mockup, or plan-first sketch.</p>
+                  <p>{activeProject?.name ?? "This project"} is ready for a prompt, mockup, or plan-first sketch.</p>
                 </div>
-                {messages.map((message) => (
+                {activeChat.messages.map((message) => (
                   <p className={`message ${message.role}`} key={message.id}>
                     <span>{message.role}</span>
                     {message.text}
@@ -790,12 +1104,12 @@ function App() {
               </div>
             </div>
             {viewMode === "preview" ? (
-              <PreviewPane activeMachine={activeMachine} activeState={activeState} document={document} setActiveState={setActiveState} />
+              <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
             ) : null}
           </section>
         ) : null}
 
-        {mainPanel === "chat" && viewMode === "editor" ? (
+        {mainPanel === "chat" && activeChat && viewMode === "editor" ? (
           <section className="editor-layout">
             <div className="editor-toolbar">
               {["select", "shape", "path", "bind", "animate"].map((tool) => (
@@ -821,7 +1135,10 @@ function App() {
                     </button>
                   ))}
                 </div>
-                <strong>{activeArtboard.name}</strong>
+                <div className="panel-title">
+                  <strong>Layers</strong>
+                  <em>{activeArtboard.name}</em>
+                </div>
                 {partsVisible ? (
                   <div className="layer-list">
                     {layers.map((layer) => (
@@ -833,12 +1150,61 @@ function App() {
                   </div>
                 ) : <p>Parts hidden</p>}
               </div>
-              <PreviewPane activeMachine={activeMachine} activeState={activeState} document={document} setActiveState={setActiveState} />
+              <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
             </div>
           </section>
         ) : null}
       </section>
     </main>
+  );
+}
+
+function HomePanel({
+  onNewProject,
+  onOpenProviders,
+  onStartChat,
+  projects,
+}: {
+  onNewProject: () => void;
+  onOpenProviders: () => void;
+  onStartChat: () => void;
+  projects: ProjectRecord[];
+}) {
+  return (
+    <section className="empty-home">
+      <div className="empty-hero">
+        <div className="empty-mark">
+          <img src="/strut-mark.svg" alt="" />
+        </div>
+        <h1>Start a motion project</h1>
+        <p>Select a folder, open a project chat, or ask Strut to sketch a character direction before building the full animation.</p>
+        <div className="empty-actions">
+          <button type="button" onClick={onNewProject}>
+            <FolderPlus size={16} />
+            Select folder
+          </button>
+          <button type="button" onClick={onStartChat}>
+            <MessageSquarePlus size={16} />
+            Start chat
+          </button>
+        </div>
+      </div>
+
+      <div className="home-card-grid">
+        <button type="button" onClick={onNewProject}>
+          <span>New project</span>
+          <em>Create a folder with scene, assets, and export directories.</em>
+        </button>
+        <button type="button" onClick={onStartChat} disabled={projects.length === 0}>
+          <span>Plan first</span>
+          <em>Start from a prompt and keep the conversation in the sidebar.</em>
+        </button>
+        <button type="button" onClick={onOpenProviders}>
+          <span>Connect providers</span>
+          <em>Choose built-in, local CLI, Ollama, or BYOK models.</em>
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -857,8 +1223,8 @@ function PreviewPane({
     <aside className="preview-pane">
       <div className="preview-title">
         <div>
-          <span>{document.name}</span>
-          <em>{activeMachine.name}</em>
+          <span>Preview</span>
+          <em>{document.name} / {activeMachine.name}</em>
         </div>
         <button type="button" onClick={() => setActiveState("wave")}>
           <Play size={15} />
