@@ -34,6 +34,14 @@ struct GenerationProvider {
     byok: Option<ByokProviderConfig>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceImageInput {
+    name: String,
+    mime_type: String,
+    data_url: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ProviderOperationResult {
     ok: bool,
@@ -143,27 +151,29 @@ fn create_project(name: String, location: String) -> Result<ProjectInfo, String>
 async fn generate_character(
     prompt: String,
     provider: Option<GenerationProvider>,
+    references: Option<Vec<ReferenceImageInput>>,
 ) -> Result<GeneratedCharacter, String> {
+    let references = references.unwrap_or_default();
     if let Some(provider) = provider {
         match provider.mode.as_str() {
             "byok" => {
                 let config = provider
                     .byok
                     .ok_or_else(|| "BYOK provider config missing".to_string())?;
-                let spec = generate_spec_with_byok(&prompt, &config).await?;
+                let spec = generate_spec_with_byok(&prompt, &config, &references).await?;
                 let document = strut_core::Document::generate_character(spec);
                 return Ok(GeneratedCharacter {
                     source: config.provider_id,
-                    message: "Generated through BYOK provider".to_string(),
+                    message: reference_message("Generated through BYOK provider", &references),
                     document,
                 });
             }
             "local" if provider.local_adapter_id.as_deref() == Some("ollama") => {
-                let spec = generate_spec_with_ollama(&prompt).await?;
+                let spec = generate_spec_with_ollama(&prompt, &references).await?;
                 let document = strut_core::Document::generate_character(spec);
                 return Ok(GeneratedCharacter {
                     source: "ollama".to_string(),
-                    message: "Generated through local Ollama".to_string(),
+                    message: reference_message("Generated through local Ollama", &references),
                     document,
                 });
             }
@@ -179,12 +189,13 @@ async fn generate_character(
         }
     }
 
+    let prompt = prompt_with_reference_context(&prompt, &references);
     let spec = strut_core::character_spec_from_prompt(&prompt);
     let document = strut_core::Document::generate_character(spec);
     Ok(GeneratedCharacter {
         document,
         source: "built-in".to_string(),
-        message: "Generated with built-in local generator".to_string(),
+        message: reference_message("Generated with built-in local generator", &references),
     })
 }
 
@@ -578,27 +589,79 @@ fn http_error_preview(status: u16, body: &str) -> String {
     }
 }
 
+fn data_url_payload(data_url: &str) -> Option<&str> {
+    data_url.split_once(',').map(|(_, payload)| payload)
+}
+
+fn image_media_type(reference: &ReferenceImageInput) -> &str {
+    if reference.mime_type.trim().is_empty() {
+        return "image/png";
+    }
+    reference.mime_type.trim()
+}
+
+fn prompt_with_reference_context(prompt: &str, references: &[ReferenceImageInput]) -> String {
+    if references.is_empty() {
+        return prompt.to_string();
+    }
+    let names = references
+        .iter()
+        .map(|reference| {
+            format!(
+                "{} ({})",
+                reference.name.trim(),
+                image_media_type(reference)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{prompt}\n\nReference images attached: {names}. Inspect the image composition, silhouette, pose, palette, and visible parts, then return an editable Strut character spec that matches the reference direction."
+    )
+}
+
+fn reference_message(base: &str, references: &[ReferenceImageInput]) -> String {
+    if references.is_empty() {
+        base.to_string()
+    } else {
+        format!(
+            "{base} using {} reference image{}",
+            references.len(),
+            if references.len() == 1 { "" } else { "s" }
+        )
+    }
+}
+
 async fn generate_spec_with_byok(
     prompt: &str,
     config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
 ) -> Result<strut_core::CharacterSpec, String> {
     ensure_byok_config(config)?;
     let response_text = match config.provider_id.as_str() {
-        "anthropic" => anthropic_message(prompt, config).await?,
-        "gemini" => gemini_generate_content(prompt, config).await?,
-        _ => openai_compatible_chat(prompt, config).await?,
+        "anthropic" => anthropic_message(prompt, config, references).await?,
+        "gemini" => gemini_generate_content(prompt, config, references).await?,
+        _ => openai_compatible_chat(prompt, config, references).await?,
     };
 
     parse_character_spec(&response_text)
 }
 
-async fn generate_spec_with_ollama(prompt: &str) -> Result<strut_core::CharacterSpec, String> {
+async fn generate_spec_with_ollama(
+    prompt: &str,
+    references: &[ReferenceImageInput],
+) -> Result<strut_core::CharacterSpec, String> {
     let client = http_client()?;
+    let images = references
+        .iter()
+        .filter_map(|reference| data_url_payload(&reference.data_url).map(str::to_string))
+        .collect::<Vec<_>>();
     let response = client
         .post("http://127.0.0.1:11434/api/generate")
         .json(&json!({
             "model": "llama3.2",
-            "prompt": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {prompt}"),
+            "prompt": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references)),
+            "images": images,
             "stream": false,
             "format": "json"
         }))
@@ -622,8 +685,21 @@ async fn generate_spec_with_ollama(prompt: &str) -> Result<strut_core::Character
 async fn openai_compatible_chat(
     prompt: &str,
     config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
 ) -> Result<String, String> {
     let client = http_client()?;
+    let user_content = if references.is_empty() {
+        json!(prompt)
+    } else {
+        let mut content = vec![json!({"type": "text", "text": prompt_with_reference_context(prompt, references)})];
+        content.extend(references.iter().map(|reference| {
+            json!({
+                "type": "image_url",
+                "image_url": {"url": reference.data_url}
+            })
+        }));
+        json!(content)
+    };
     let response = client
         .post(format!(
             "{}/chat/completions",
@@ -634,7 +710,7 @@ async fn openai_compatible_chat(
             "model": config.model,
             "messages": [
                 {"role": "system", "content": CHARACTER_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user_content}
             ],
             "temperature": 0.2,
             "response_format": {"type": "json_object"}
@@ -655,8 +731,23 @@ async fn openai_compatible_chat(
         .ok_or_else(|| "provider response did not include choices[0].message.content".to_string())
 }
 
-async fn anthropic_message(prompt: &str, config: &ByokProviderConfig) -> Result<String, String> {
+async fn anthropic_message(
+    prompt: &str,
+    config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
+) -> Result<String, String> {
     let client = http_client()?;
+    let mut content = vec![json!({"type": "text", "text": prompt_with_reference_context(prompt, references)})];
+    content.extend(references.iter().filter_map(|reference| {
+        Some(json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": image_media_type(reference),
+                "data": data_url_payload(&reference.data_url)?
+            }
+        }))
+    }));
     let response = client
         .post(format!("{}/v1/messages", endpoint_base(&config.endpoint)))
         .header("x-api-key", config.api_key.as_deref().unwrap_or_default())
@@ -665,7 +756,7 @@ async fn anthropic_message(prompt: &str, config: &ByokProviderConfig) -> Result<
             "model": config.model,
             "max_tokens": 512,
             "system": CHARACTER_SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": prompt}]
+            "messages": [{"role": "user", "content": content}]
         }))
         .send()
         .await
@@ -686,9 +777,21 @@ async fn anthropic_message(prompt: &str, config: &ByokProviderConfig) -> Result<
 async fn gemini_generate_content(
     prompt: &str,
     config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
 ) -> Result<String, String> {
     let client = http_client()?;
     let model = config.model.trim().trim_start_matches("models/");
+    let mut parts = vec![json!({
+        "text": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references))
+    })];
+    parts.extend(references.iter().filter_map(|reference| {
+        Some(json!({
+            "inlineData": {
+                "mimeType": image_media_type(reference),
+                "data": data_url_payload(&reference.data_url)?
+            }
+        }))
+    }));
     let response = client
         .post(format!(
             "{}/v1beta/models/{model}:generateContent?key={}",
@@ -697,9 +800,7 @@ async fn gemini_generate_content(
         ))
         .json(&json!({
             "contents": [{
-                "parts": [{
-                    "text": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {prompt}")
-                }]
+                "parts": parts
             }],
             "generationConfig": {
                 "temperature": 0.2,

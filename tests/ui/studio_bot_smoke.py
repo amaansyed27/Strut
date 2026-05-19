@@ -38,6 +38,19 @@ def wait_for_server(timeout_seconds: int = 30) -> None:
 def run_smoke() -> None:
     output_dir = ROOT / "test-results"
     output_dir.mkdir(exist_ok=True)
+    reference_path = output_dir / "reference-bot.svg"
+    reference_path.write_text(
+        """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <rect width="320" height="200" rx="18" fill="#59c7d7"/>
+  <ellipse cx="160" cy="166" rx="56" ry="8" fill="#1f1d3b"/>
+  <rect x="102" y="42" width="116" height="82" rx="24" fill="#fffaf0" stroke="#222" stroke-width="8"/>
+  <rect x="126" y="66" width="68" height="36" rx="14" fill="#202038"/>
+  <path d="M140 84q8-16 16 0M166 84q8-16 16 0M150 98q10 12 24 0" fill="none" stroke="#59c7d7" stroke-width="5" stroke-linecap="round"/>
+</svg>
+""".strip(),
+        encoding="utf-8",
+    )
 
     command = [
         npm_command(),
@@ -75,23 +88,14 @@ def run_smoke() -> None:
             expect(page.get_by_role("button", name="New project", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Providers", exact=True)).to_be_visible()
-            expect(page.get_by_role("button", name="Strut", exact=True)).to_be_visible()
-            expect(page.get_by_role("button", name="Strut Plan now", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Chat only", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Chat + preview", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Editor", exact=True)).to_be_visible()
             expect(page.get_by_role("heading", name="Start a motion project")).to_be_visible()
             expect(page.get_by_role("button", name="Select folder")).to_be_visible()
             expect(page.get_by_role("button", name="Start chat")).to_be_visible()
+            expect(page.get_by_text("No project selected")).to_be_visible()
             page.screenshot(path=str(output_dir / "studio-home-redesign.png"), full_page=True)
-
-            page.get_by_role("button", name="Search", exact=True).click()
-            page.get_by_label("Search projects and chats").fill("owl")
-            expect(page.get_by_role("button", name="Owl guide animation 2d", exact=True)).to_be_visible()
-            page.get_by_label("Search projects and chats").fill("")
-
-            page.get_by_role("button", name="New chat in Strut").click()
-            expect(page.get_by_text("New chat ready. Tell Strut what to design or ask for a plan.")).to_be_visible()
 
             page.get_by_role("button", name="New project", exact=True).click()
             page.get_by_label("Project name").fill("Smoke Mascot")
@@ -101,6 +105,15 @@ def run_smoke() -> None:
             activity = page.locator('[data-testid="activity-pill"]')
             expect(activity).to_contain_text("Browser preview project")
             expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Project brief now", exact=True)).to_be_visible()
+
+            page.get_by_role("button", name="Search", exact=True).click()
+            page.get_by_label("Search projects and chats").fill("smoke")
+            expect(page.get_by_role("button", name="Project brief now", exact=True)).to_be_visible()
+            page.get_by_label("Search projects and chats").fill("")
+
+            page.get_by_role("button", name="New chat in Smoke Mascot").click()
+            expect(page.get_by_role("button", name="New character chat now", exact=True)).to_be_visible()
 
             page.get_by_role("button", name="Providers", exact=True).click()
             expect(page.get_by_role("heading", name="Providers")).to_be_visible()
@@ -115,12 +128,14 @@ def run_smoke() -> None:
 
             page.get_by_role("button", name="Chat + preview", exact=True).click()
             preview = page.locator('[data-testid="character-preview"]')
-            expect(preview).to_be_visible()
-            expect(preview).to_have_attribute("data-character", "bot")
-            expect(preview).to_have_attribute("data-state", "wave")
+            expect(page.get_by_text("No scene yet")).to_be_visible()
+            expect(preview).not_to_be_visible()
+            page.locator('input[aria-label="Attach reference images"]').set_input_files(str(reference_path))
+            expect(page.get_by_text("reference-bot.svg")).to_be_visible()
             page.get_by_label("Character prompt").fill("make an owl like Duo from Duolingo")
             page.get_by_role("button", name="Generate").click()
-            expect(page.get_by_text("Owl Mascot preview is ready")).to_be_visible()
+            expect(page.get_by_text("Owl Mascot preview is ready from 1 reference image")).to_be_visible()
+            expect(preview).to_be_visible()
             expect(preview).to_have_attribute("data-character", "owl")
             expect(preview).to_have_attribute("data-state", "wave")
             page.screenshot(path=str(output_dir / "studio-owl-smoke.png"), full_page=True)
@@ -163,6 +178,7 @@ def run_smoke() -> None:
             page.reload(wait_until="networkidle")
             expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).to_be_visible()
             expect(page.get_by_text("Minimal Bot preview is ready")).to_be_visible()
+            expect(page.get_by_text("reference-bot.svg")).to_be_visible()
             expect(page.locator("html")).to_have_attribute("data-theme", "system")
             page.get_by_role("button", name="Chat + preview", exact=True).click()
             expect(preview).to_have_attribute("data-character", "bot")

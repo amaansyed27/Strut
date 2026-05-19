@@ -29,6 +29,9 @@
   --grid-y: rgba(43, 41, 36, 0.04);
   --field: rgba(255, 255, 255, 0.34);
   --panel: rgba(255, 255, 255, 0.24);
+  --topbar: rgba(231, 224, 209, 0.86);
+  --mode-rail: rgba(43, 41, 36, 0.08);
+  --mode-hover: rgba(255, 255, 255, 0.34);
   --preview-surface: #f5f1e8;
   --figure-fill: #fffaf0;
   --figure-stroke: #24231f;
@@ -55,6 +58,9 @@
   --grid-y: rgba(244, 234, 214, 0.04);
   --field: rgba(255, 255, 255, 0.07);
   --panel: rgba(255, 255, 255, 0.06);
+  --topbar: rgba(22, 21, 18, 0.9);
+  --mode-rail: rgba(244, 234, 214, 0.08);
+  --mode-hover: rgba(244, 234, 214, 0.11);
   --preview-surface: #f5f1e8;
   --figure-fill: #fffaf0;
   --figure-stroke: #24231f;
@@ -82,6 +88,9 @@
     --grid-y: rgba(244, 234, 214, 0.04);
     --field: rgba(255, 255, 255, 0.07);
     --panel: rgba(255, 255, 255, 0.06);
+    --topbar: rgba(22, 21, 18, 0.9);
+    --mode-rail: rgba(244, 234, 214, 0.08);
+    --mode-hover: rgba(244, 234, 214, 0.11);
   }
 }
 
@@ -361,7 +370,7 @@ button {
   gap: 18px;
   padding: 0 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(238, 232, 218, 0.68);
+  background: var(--topbar);
   backdrop-filter: blur(16px);
 }
 
@@ -382,13 +391,25 @@ button {
 
 .view-switcher {
   display: flex;
-  gap: 8px;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--mode-rail);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .view-switcher button {
+  position: relative;
+  min-height: 38px;
+  padding: 0 12px;
   color: var(--ink);
-  border-color: var(--line);
-  background: rgba(255, 255, 255, 0.24);
+  border-color: transparent;
+  background: transparent;
+}
+
+.view-switcher button:hover {
+  background: var(--mode-hover);
 }
 
 .view-switcher button.active,
@@ -399,6 +420,17 @@ button {
   color: #fff;
   background: var(--ink);
   border-color: var(--ink);
+}
+
+.view-switcher button.active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -5px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff6f61, var(--accent), #78d8ff);
 }
 
 .project-sheet,
@@ -631,6 +663,46 @@ button {
   line-height: 1.5;
 }
 
+.message-body {
+  display: grid;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.message-attachment {
+  width: 140px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.message-attachment img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--preview-surface);
+}
+
+.message-attachment em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer {
   max-width: 760px;
   width: 100%;
@@ -640,6 +712,50 @@ button {
   background: var(--field);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+}
+
+.reference-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.reference-chip {
+  max-width: 220px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.reference-chip img {
+  width: 42px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: var(--preview-surface);
+}
+
+.reference-chip span {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-chip button {
+  width: 24px;
+  min-height: 24px;
+  justify-content: center;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
 }
 
 .composer textarea {
@@ -664,6 +780,31 @@ button {
   border-top: 1px solid var(--line);
 }
 
+.composer-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-left > button {
+  min-height: 32px;
+  width: auto;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.reference-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .composer-controls button {
   width: 36px;
   min-height: 36px;
@@ -672,6 +813,16 @@ button {
   background: var(--accent);
   border-color: var(--accent);
   border-radius: 999px;
+}
+
+.composer-controls .composer-left > button {
+  width: auto;
+  min-height: 32px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line);
 }
 
 .preview-pane {
@@ -711,6 +862,39 @@ button {
 .preview-title button {
   color: var(--ink);
   border-color: var(--line);
+}
+
+.preview-title button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.preview-empty {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, transparent 23px, var(--grid-x) 24px),
+    linear-gradient(180deg, transparent 23px, var(--grid-y) 24px),
+    var(--paper-glass);
+  background-size: 24px 24px;
+}
+
+.preview-empty strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.preview-empty span {
+  max-width: 260px;
+  line-height: 1.45;
 }
 
 .character-preview {

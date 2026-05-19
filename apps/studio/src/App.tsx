@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronRight,
@@ -7,6 +7,7 @@ import {
   Folder,
   FolderPlus,
   Home,
+  ImagePlus,
   Layers3,
   MessageSquarePlus,
   Monitor,
@@ -23,6 +24,7 @@ import {
   Sun,
   Trash2,
   WandSparkles,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./App.css";
@@ -125,10 +127,19 @@ type GeneratedCharacter = {
   message: string;
 };
 
+type ReferenceAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+  size: number;
+};
+
 type ChatMessage = {
   id: number;
   role: "assistant" | "user" | "system";
   text: string;
+  attachments?: ReferenceAttachment[];
 };
 
 type ChatThread = {
@@ -137,7 +148,8 @@ type ChatThread = {
   projectId: string;
   updated: string;
   messages: ChatMessage[];
-  document: StrutDocument;
+  references: ReferenceAttachment[];
+  document: StrutDocument | null;
   activeState: string;
 };
 
@@ -202,6 +214,20 @@ const fallbackDocument: StrutDocument = {
   events: [{ name: "wave_started" }, { name: "celebration_complete" }],
 };
 
+const emptyArtboard: Artboard = {
+  id: "empty-artboard",
+  name: "No scene yet",
+  width: 960,
+  height: 540,
+  nodes: [],
+};
+
+const emptyMachine: StateMachine = {
+  id: "empty-machine",
+  name: "No state machine",
+  states: ["idle"],
+};
+
 const owlDocument: StrutDocument = {
   ...fallbackDocument,
   id: "00000000-0000-0000-0000-000000000200",
@@ -226,55 +252,22 @@ const owlDocument: StrutDocument = {
   events: [{ name: "wing_wave_started" }, { name: "celebration_complete" }],
 };
 
-const STORAGE_KEY = "strut-studio-workspace-v3";
+const STORAGE_KEY = "strut-studio-workspace-v4";
 
-function starterMessages(text = "What should we build in Strut? Describe a character, attach a mockup later, or ask for a plan first."): ChatMessage[] {
-  return [{ id: Date.now() + Math.random(), role: "assistant", text }];
-}
-
-function createChat(projectId: string, title: string, messages = starterMessages()): ChatThread {
+function createChat(projectId: string, title: string, messages: ChatMessage[] = []): ChatThread {
   return {
     id: `chat-${Date.now()}-${Math.round(Math.random() * 10000)}`,
     title,
     projectId,
     updated: "now",
     messages,
-    document: fallbackDocument,
+    references: [],
+    document: null,
     activeState: "wave",
   };
 }
 
-const initialProjects: ProjectRecord[] = [
-  {
-    id: "strut",
-    name: "Strut",
-    path: "D:\\Strut Projects\\Strut",
-    chats: [
-      {
-        ...createChat("strut", "Strut Plan"),
-        id: "strut-plan",
-      },
-      {
-        ...createChat("strut", "Build bot character", starterMessages("A minimal robot character is ready to iterate on.")),
-        id: "bot-test",
-        updated: "1h",
-      },
-    ],
-  },
-  {
-    id: "brand-motion",
-    name: "Brand motion",
-    path: "D:\\Strut Projects\\Brand motion",
-    chats: [
-      {
-        ...createChat("brand-motion", "Owl guide animation", starterMessages("Owl guide animation brief saved.")),
-        id: "owl-guide",
-        updated: "2d",
-        document: owlDocument,
-      },
-    ],
-  },
-];
+const initialProjects: ProjectRecord[] = [];
 
 const fallbackLocalAdapters: LocalAdapter[] = [
   { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
@@ -292,7 +285,7 @@ const byokProviders: ByokProvider[] = [
   { id: "openai-compatible", name: "OpenAI Compatible", env: "API_KEY", endpoint: "http://localhost:1234/v1", model: "local-model" },
 ];
 
-const defaultPrompt = "make a minimalist waving robot character like the reference image";
+const defaultPrompt = "";
 
 function isThemeMode(value: unknown): value is ThemeMode {
   return value === "system" || value === "light" || value === "dark";
@@ -307,9 +300,29 @@ function isStrutDocument(value: unknown): value is StrutDocument {
   );
 }
 
+function normalizeAttachments(value: unknown): ReferenceAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((attachment) => attachment && typeof attachment === "object")
+    .map((attachment) => {
+      const candidate = attachment as Partial<ReferenceAttachment>;
+      return {
+        id: typeof candidate.id === "string" && candidate.id ? candidate.id : `ref-${Date.now()}-${Math.random()}`,
+        name: typeof candidate.name === "string" ? candidate.name : "reference image",
+        mimeType: typeof candidate.mimeType === "string" ? candidate.mimeType : "image/png",
+        dataUrl: typeof candidate.dataUrl === "string" ? candidate.dataUrl : "",
+        size: typeof candidate.size === "number" ? candidate.size : 0,
+      };
+    })
+    .filter((attachment) => attachment.dataUrl.startsWith("data:image/"));
+}
+
 function normalizeMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value)) {
-    return starterMessages();
+    return [];
   }
 
   const messages = value
@@ -324,11 +337,12 @@ function normalizeMessages(value: unknown): ChatMessage[] {
         id: typeof candidate.id === "number" ? candidate.id : Date.now() + Math.random(),
         role,
         text: typeof candidate.text === "string" ? candidate.text : "",
+        attachments: normalizeAttachments(candidate.attachments),
       };
     })
-    .filter((message) => message.text.trim().length > 0);
+    .filter((message) => message.text.trim().length > 0 || (message.attachments?.length ?? 0) > 0);
 
-  return messages.length > 0 ? messages : starterMessages();
+  return messages;
 }
 
 function normalizeProjects(value: unknown): ProjectRecord[] {
@@ -352,9 +366,10 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
                 projectId: id,
                 updated: typeof chatCandidate.updated === "string" ? chatCandidate.updated : "now",
                 messages: normalizeMessages(chatCandidate.messages),
-                document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : fallbackDocument,
-                activeState: typeof chatCandidate.activeState === "string" ? chatCandidate.activeState : "wave",
-              };
+                references: normalizeAttachments(chatCandidate.references),
+        document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : null,
+        activeState: typeof chatCandidate.activeState === "string" ? chatCandidate.activeState : "wave",
+      };
             })
         : [];
 
@@ -366,7 +381,7 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
       };
     });
 
-  return projects.length > 0 ? projects : initialProjects;
+  return projects;
 }
 
 function loadWorkspaceState(): WorkspaceState {
@@ -403,6 +418,28 @@ function promptTitle(prompt: string) {
     return "New character chat";
   }
   return compact.length > 34 ? `${compact.slice(0, 31)}...` : compact;
+}
+
+function fileToAttachment(file: File): Promise<ReferenceAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl.startsWith("data:image/")) {
+        reject(new Error(`${file.name} is not a supported image`));
+        return;
+      }
+      resolve({
+        id: `ref-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+        name: file.name,
+        mimeType: file.type || "image/png",
+        dataUrl,
+        size: file.size,
+      });
+    };
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
 }
 
 function titleCase(value: string) {
@@ -473,9 +510,9 @@ function CharacterPreview({ document, activeState }: { document: StrutDocument; 
 
 function App() {
   const [initialWorkspace] = useState<WorkspaceState>(() => loadWorkspaceState());
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [desktopRuntime, setDesktopRuntime] = useState(true);
-  const [baseDocument, setBaseDocument] = useState<StrutDocument>(fallbackDocument);
   const [projects, setProjects] = useState<ProjectRecord[]>(initialWorkspace.projects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(initialWorkspace.activeProjectId);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialWorkspace.activeChatId);
@@ -489,6 +526,7 @@ function App() {
   const [partsVisible, setPartsVisible] = useState(true);
   const [activeTool, setActiveTool] = useState("select");
   const [prompt, setPrompt] = useState(defaultPrompt);
+  const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("built-in");
   const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(fallbackLocalAdapters);
   const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("ollama");
@@ -515,7 +553,6 @@ function App() {
         setDesktopRuntime(false);
         setProjectLocation("D:\\Strut Projects");
       });
-    invoke<StrutDocument>("sample_document").then(setBaseDocument).catch(() => setBaseDocument(fallbackDocument));
     invoke<LocalAdapter[]>("local_agent_adapters").then(setLocalAdapters).catch(() => setDesktopRuntime(false));
   }, []);
 
@@ -538,11 +575,11 @@ function App() {
 
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const activeChat = activeProject?.chats.find((chat) => chat.id === activeChatId) ?? null;
-  const currentDocument = activeChat?.document ?? baseDocument;
+  const currentDocument = activeChat?.document ?? null;
   const currentActiveState = activeChat?.activeState ?? "wave";
   const files = activeProject ? projectFiles(activeProject) : [];
-  const activeArtboard = currentDocument.artboards[0] ?? fallbackDocument.artboards[0];
-  const activeMachine = currentDocument.state_machines[0] ?? fallbackDocument.state_machines[0];
+  const activeArtboard = currentDocument?.artboards[0] ?? emptyArtboard;
+  const activeMachine = currentDocument?.state_machines[0] ?? emptyMachine;
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const viewModes: ViewModeOption[] = [
@@ -606,6 +643,15 @@ function App() {
     }));
   }
 
+  function appendUserMessage(text: string, attachments: ReferenceAttachment[]) {
+    updateCurrentChat((chat) => ({
+      ...chat,
+      updated: "now",
+      references: [...chat.references, ...attachments],
+      messages: [...chat.messages, { id: Date.now() + Math.random(), role: "user", text, attachments }],
+    }));
+  }
+
   function openChat(projectId: string, chatId: string) {
     setActiveProjectId(projectId);
     setActiveChatId(chatId);
@@ -625,7 +671,7 @@ function App() {
       setNewProjectOpen(true);
       return;
     }
-    const chat = createChat(project.id, "New character chat", starterMessages("New chat ready. Tell Strut what to design or ask for a plan."));
+    const chat = createChat(project.id, "New character chat");
     setProjects((current) =>
       current.map((item) => (item.id === project.id ? { ...item, chats: [chat, ...item.chats] } : item)),
     );
@@ -659,12 +705,38 @@ function App() {
     updateCurrentChat((chat) => ({ ...chat, activeState: state, updated: "now" }));
   }
 
+  async function attachReferenceImages(files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+    const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".svg"));
+    if (imageFiles.length === 0) {
+      setActivity("Choose PNG, JPG, WebP, GIF, or SVG references");
+      return;
+    }
+
+    try {
+      const attachments = await Promise.all(imageFiles.slice(0, 6).map(fileToAttachment));
+      setPendingReferences((current) => [...current, ...attachments]);
+      setActivity(`${attachments.length} reference image${attachments.length === 1 ? "" : "s"} attached`);
+    } catch (error) {
+      setActivity(String(error));
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removePendingReference(id: string) {
+    setPendingReferences((current) => current.filter((reference) => reference.id !== id));
+  }
+
   async function createProject() {
     if (!desktopRuntime) {
       const id = `project-${Date.now()}`;
       const chat = createChat(id, "Project brief", [
-        { id: Date.now(), role: "assistant", text: "Project brief ready. Tell Strut what character or interaction to design first." },
-        { id: Date.now() + 1, role: "system", text: "Browser preview opened an in-memory project. Run the desktop app to create files on disk." },
+        { id: Date.now(), role: "system", text: "Browser preview opened an in-memory project. Run the desktop app to create files on disk." },
       ]);
       const project: ProjectRecord = {
         id,
@@ -684,8 +756,7 @@ function App() {
       const created = await invoke<ProjectInfo>("create_project", { name: projectName, location: projectLocation });
       const id = `project-${Date.now()}`;
       const chat = createChat(id, "Project brief", [
-        { id: Date.now(), role: "assistant", text: "Project created. Tell Strut what character or interaction to design first." },
-        { id: Date.now() + 1, role: "system", text: `Project created: ${created.path}` },
+        { id: Date.now(), role: "system", text: `Project created: ${created.path}` },
       ]);
       const project: ProjectRecord = {
         id,
@@ -742,7 +813,7 @@ function App() {
 
   async function runGeneration() {
     const trimmed = prompt.trim();
-    if (!trimmed) {
+    if (!trimmed && pendingReferences.length === 0) {
       return;
     }
     if (!activeProjectId || !activeChatId) {
@@ -750,15 +821,20 @@ function App() {
       setActivity("Start a chat first");
       return;
     }
-    appendMessage("user", trimmed);
+    const references = pendingReferences;
+    const generationPrompt = trimmed || "Use the attached reference image to create an editable animated character.";
+    appendUserMessage(trimmed || "Use the attached reference image.", references);
+    setPendingReferences([]);
     setActivity("Generating");
 
     try {
-      const args = providerPayload() ? { prompt: trimmed, provider: providerPayload() } : { prompt: trimmed };
+      const args = providerPayload()
+        ? { prompt: generationPrompt, provider: providerPayload(), references }
+        : { prompt: generationPrompt, references };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
-        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed) : chat.title,
+        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
         updated: "now",
         document: result.document,
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
@@ -771,16 +847,16 @@ function App() {
         appendMessage("assistant", `Generation stopped: ${String(error)}`);
         return;
       }
-      const generated = fallbackGenerateCharacter(trimmed);
+      const generated = fallbackGenerateCharacter(`${trimmed} ${references.map((reference) => reference.name).join(" ")}`);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
-        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed) : chat.title,
+        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
         updated: "now",
         document: generated,
         activeState: "wave",
       }));
       setActivity("Browser preview used built-in generator");
-      appendMessage("assistant", `${generated.name} preview is ready. Open the desktop app for real provider-routed generation.`);
+      appendMessage("assistant", `${generated.name} preview is ready${references.length ? ` from ${references.length} reference image${references.length === 1 ? "" : "s"}` : ""}. Open the desktop app for real provider-routed generation.`);
     }
   }
 
@@ -1089,14 +1165,54 @@ function App() {
                 {activeChat.messages.map((message) => (
                   <p className={`message ${message.role}`} key={message.id}>
                     <span>{message.role}</span>
-                    {message.text}
+                    <span className="message-body">
+                      {message.text}
+                      {message.attachments?.length ? (
+                        <span className="message-attachments">
+                          {message.attachments.map((attachment) => (
+                            <span className="message-attachment" key={attachment.id}>
+                              <img src={attachment.dataUrl} alt="" />
+                              <em>{attachment.name}</em>
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
                   </p>
                 ))}
               </div>
               <div className="composer">
+                {pendingReferences.length ? (
+                  <div className="reference-tray">
+                    {pendingReferences.map((reference) => (
+                      <div className="reference-chip" key={reference.id}>
+                        <img src={reference.dataUrl} alt="" />
+                        <span>{reference.name}</span>
+                        <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => removePendingReference(reference.id)}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <textarea aria-label="Character prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut to make a character, storyboard, or editable animation" />
                 <div className="composer-controls">
-                  <span>{providerMode === "built-in" ? "Built-in" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+                  <div className="composer-left">
+                    <input
+                      ref={fileInputRef}
+                      aria-label="Attach reference images"
+                      className="reference-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                      multiple
+                      onChange={(event) => void attachReferenceImages(event.currentTarget.files)}
+                    />
+                    <button aria-label="Attach reference images" type="button" onClick={() => fileInputRef.current?.click()}>
+                      <ImagePlus size={16} />
+                      Reference
+                    </button>
+                    <span>{providerMode === "built-in" ? "Built-in" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+                  </div>
                   <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
                     <Send size={17} />
                   </button>
@@ -1216,7 +1332,7 @@ function PreviewPane({
 }: {
   activeMachine: StateMachine;
   activeState: string;
-  document: StrutDocument;
+  document: StrutDocument | null;
   setActiveState: (state: string) => void;
 }) {
   return (
@@ -1224,22 +1340,32 @@ function PreviewPane({
       <div className="preview-title">
         <div>
           <span>Preview</span>
-          <em>{document.name} / {activeMachine.name}</em>
+          <em>{document ? `${document.name} / ${activeMachine.name}` : "No generated scene"}</em>
         </div>
-        <button type="button" onClick={() => setActiveState("wave")}>
+        <button disabled={!document} type="button" onClick={() => setActiveState("wave")}>
           <Play size={15} />
           Preview
         </button>
       </div>
-      <CharacterPreview document={document} activeState={activeState} />
-      <div className="state-row">
-        {activeMachine.states.map((state) => (
-          <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
-            <Route size={13} />
-            {titleCase(state)}
-          </button>
-        ))}
-      </div>
+      {document ? (
+        <>
+          <CharacterPreview document={document} activeState={activeState} />
+          <div className="state-row">
+            {activeMachine.states.map((state) => (
+              <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
+                <Route size={13} />
+                {titleCase(state)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="preview-empty">
+          <ImagePlus size={26} />
+          <strong>No scene yet</strong>
+          <span>Attach a reference image or describe the character in chat.</span>
+        </div>
+      )}
     </aside>
   );
 }
