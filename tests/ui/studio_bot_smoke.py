@@ -73,15 +73,31 @@ def run_smoke() -> None:
             expect(page.get_by_text("HelmetShell")).to_be_visible()
             expect(page.get_by_text("BotMoods")).to_be_visible()
 
-            preview = page.locator('[data-testid="bot-preview"]')
+            preview = page.locator('[data-testid="character-preview"]')
             expect(preview).to_be_visible()
+            expect(preview).to_have_attribute("data-character", "bot")
             expect(preview).to_have_attribute("data-state", "wave")
 
-            page.get_by_role("button", name="Generate Sketches").click()
+            page.get_by_label("Character prompt").fill("make an owl like Duo from Duolingo")
+            page.get_by_role("button", name="Generate Character").click()
+            expect(page.get_by_text("Owl Mascot.strut")).to_be_visible()
+            expect(page.get_by_text("Beak")).to_be_visible()
+            expect(page.get_by_text("OwlMoods")).to_be_visible()
+            expect(preview).to_have_attribute("data-character", "owl")
+            expect(preview).to_have_attribute("data-state", "wave")
+            page.screenshot(path=str(output_dir / "studio-owl-smoke.png"), full_page=True)
+
+            page.get_by_label("Character prompt").fill("make a small waving robot like the reference image")
+            page.get_by_role("button", name="Generate Character").click()
+            expect(page.get_by_text("Minimal Bot.strut")).to_be_visible()
+            expect(preview).to_have_attribute("data-character", "bot")
+            expect(preview).to_have_attribute("data-state", "wave")
+
+            page.get_by_role("button", name="Generate Character").click()
             expect(page.locator('[data-testid="plan-sketches"]')).to_be_visible()
             expect(page.get_by_text("Floating Helper")).to_be_visible()
             page.get_by_text("Scanner Bot").click()
-            page.get_by_role("button", name="Build Minimal Bot").click()
+            page.get_by_role("button", name="Build Character").click()
             expect(preview).to_have_attribute("data-state", "scan")
 
             for state in ["Idle", "Float", "Wave", "Blink", "Scan", "Celebrate", "Sleep"]:
