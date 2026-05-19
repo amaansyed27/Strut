@@ -7,27 +7,45 @@ This API is not implemented yet. It is the intended developer experience for the
 ## JavaScript Runtime
 
 ```ts
-import { loadStrutUrl, mountMinimalBot } from "@strut/runtime-web";
+import { loadStrutUrl, mountStrut } from "@strut/runtime-web";
 
 const strutPackage = await loadStrutUrl("/samples/minimal-bot.strut");
-const player = mountMinimalBot(stageElement, strutPackage.document, "idle");
+const player = mountStrut(stageElement, strutPackage.document, {
+  artboard: "MinimalBot",
+  stateMachine: "BotMoods",
+  initialState: "idle",
+});
 
 player.setState("wave");
 player.setState("celebrate");
+player.setInput("scan", true);
 ```
 
 ## React Runtime
 
-The React runtime is still planned. Its API should wrap the same runtime concepts:
+The React runtime wraps the same runtime concepts:
 
 ```tsx
-<Strut
-  src="/login-button.strut"
-  artboard="LoginButton"
-  stateMachine="Interaction"
-  inputs={{ status: "loading" }}
-  bindings={{ label: "Sign in" }}
-/>
+import { Strut } from "@strut/react";
+
+export function Mascot() {
+  return (
+    <Strut
+      src="/mascot.strut"
+      artboard="Mascot"
+      stateMachine="Interaction"
+      state="wave"
+      inputs={{ mood: "happy" }}
+      bindings={{ label: "Welcome" }}
+    />
+  );
+}
+```
+
+For Next.js client components, import from `@strut/next`:
+
+```tsx
+import { Strut } from "@strut/next";
 ```
 
 ## Runtime Rules
@@ -36,3 +54,4 @@ The React runtime is still planned. Its API should wrap the same runtime concept
 - Missing inputs should fail clearly.
 - Events should be typed.
 - Runtime files should not require the desktop editor.
+- Runtime rendering must use document nodes, shapes, styles, and timelines rather than a hardcoded preview template.

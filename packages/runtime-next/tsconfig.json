@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "declaration": true,
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@strut/react": ["../runtime-react/src/index.tsx"],
+      "@strut/runtime-web": ["../runtime-web/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

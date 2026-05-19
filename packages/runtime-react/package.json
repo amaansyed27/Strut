@@ -1,0 +1,26 @@
+{
+  "name": "@strut/react",
+  "version": "0.1.0",
+  "description": "React runtime wrapper for Strut animation components.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@strut/runtime-web": "0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "typescript": "~5.8.3"
+  }
+}
