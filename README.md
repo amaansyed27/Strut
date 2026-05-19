@@ -108,20 +108,6 @@ npm run test
 npm run studio:dev
 ```
 
-The exact commands for each milestone live in [docs/MANUAL_REVIEW.md](./docs/MANUAL_REVIEW.md).
-
-## GitHub Topics
-
-When the GitHub repository is created, add these topics so people can discover the project:
-
-```txt
-animation, motion-design, vector-graphics, rive-alternative, lottie, tauri,
-rust, wgpu, webgpu, ai-design, generative-design, local-first, byok, mcp,
-ollama, openai, anthropic, gemini, openrouter, react, desktop-app
-```
-
-See [docs/GITHUB_TOPICS.md](./docs/GITHUB_TOPICS.md) for the full topic list and setup notes.
-
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
