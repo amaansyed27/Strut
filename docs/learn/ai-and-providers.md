@@ -80,10 +80,14 @@ npm run studio:dev
 
 ## Current Provider Flow
 
-In the desktop app, the provider panel has two modes.
+In the desktop app, open **Providers** from the sidebar. The provider panel has three modes.
+
+**Built-in** uses Strut's local planner and deterministic generator. It is useful for trying the workflow without keys or installed tools.
 
 **Local CLI** checks installed tools on your `PATH` and runs a real `--version` command for adapters such as Codex, Claude Code, Gemini CLI, Copilot CLI, Kiro, Antigravity, and Ollama.
 
 **BYOK APIs** accepts a provider, API key, base URL, and model. Strut saves the provider endpoint/model locally and keeps the API key in the current app session. Test Connection makes a real provider request from the Tauri backend.
 
 Character generation is routed through the selected BYOK provider when credentials are configured. Ollama generation uses the local Ollama HTTP API. The built-in generator is only a fallback when no provider is selected or when the browser preview is being used.
+
+The sidebar footer always shows the selected provider mode and the latest provider status, so you can see whether Strut is using the built-in planner, a local CLI, or a BYOK provider before you generate.

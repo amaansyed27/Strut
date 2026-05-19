@@ -6,7 +6,7 @@ This is useful when you want a product mascot, helper bot, empty-state character
 
 ## Try It
 
-Open Strut Studio and use the prompt box in Plan Mode.
+Open Strut Studio and use the prompt box on the home screen.
 
 Example prompts:
 
@@ -17,7 +17,7 @@ make a scanner robot with a face scan animation
 make a celebration robot with success and confetti animation
 ```
 
-Click **Generate Character**. Strut creates a `.strut` document with:
+Press the generate button in the prompt box. Strut creates a `.strut` document with:
 
 - an artboard
 - named layers
@@ -30,7 +30,7 @@ The current pre-alpha generator creates a small set of deterministic character f
 
 ## Review The Result
 
-After generation, check the left layer list and the state controls.
+After generation, switch to **Chat + preview** to review the character in motion. Switch to **Editor** to inspect files, layers, parts, and state controls.
 
 For a bot, you should see layers such as:
 
@@ -69,7 +69,13 @@ sleep
 
 ## Sketch First
 
-If you want to compare directions before building, click **Generate Character** and review the Plan Mode sketches. Choose a direction such as Floating Helper, Scanner Bot, Celebration Bot, or Owl Guide, then click **Build Character**.
+If you want to compare directions before building, ask Strut to plan first:
+
+```txt
+plan three directions for a friendly support mascot before building
+```
+
+Review the rough 2D directions, choose one such as Floating Helper, Scanner Bot, Celebration Bot, or Owl Guide, then ask Strut to build the full editable character.
 
 This keeps generation controllable. You decide the concept before Strut builds the full scene graph and motion controls.
 
