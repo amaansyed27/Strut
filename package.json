@@ -35,6 +35,8 @@
     "check": "npm run check:ts && cargo check --workspace",
     "check:ts": "npm --workspace @strut/studio run check",
     "test": "cargo test --workspace",
+    "test:ui": "python tests/ui/studio_bot_smoke.py",
+    "test:all": "npm run check && npm run test && npm run test:ui",
     "studio:dev": "npm --workspace @strut/studio run tauri -- dev",
     "studio:build": "npm --workspace @strut/studio run tauri -- build"
   }

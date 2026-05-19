@@ -42,3 +42,4 @@ pnpm-debug.log*
 # Local smoke-test artifacts
 .strut-smoke.png
 .strut-dev-server.*.log
+test-results/
