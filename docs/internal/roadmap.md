@@ -1,4 +1,6 @@
-# Roadmap
+# Roadmap Notes
+
+This is a maintainer-facing roadmap note. Public user docs start at [../README.md](../README.md).
 
 The roadmap is organized around reviewable vertical slices. Each phase should leave the project easier to run, inspect, and contribute to.
 

@@ -1,4 +1,6 @@
-# Architecture
+# Architecture Notes
+
+This is a maintainer-facing architecture note. Public user docs start at [../README.md](../README.md).
 
 Strut is built as a desktop-first product with a Rust core and a web-based editor UI. The architecture separates the editor, file format, renderer, runtime, AI orchestration, and verifier so each piece can evolve without turning the project into a single closed application.
 

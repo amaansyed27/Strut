@@ -1,5 +1,7 @@
 # MVP Scope
 
+This is a maintainer-facing scope note. It is not part of the public user docs.
+
 The MVP is one complete vertical slice: prompt or SVG to editable interactive animation to runtime export.
 
 ## User Story

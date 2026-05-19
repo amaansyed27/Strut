@@ -1,4 +1,6 @@
-# Agent Engine
+# Agent Engine Notes
+
+This is a maintainer-facing architecture note. The public AI guide lives at [../learn/ai-and-providers.md](../learn/ai-and-providers.md).
 
 The Strut Agent Engine turns prompts, SVGs, images, sketches, and code context into validated Strut document edits.
 

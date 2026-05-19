@@ -1,5 +1,7 @@
 # Manual Review Guide
 
+This is a maintainer-facing checkpoint guide. It is not part of the public user docs.
+
 Strut is built in reviewable milestones. Each milestone has commands to run and files to inspect before approving the next slice of work.
 
 ## Checkpoint 1: Docs And Repository Identity
@@ -15,11 +17,10 @@ Inspect:
 
 ```txt
 README.md
-docs/ARCHITECTURE.md
-docs/MVP_SCOPE.md
-docs/STRUT_FORMAT.md
-docs/AGENT_ENGINE.md
-docs/GITHUB_TOPICS.md
+docs/internal/architecture.md
+docs/internal/mvp-scope.md
+docs/internal/strut-format-notes.md
+docs/internal/agent-engine.md
 assets/brand/strut-logo.svg
 ```
 
@@ -74,7 +75,7 @@ Inspect:
 crates/strut-format/
 crates/strut-core/
 samples/
-docs/STRUT_FORMAT.md
+docs/internal/strut-format-notes.md
 ```
 
 Check:

@@ -36,4 +36,4 @@ Each pull request should include:
 
 ## Documentation
 
-Docs are product surface in Strut. If a change affects user workflows, file format, runtime APIs, provider behavior, local agent execution, permissions, or verification, update the relevant document in `docs/`.
+Docs are product surface in Strut. If a change affects user workflows, file format, runtime APIs, provider behavior, local agent execution, permissions, or verification, update the relevant public document in `docs/learn`, `docs/guides`, or `docs/reference`. Maintainer-only process notes belong in `docs/internal`.

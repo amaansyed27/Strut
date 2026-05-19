@@ -1,4 +1,6 @@
-# Strut Format
+# Strut Format Notes
+
+This is a maintainer-facing technical note. The public file reference lives at [../reference/strut-files.md](../reference/strut-files.md).
 
 `.strut` is the open project/runtime container for Strut animation components.
 

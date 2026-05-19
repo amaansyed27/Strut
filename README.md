@@ -33,23 +33,17 @@ Strut Verifier     render, state-machine, export, and performance checks
 Strut MCP          controlled project access for external agents
 ```
 
-## MVP
+## Documentation
 
-The first real milestone is a narrow but complete vertical slice:
+Start with the public docs:
 
-```txt
-Prompt: Create an animated login button with idle, hover, pressed, loading, success, and error states.
+- [What Is Strut?](./docs/learn/what-is-strut.md)
+- [Quick Start](./docs/learn/quick-start.md)
+- [Create Your First Animation](./docs/learn/first-animation.md)
+- [Plan Mode](./docs/learn/plan-mode.md)
+- [AI And Providers](./docs/learn/ai-and-providers.md)
 
-Expected result:
-- Strut creates an artboard.
-- Strut creates editable vector layers.
-- Strut creates timelines and easing.
-- Strut creates a state machine with named inputs.
-- Studio previews the interaction.
-- The verifier checks reachability and render snapshots.
-- The exporter writes a .strut file.
-- The React runtime can control the component.
-```
+Contributor and milestone review notes live in [docs/internal](./docs/internal/README.md).
 
 ## Repository Layout
 
@@ -66,23 +60,9 @@ crates/
 packages/
   runtime-web/            browser runtime
   runtime-react/          React wrapper
-docs/                     architecture, format, roadmap, review guides
+docs/                     public docs, guides, reference, maintainer notes
 assets/                   brand and documentation assets
 ```
-
-## Manual Review Checkpoints
-
-The project intentionally ships in reviewable increments. At each checkpoint, run the commands in [docs/MANUAL_REVIEW.md](./docs/MANUAL_REVIEW.md) and inspect the listed files before moving to the next milestone.
-
-Current checkpoints:
-
-1. **Docs and repository identity**
-2. **Rust/Tauri scaffold**
-3. **Open `.strut` format**
-4. **Runtime preview**
-5. **AI provider and local agent adapters**
-6. **Mockup/SVG to Strut**
-7. **Plan Mode**
 
 ## Development
 
@@ -107,6 +87,8 @@ npm run check
 npm run test
 npm run studio:dev
 ```
+
+Maintainer review commands live in [docs/internal/manual-review.md](./docs/internal/manual-review.md).
 
 ## License
 
