@@ -86,7 +86,7 @@ Current checkpoints:
 
 ## Development
 
-The first runnable scaffold will use:
+The current scaffold uses:
 
 ```txt
 Rust 1.93+
@@ -99,7 +99,7 @@ wgpu
 SQLite
 ```
 
-Once the scaffold lands, the standard commands will be:
+Standard commands:
 
 ```powershell
 npm install

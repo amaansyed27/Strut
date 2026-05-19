@@ -1,0 +1,41 @@
+{
+  "name": "strut",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source, AI-native motion design studio for interactive product graphics.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "animation",
+    "motion-design",
+    "vector-graphics",
+    "rive-alternative",
+    "lottie",
+    "tauri",
+    "rust",
+    "wgpu",
+    "webgpu",
+    "ai-design",
+    "generative-design",
+    "local-first",
+    "byok",
+    "mcp",
+    "ollama",
+    "openai",
+    "anthropic",
+    "gemini",
+    "openrouter",
+    "react",
+    "desktop-app"
+  ],
+  "workspaces": [
+    "apps/studio",
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "npm run check:ts && cargo check --workspace",
+    "check:ts": "npm --workspace @strut/studio run check",
+    "test": "cargo test --workspace",
+    "studio:dev": "npm --workspace @strut/studio run tauri -- dev",
+    "studio:build": "npm --workspace @strut/studio run tauri -- build"
+  }
+}
