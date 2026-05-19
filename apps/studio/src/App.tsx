@@ -153,6 +153,22 @@ const botSketches = [
   },
 ];
 
+const studioModes = [
+  { id: "design", label: "Design", Icon: MousePointer2 },
+  { id: "states", label: "States", Icon: Route },
+  { id: "agent", label: "Agent", Icon: Bot },
+];
+
+const studioTools = [
+  { id: "select", label: "Select", Icon: MousePointer2 },
+  { id: "path", label: "Draw path", Icon: Pencil },
+  { id: "rect", label: "Rectangle", Icon: Square },
+  { id: "ellipse", label: "Ellipse", Icon: Circle },
+  { id: "ai", label: "AI create", Icon: WandSparkles },
+];
+
+const providers = ["Ollama", "OpenAI", "Anthropic", "Gemini", "OpenRouter"];
+
 const defaultCharacterPrompt = "make a minimalist waving robot like the reference image";
 
 const owlDocument: StrutDocument = {
@@ -325,6 +341,10 @@ function flattenNodes(nodes: StrutNode[]): StrutNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
 }
 
+function timelineState(name: string) {
+  return name === "idle_float" ? "float" : name;
+}
+
 function fallbackGenerateCharacter(prompt: string): StrutDocument {
   const normalized = prompt.toLowerCase();
   if (normalized.includes("owl") || normalized.includes("duo") || normalized.includes("duolingo")) {
@@ -352,6 +372,13 @@ function App() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [document, setDocument] = useState<StrutDocument>(fallbackDocument);
   const [activeState, setActiveState] = useState("wave");
+  const [activeMode, setActiveMode] = useState("design");
+  const [activeTool, setActiveTool] = useState("select");
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [zoomMode, setZoomMode] = useState("Fit");
+  const [gridVisible, setGridVisible] = useState(true);
+  const [selectedProvider, setSelectedProvider] = useState("Ollama");
+  const [activity, setActivity] = useState("Ready");
   const [showSketches, setShowSketches] = useState(false);
   const [selectedSketch, setSelectedSketch] = useState(botSketches[0]);
   const [characterPrompt, setCharacterPrompt] = useState(defaultCharacterPrompt);
@@ -392,6 +419,8 @@ function App() {
     }
 
     setDocument(generatedDocument);
+    setSelectedLayerId(generatedDocument.artboards[0]?.nodes[0]?.id ?? null);
+    setActivity(`Generated ${generatedDocument.name}`);
     const generatedStates = generatedDocument.state_machines[0]?.states ?? [];
     if (preferredState && generatedStates.includes(preferredState)) {
       setActiveState(preferredState);
@@ -414,28 +443,54 @@ function App() {
         </div>
 
         <nav className="mode-tabs" aria-label="Studio modes">
-          <button className="active" type="button">
-            <MousePointer2 size={16} />
-            Design
-          </button>
-          <button type="button">
-            <Route size={16} />
-            States
-          </button>
-          <button type="button">
-            <Bot size={16} />
-            Agent
-          </button>
+          {studioModes.map(({ id, label, Icon }) => (
+            <button
+              aria-pressed={activeMode === id}
+              className={activeMode === id ? "active" : ""}
+              key={id}
+              type="button"
+              onClick={() => {
+                setActiveMode(id);
+                setActivity(`${label} mode`);
+              }}
+            >
+              <Icon size={16} />
+              {label}
+            </button>
+          ))}
         </nav>
 
         <div className="topbar-actions">
-          <button className="icon-button" type="button" title="Import mockup">
+          <span className="activity-pill" data-testid="activity-pill">{activity}</span>
+          <button
+            className="icon-button"
+            type="button"
+            title="Import mockup"
+            onClick={() => {
+              setActiveMode("agent");
+              setShowSketches(true);
+              setActivity("Import mockup queued");
+            }}
+          >
             <Upload size={17} />
           </button>
-          <button className="icon-button" type="button" title="Save project">
+          <button
+            className="icon-button"
+            type="button"
+            title="Save project"
+            onClick={() => setActivity(`Saved ${document.name}.strut`)}
+          >
             <Save size={17} />
           </button>
-          <button className="primary-action" type="button">
+          <button
+            className="primary-action"
+            type="button"
+            onClick={() => {
+              setActiveMode("states");
+              setActiveState("wave");
+              setActivity(`Previewing ${document.name}`);
+            }}
+          >
             <Play size={17} />
             Preview
           </button>
@@ -444,21 +499,21 @@ function App() {
 
       <section className="workspace">
         <aside className="tool-rail" aria-label="Tools">
-          <button className="selected" type="button" title="Select">
-            <MousePointer2 size={20} />
-          </button>
-          <button type="button" title="Draw path">
-            <Pencil size={20} />
-          </button>
-          <button type="button" title="Rectangle">
-            <Square size={20} />
-          </button>
-          <button type="button" title="Ellipse">
-            <Circle size={20} />
-          </button>
-          <button type="button" title="AI create">
-            <WandSparkles size={20} />
-          </button>
+          {studioTools.map(({ id, label, Icon }) => (
+            <button
+              aria-pressed={activeTool === id}
+              className={activeTool === id ? "selected" : ""}
+              key={id}
+              type="button"
+              title={label}
+              onClick={() => {
+                setActiveTool(id);
+                setActivity(`${label} tool`);
+              }}
+            >
+              <Icon size={20} />
+            </button>
+          ))}
         </aside>
 
         <aside className="panel layers-panel">
@@ -471,7 +526,16 @@ function App() {
           </div>
           <div className="layer-list">
             {visibleLayers.map((layer) => (
-              <button className="layer-row" key={layer.id} type="button">
+              <button
+                aria-pressed={selectedLayerId === layer.id}
+                className={selectedLayerId === layer.id ? "layer-row selected" : "layer-row"}
+                key={layer.id}
+                type="button"
+                onClick={() => {
+                  setSelectedLayerId(layer.id);
+                  setActivity(`Selected ${layer.name}`);
+                }}
+              >
                 <i style={{ background: layerColors[layer.kind] ?? "#9ba3b4" }} />
                 <span>{layer.name}</span>
                 <em>{layer.kind}</em>
@@ -492,7 +556,10 @@ function App() {
                 data-state-button={state}
                 key={state}
                 type="button"
-                onClick={() => setActiveState(state)}
+                onClick={() => {
+                  setActiveState(state);
+                  setActivity(`${titleCase(state)} state`);
+                }}
               >
                 {titleCase(state)}
               </button>
@@ -503,17 +570,45 @@ function App() {
         <section className="stage-column">
           <div className="stage-toolbar">
             <span title={status?.sample_source ?? "browser fallback sample"}>
-              {document.name}.strut - {activeArtboard.name}
+              {document.name}.strut - {activeArtboard.name} - {zoomMode}
             </span>
             <div>
-              <button type="button">100%</button>
-              <button type="button">Fit</button>
-              <button type="button">Grid</button>
+              <button
+                className={zoomMode === "100%" ? "active" : ""}
+                type="button"
+                onClick={() => {
+                  setZoomMode("100%");
+                  setActivity("Zoom 100%");
+                }}
+              >
+                100%
+              </button>
+              <button
+                className={zoomMode === "Fit" ? "active" : ""}
+                type="button"
+                onClick={() => {
+                  setZoomMode("Fit");
+                  setActivity("Zoom fit");
+                }}
+              >
+                Fit
+              </button>
+              <button
+                aria-pressed={gridVisible}
+                className={gridVisible ? "active" : ""}
+                type="button"
+                onClick={() => {
+                  setGridVisible((isVisible) => !isVisible);
+                  setActivity(gridVisible ? "Grid hidden" : "Grid visible");
+                }}
+              >
+                Grid
+              </button>
             </div>
           </div>
 
           <div className="stage">
-            <div className="artboard bot-artboard">
+            <div className={`artboard bot-artboard ${gridVisible ? "grid-visible" : ""}`}>
               <CharacterPreview document={document} activeState={activeState} />
             </div>
           </div>
@@ -535,6 +630,19 @@ function App() {
                   <div
                     className={`timeline-clip ${isActive ? "active" : ""}`}
                     key={timeline.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setActiveState(timelineState(timeline.name));
+                      setActivity(`${titleCase(timeline.name)} timeline`);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setActiveState(timelineState(timeline.name));
+                        setActivity(`${titleCase(timeline.name)} timeline`);
+                      }
+                    }}
                     style={{
                       left: `${start}%`,
                       width: `${width}%`,
@@ -611,8 +719,17 @@ function App() {
           ) : null}
 
           <div className="provider-stack">
-            {["Ollama", "OpenAI", "Anthropic", "Gemini", "OpenRouter"].map((provider) => (
-              <button key={provider} type="button">
+            {providers.map((provider) => (
+              <button
+                aria-pressed={selectedProvider === provider}
+                className={selectedProvider === provider ? "active" : ""}
+                key={provider}
+                type="button"
+                onClick={() => {
+                  setSelectedProvider(provider);
+                  setActivity(`${provider} selected`);
+                }}
+              >
                 <Cpu size={15} />
                 {provider}
               </button>

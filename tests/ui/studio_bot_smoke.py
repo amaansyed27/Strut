@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -72,11 +73,34 @@ def run_smoke() -> None:
             expect(page.get_by_text("Minimal Bot.strut")).to_be_visible()
             expect(page.get_by_text("HelmetShell")).to_be_visible()
             expect(page.get_by_text("BotMoods")).to_be_visible()
+            activity = page.locator('[data-testid="activity-pill"]')
+            expect(activity).to_have_text("Ready")
 
             preview = page.locator('[data-testid="character-preview"]')
             expect(preview).to_be_visible()
             expect(preview).to_have_attribute("data-character", "bot")
             expect(preview).to_have_attribute("data-state", "wave")
+
+            page.get_by_role("button", name="States").click()
+            expect(page.get_by_role("button", name="States")).to_have_attribute("aria-pressed", "true")
+            expect(activity).to_have_text("States mode")
+
+            page.get_by_title("Draw path").click()
+            expect(page.get_by_title("Draw path")).to_have_attribute("aria-pressed", "true")
+            expect(activity).to_have_text("Draw path tool")
+
+            page.get_by_role("button", name=re.compile("HelmetShell")).click()
+            expect(activity).to_have_text("Selected HelmetShell")
+
+            page.get_by_role("button", name="Grid").click()
+            expect(activity).to_have_text("Grid hidden")
+
+            page.get_by_role("button", name="OpenAI").click()
+            expect(page.get_by_role("button", name="OpenAI")).to_have_attribute("aria-pressed", "true")
+            expect(activity).to_have_text("OpenAI selected")
+
+            page.get_by_title("Save project").click()
+            expect(activity).to_have_text("Saved Minimal Bot.strut")
 
             page.get_by_label("Character prompt").fill("make an owl like Duo from Duolingo")
             page.get_by_role("button", name="Generate Character").click()
