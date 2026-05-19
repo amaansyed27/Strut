@@ -169,6 +169,7 @@ button {
 
 .panel {
   min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--line);
   background: rgba(18, 23, 34, 0.92);
 }
@@ -200,6 +201,8 @@ button {
 
 .layer-list {
   padding: 10px;
+  max-height: 476px;
+  overflow: auto;
 }
 
 .layer-row {
@@ -318,6 +321,187 @@ button {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
 }
 
+.bot-artboard {
+  width: min(800px, 88%);
+  max-height: 72vh;
+  background: #51bfd0;
+}
+
+.bot-preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bot-sky {
+  fill: #51bfd0;
+}
+
+.bot-rig {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.bot-shadow {
+  fill: #17142f;
+  opacity: 0.92;
+  transform-origin: center;
+}
+
+.helmet-shell,
+.body path:first-child,
+.legs path,
+.left-arm path,
+.right-arm path,
+.left-arm circle,
+.right-arm circle,
+.ears path {
+  fill: #f6f1e8;
+  stroke: #17142f;
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+
+.helmet-rim {
+  fill: #ffffff;
+  stroke: #17142f;
+  stroke-width: 7;
+  stroke-linejoin: round;
+}
+
+.face-panel {
+  fill: #17142f;
+  stroke: #ffffff;
+  stroke-width: 6;
+}
+
+.eye,
+.smile {
+  fill: none;
+  stroke: #51bfd0;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.eyes,
+.eye,
+.smile,
+.right-arm,
+.left-arm,
+.antennae,
+.legs,
+.body {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.antennae path,
+.antennae circle {
+  fill: #51bfd0;
+  stroke: #17142f;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.chest-light {
+  fill: #51bfd0;
+  stroke: #17142f;
+  stroke-width: 5;
+}
+
+.body-seam {
+  fill: none;
+  stroke: #c5cad4;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.confetti {
+  opacity: 0;
+}
+
+.confetti circle,
+.confetti rect {
+  fill: #f6d365;
+  stroke: #17142f;
+  stroke-width: 3;
+}
+
+.scan-line {
+  fill: #2dffb8;
+  opacity: 0;
+}
+
+.bot-state-label {
+  fill: #17142f;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.state-idle .bot-rig {
+  animation: botFloat 2.4s ease-in-out infinite;
+}
+
+.state-float .bot-rig {
+  animation: botFloat 1.35s ease-in-out infinite;
+}
+
+.state-float .bot-shadow,
+.state-idle .bot-shadow {
+  animation: shadowPulse 1.35s ease-in-out infinite;
+}
+
+.state-wave .right-arm {
+  animation: botWave 0.9s ease-in-out infinite;
+  transform-origin: 18% 18%;
+}
+
+.state-wave .bot-rig {
+  animation: tinyBounce 1.1s ease-in-out infinite;
+}
+
+.state-blink .eye {
+  animation: botBlink 0.9s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.state-scan .scan-line {
+  animation: faceScan 1.2s linear infinite;
+  opacity: 0.75;
+}
+
+.state-scan .face-panel {
+  stroke: #2dffb8;
+}
+
+.state-celebrate .bot-rig {
+  animation: celebratePop 1s ease-in-out infinite;
+}
+
+.state-celebrate .confetti {
+  animation: confettiPop 1s ease-in-out infinite;
+}
+
+.state-sleep .eye {
+  stroke-dasharray: 24 12;
+  transform: scaleY(0.18);
+}
+
+.state-sleep .smile {
+  transform: translateY(10px) scaleX(0.72);
+}
+
+.state-sleep .bot-rig {
+  transform: translateY(18px) rotate(-3deg);
+}
+
+.state-sleep .bot-shadow {
+  transform: scaleX(1.12);
+  opacity: 0.72;
+}
+
 .motion-path {
   position: absolute;
   width: 72%;
@@ -420,6 +604,12 @@ button {
   font-weight: 700;
 }
 
+.timeline-clip.active {
+  color: #06110d;
+  background: var(--mint);
+  box-shadow: 0 0 0 1px rgba(45, 255, 184, 0.22);
+}
+
 .agent-card {
   padding: 14px;
   border: 1px solid var(--line);
@@ -483,5 +673,97 @@ button {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes botFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-18px) rotate(1deg);
+  }
+}
+
+@keyframes shadowPulse {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scaleX(0.72);
+    opacity: 0.6;
+  }
+}
+
+@keyframes botWave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-22deg);
+  }
+  65% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes tinyBounce {
+  0%,
+  100% {
+    transform: translateY(-4px);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes botBlink {
+  0%,
+  45%,
+  100% {
+    transform: scaleY(1);
+  }
+  55%,
+  62% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes faceScan {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(92px);
+  }
+}
+
+@keyframes celebratePop {
+  0%,
+  100% {
+    transform: scale(1) translateY(-8px);
+  }
+  30% {
+    transform: scale(1.08) translateY(-24px) rotate(-2deg);
+  }
+  62% {
+    transform: scale(1.02) translateY(-14px) rotate(2deg);
+  }
+}
+
+@keyframes confettiPop {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  35%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
