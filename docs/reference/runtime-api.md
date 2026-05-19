@@ -7,22 +7,18 @@ This API is not implemented yet. It is the intended developer experience for the
 ## JavaScript Runtime
 
 ```ts
-const animation = await Strut.load("/login-button.strut", {
-  canvas,
-  artboard: "LoginButton",
-  stateMachine: "Interaction",
-});
+import { loadStrutUrl, mountMinimalBot } from "@strut/runtime-web";
 
-animation.input("hover").set(true);
-animation.input("pressed").fire();
-animation.input("status").set("loading");
+const strutPackage = await loadStrutUrl("/samples/minimal-bot.strut");
+const player = mountMinimalBot(stageElement, strutPackage.document, "idle");
 
-animation.on("completed", (event) => {
-  console.log(event.name);
-});
+player.setState("wave");
+player.setState("celebrate");
 ```
 
 ## React Runtime
+
+The React runtime is still planned. Its API should wrap the same runtime concepts:
 
 ```tsx
 <Strut

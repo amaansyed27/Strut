@@ -1,0 +1,22 @@
+{
+  "name": "@strut/runtime-web",
+  "version": "0.1.0",
+  "description": "Browser runtime for Strut animation components.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3"
+  }
+}
