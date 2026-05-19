@@ -1,0 +1,12 @@
+<svg width="960" height="280" viewBox="0 0 960 280" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Strut logo</title>
+  <desc id="desc">A kinetic wordmark for Strut, an open-source AI-native motion design studio.</desc>
+  <rect width="960" height="280" rx="36" fill="#0B0E14"/>
+  <path d="M96 185C119 185 119 95 142 95C165 95 165 185 188 185C211 185 211 95 234 95C257 95 257 185 280 185" stroke="#F6F1E8" stroke-width="20" stroke-linecap="round"/>
+  <path d="M96 185C119 185 119 95 142 95C165 95 165 185 188 185C211 185 211 95 234 95C257 95 257 185 280 185" stroke="#2DFFB8" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="96" cy="185" r="14" fill="#FF6B35"/>
+  <circle cx="188" cy="185" r="14" fill="#8BE9FD"/>
+  <circle cx="280" cy="185" r="14" fill="#F6D365"/>
+  <text x="340" y="168" fill="#F6F1E8" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="96" font-weight="800" letter-spacing="0">Strut</text>
+  <text x="348" y="212" fill="#9BA3B4" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="25" font-weight="500" letter-spacing="0">open motion components, built with agents</text>
+</svg>

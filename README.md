@@ -1,0 +1,127 @@
+<p align="center">
+  <img src="./assets/brand/strut-logo.svg" alt="Strut logo" width="780">
+</p>
+
+# Strut
+
+Strut is an open-source, desktop-first motion design studio for interactive product graphics. It is built around an open `.strut` format, a fast Rust core, GPU-backed previews, and an AI-native workflow that can turn prompts, SVGs, images, or rough sketches into editable runtime-ready animation components.
+
+Strut is not trying to be a free copy of any single tool. The goal is a local-first motion IDE where designers and engineers can create, verify, export, and automate interactive animation systems without locking their work into a closed editor.
+
+> Status: pre-alpha. The repository is being scaffolded. APIs, file schemas, and runtime contracts will change while the MVP is built.
+
+## Why Strut
+
+- **Open format**: `.strut` files are documented, inspectable, versioned, and designed for long-term portability.
+- **Desktop only**: first-class Windows, macOS, and Linux apps instead of a web SaaS dependency.
+- **Rust-fast core**: parsing, validation, compilation, state machines, and render preparation live in Rust.
+- **Local GPU support**: viewport/rendering architecture is designed around `wgpu`, WebGPU, Metal, DirectX 12, and Vulkan paths with CPU fallback where needed.
+- **AI first, BYOK**: users can bring OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio, Azure OpenAI, or any OpenAI-compatible endpoint.
+- **Agent compatible**: Strut can orchestrate local coding agents such as Codex, Claude Code, Gemini CLI, Antigravity, Kiro, Copilot CLI, OpenCode, Cursor-style agents, and custom adapters.
+- **Mockup to model**: SVGs are parsed deterministically; raster mockups use vision plus classical geometry extraction to create editable Strut scenes.
+- **Plan Mode**: when there is no mockup, Strut sketches multiple 2D directions first, waits for review, then builds the full animation.
+- **Runtime ready**: exported components are designed to be controlled by app code through stable inputs, bindings, and events.
+
+## Product Shape
+
+```txt
+Strut Studio       desktop editor and AI workspace
+Strut Format       open .strut project/runtime format
+Strut Runtime      embeddable playback libraries
+Strut Agent Engine BYOK provider router and local agent orchestration
+Strut Verifier     render, state-machine, export, and performance checks
+Strut MCP          controlled project access for external agents
+```
+
+## MVP
+
+The first real milestone is a narrow but complete vertical slice:
+
+```txt
+Prompt: Create an animated login button with idle, hover, pressed, loading, success, and error states.
+
+Expected result:
+- Strut creates an artboard.
+- Strut creates editable vector layers.
+- Strut creates timelines and easing.
+- Strut creates a state machine with named inputs.
+- Studio previews the interaction.
+- The verifier checks reachability and render snapshots.
+- The exporter writes a .strut file.
+- The React runtime can control the component.
+```
+
+## Repository Layout
+
+```txt
+apps/
+  studio/                 Tauri desktop app
+crates/
+  strut-core/             scene graph, timelines, state machines
+  strut-format/           .strut read/write/validate
+  strut-renderer/         GPU renderer abstraction
+  strut-compiler/         editable project -> optimized runtime artifact
+  strut-agent/            provider router and agent orchestration
+  strut-verifier/         snapshot, export, and state checks
+packages/
+  runtime-web/            browser runtime
+  runtime-react/          React wrapper
+docs/                     architecture, format, roadmap, review guides
+assets/                   brand and documentation assets
+```
+
+## Manual Review Checkpoints
+
+The project intentionally ships in reviewable increments. At each checkpoint, run the commands in [docs/MANUAL_REVIEW.md](./docs/MANUAL_REVIEW.md) and inspect the listed files before moving to the next milestone.
+
+Current checkpoints:
+
+1. **Docs and repository identity**
+2. **Rust/Tauri scaffold**
+3. **Open `.strut` format**
+4. **Runtime preview**
+5. **AI provider and local agent adapters**
+6. **Mockup/SVG to Strut**
+7. **Plan Mode**
+
+## Development
+
+The first runnable scaffold will use:
+
+```txt
+Rust 1.93+
+Node.js 25+
+npm 11+
+Tauri v2
+TypeScript
+React
+wgpu
+SQLite
+```
+
+Once the scaffold lands, the standard commands will be:
+
+```powershell
+npm install
+npm run check
+npm run test
+npm run studio:dev
+```
+
+The exact commands for each milestone live in [docs/MANUAL_REVIEW.md](./docs/MANUAL_REVIEW.md).
+
+## GitHub Topics
+
+When the GitHub repository is created, add these topics so people can discover the project:
+
+```txt
+animation, motion-design, vector-graphics, rive-alternative, lottie, tauri,
+rust, wgpu, webgpu, ai-design, generative-design, local-first, byok, mcp,
+ollama, openai, anthropic, gemini, openrouter, react, desktop-app
+```
+
+See [docs/GITHUB_TOPICS.md](./docs/GITHUB_TOPICS.md) for the full topic list and setup notes.
+
+## License
+
+Apache-2.0. See [LICENSE](./LICENSE).
