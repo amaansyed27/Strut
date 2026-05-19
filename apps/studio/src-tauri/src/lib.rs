@@ -3,7 +3,7 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CHARACTER_SYSTEM_PROMPT: &str = "You convert design prompts into Strut character specs. Return only JSON with keys variant, name, accent, shell. variant must be one of floating-helper, scanner-bot, celebration-bot, owl-guide. accent and shell must be hex colors.";
 
@@ -56,6 +56,22 @@ struct SavedByokProviderConfig {
     model: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectInfo {
+    name: String,
+    path: String,
+    files: Vec<ProjectFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectFile {
+    name: String,
+    path: String,
+    kind: String,
+}
+
 #[tauri::command]
 fn studio_status() -> strut_format::StudioStatus {
     let sample_path =
@@ -82,6 +98,45 @@ fn sample_document() -> strut_core::Document {
     strut_format::read_strut_file(&sample_path)
         .map(|package| package.document)
         .unwrap_or_else(|_| strut_core::Document::sample_minimal_bot())
+}
+
+#[tauri::command]
+fn default_project_location() -> String {
+    default_projects_dir().display().to_string()
+}
+
+#[tauri::command]
+fn create_project(name: String, location: String) -> Result<ProjectInfo, String> {
+    let project_name = sanitize_project_name(&name)?;
+    let root = if location.trim().is_empty() {
+        default_projects_dir()
+    } else {
+        PathBuf::from(location.trim())
+    };
+    let project_path = root.join(&project_name);
+
+    fs::create_dir_all(project_path.join("scenes")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(project_path.join("assets")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(project_path.join("exports")).map_err(|error| error.to_string())?;
+
+    let document = strut_core::Document::sample_minimal_bot();
+    let document_json = serde_json::to_string_pretty(&document).map_err(|error| error.to_string())?;
+    fs::write(project_path.join("scenes").join("starter.strut.json"), document_json)
+        .map_err(|error| error.to_string())?;
+
+    let metadata = json!({
+        "name": project_name,
+        "createdAt": unix_timestamp(),
+        "format": "0.1.0",
+        "mainScene": "scenes/starter.strut.json"
+    });
+    fs::write(
+        project_path.join("strut.project.json"),
+        serde_json::to_string_pretty(&metadata).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(project_info(project_name, project_path))
 }
 
 #[tauri::command]
@@ -316,6 +371,76 @@ fn local_adapter_definitions() -> Vec<(
         ("kiro", "Kiro", "local-agent", Some("kiro")),
         ("lm-studio", "LM Studio", "local-model", None),
     ]
+}
+
+fn default_projects_dir() -> PathBuf {
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        return PathBuf::from(home).join("Documents").join("Strut Projects");
+    }
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("Strut Projects")
+}
+
+fn sanitize_project_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("project name is required".to_string());
+    }
+
+    let sanitized: String = trimmed
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, ' ' | '-' | '_'))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if sanitized.is_empty() {
+        Err("project name needs letters or numbers".to_string())
+    } else {
+        Ok(sanitized)
+    }
+}
+
+fn project_info(name: String, path: PathBuf) -> ProjectInfo {
+    ProjectInfo {
+        name,
+        path: path.display().to_string(),
+        files: vec![
+            ProjectFile {
+                name: "strut.project.json".to_string(),
+                path: path.join("strut.project.json").display().to_string(),
+                kind: "project".to_string(),
+            },
+            ProjectFile {
+                name: "starter.strut.json".to_string(),
+                path: path
+                    .join("scenes")
+                    .join("starter.strut.json")
+                    .display()
+                    .to_string(),
+                kind: "scene".to_string(),
+            },
+            ProjectFile {
+                name: "assets".to_string(),
+                path: path.join("assets").display().to_string(),
+                kind: "folder".to_string(),
+            },
+            ProjectFile {
+                name: "exports".to_string(),
+                path: path.join("exports").display().to_string(),
+                kind: "folder".to_string(),
+            },
+        ],
+    }
+}
+
+fn unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
 }
 
 fn command_available(command: &str) -> bool {
@@ -618,6 +743,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             studio_status,
             sample_document,
+            default_project_location,
+            create_project,
             generate_character,
             local_agent_adapters,
             test_local_adapter,
@@ -662,5 +789,13 @@ mod tests {
     fn provider_config_path_is_local() {
         let path = provider_config_path().expect("config path");
         assert!(path.ends_with("byok.json"));
+    }
+
+    #[test]
+    fn project_name_is_sanitized() {
+        assert_eq!(
+            sanitize_project_name("  My Bot / Demo!! ").expect("project name"),
+            "My Bot Demo"
+        );
     }
 }
