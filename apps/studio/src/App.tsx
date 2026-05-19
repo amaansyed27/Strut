@@ -121,6 +121,27 @@ const layerColors: Record<string, string> = {
   hit_area: "#c7a7ff",
 };
 
+const botSketches = [
+  {
+    id: "floating-helper",
+    name: "Floating Helper",
+    detail: "Soft hover loop, small wave, friendly face.",
+    state: "wave",
+  },
+  {
+    id: "scanner-bot",
+    name: "Scanner Bot",
+    detail: "Face scan line, alert posture, data-ready motion.",
+    state: "scan",
+  },
+  {
+    id: "celebration-bot",
+    name: "Celebration Bot",
+    detail: "Pop motion, bright face, success feedback.",
+    state: "celebrate",
+  },
+];
+
 function titleCase(value: string) {
   return value
     .split("_")
@@ -202,6 +223,8 @@ function App() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [document, setDocument] = useState<StrutDocument>(fallbackDocument);
   const [activeState, setActiveState] = useState("wave");
+  const [showSketches, setShowSketches] = useState(false);
+  const [selectedSketch, setSelectedSketch] = useState(botSketches[0]);
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status").then(setStatus).catch(() => {
@@ -391,10 +414,38 @@ function App() {
               Plan Mode
             </div>
             <p>Sketch directions before full generation when no mockup is attached.</p>
-            <button className="wide-action" type="button">
+            <button
+              className="wide-action"
+              type="button"
+              onClick={() => setShowSketches(true)}
+            >
               Generate Sketches
             </button>
           </div>
+
+          {showSketches ? (
+            <div className="sketch-stack" data-testid="plan-sketches">
+              {botSketches.map((sketch) => (
+                <button
+                  className={selectedSketch.id === sketch.id ? "sketch-card selected" : "sketch-card"}
+                  key={sketch.id}
+                  type="button"
+                  onClick={() => setSelectedSketch(sketch)}
+                >
+                  <span className={`sketch-thumb ${sketch.id}`} />
+                  <strong>{sketch.name}</strong>
+                  <em>{sketch.detail}</em>
+                </button>
+              ))}
+              <button
+                className="wide-action build-action"
+                type="button"
+                onClick={() => setActiveState(selectedSketch.state)}
+              >
+                Build Minimal Bot
+              </button>
+            </div>
+          ) : null}
 
           <div className="provider-stack">
             {["Ollama", "OpenAI", "Anthropic", "Gemini", "OpenRouter"].map((provider) => (

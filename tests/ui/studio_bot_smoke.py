@@ -77,8 +77,15 @@ def run_smoke() -> None:
             expect(preview).to_be_visible()
             expect(preview).to_have_attribute("data-state", "wave")
 
+            page.get_by_role("button", name="Generate Sketches").click()
+            expect(page.locator('[data-testid="plan-sketches"]')).to_be_visible()
+            expect(page.get_by_text("Floating Helper")).to_be_visible()
+            page.get_by_text("Scanner Bot").click()
+            page.get_by_role("button", name="Build Minimal Bot").click()
+            expect(preview).to_have_attribute("data-state", "scan")
+
             for state in ["Idle", "Float", "Wave", "Blink", "Scan", "Celebrate", "Sleep"]:
-                page.get_by_role("button", name=state).click()
+                page.locator(f'[data-state-button="{state.lower()}"]').click()
                 expect(preview).to_have_attribute("data-state", state.lower())
 
             page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
