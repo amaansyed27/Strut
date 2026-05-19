@@ -1,7 +1,7 @@
 import {
   type BotState,
   loadStrutUrl,
-  mountMinimalBot,
+  mountStrut,
 } from "../../../packages/runtime-web/src/index";
 import "./styles.css";
 
@@ -14,7 +14,7 @@ if (!stage || !controls || !status) {
 }
 
 const strutPackage = await loadStrutUrl("/samples/minimal-bot.strut");
-const player = mountMinimalBot(stage, strutPackage.document, "idle");
+const player = mountStrut(stage, strutPackage.document, { initialState: "idle" });
 const states = strutPackage.document.state_machines[0]?.states ?? [];
 
 status.textContent = `${strutPackage.document.name} loaded - ${states.length} states`;

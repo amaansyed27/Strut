@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronRight,
@@ -37,6 +37,27 @@ type StrutNode = {
   id: string;
   name: string;
   kind: string;
+  transform?: {
+    translate_x?: number;
+    translate_y?: number;
+    rotate?: number;
+    scale_x?: number;
+    scale_y?: number;
+  };
+  style?: {
+    fill?: string | null;
+    stroke?: string | null;
+    stroke_width?: number;
+    opacity?: number;
+    linecap?: string | null;
+    linejoin?: string | null;
+  };
+  shape?:
+    | { type: "none" }
+    | { type: "rect"; x: number; y: number; width: number; height: number; rx: number }
+    | { type: "ellipse"; cx: number; cy: number; rx: number; ry: number }
+    | { type: "path"; d: string }
+    | { type: "text"; x: number; y: number; value: string; size: number };
   children?: StrutNode[];
 };
 
@@ -52,12 +73,23 @@ type Timeline = {
   id: string;
   name: string;
   duration_ms: number;
+  tracks?: Array<{
+    target: string;
+    property: string;
+    keyframes: Array<{
+      time_ms: number;
+      value: { type: "number"; value: number } | { type: string; value: unknown };
+      easing: "linear" | "ease_in" | "ease_out" | "ease_in_out";
+    }>;
+  }>;
 };
 
 type StateMachine = {
   id: string;
   name: string;
+  inputs?: Array<{ name: string; kind: string }>;
   states: string[];
+  transitions?: Array<{ from: string; to: string; on: string; timeline: string }>;
 };
 
 type StrutDocument = {
@@ -403,42 +435,133 @@ function projectFiles(project: ProjectRecord): ProjectFile[] {
 }
 
 function CharacterPreview({ document, activeState }: { document: StrutDocument; activeState: string }) {
-  const isOwl = document.name.toLowerCase().includes("owl");
+  const artboard = document.artboards[0] ?? emptyArtboard;
+  const width = artboard.width || 960;
+  const height = artboard.height || 540;
 
   return (
     <svg
       className="character-preview"
-      data-character={isOwl ? "owl" : "bot"}
+      data-character={artboard.name}
       data-state={activeState}
       data-testid="character-preview"
-      viewBox="0 0 640 420"
+      viewBox={`0 0 ${width} ${height}`}
       role="img"
     >
-      <rect className="preview-bg" width="640" height="420" rx="18" />
-      <ellipse className="preview-shadow" cx="320" cy="340" rx={isOwl ? 88 : 78} ry="12" />
-      {isOwl ? (
-        <g className={`owl-figure state-${activeState}`}>
-          <path className="owl-wing left" d="M238 202 C190 226 188 284 230 302 C252 276 258 236 238 202Z" />
-          <path className="owl-wing right" d="M402 202 C450 226 452 284 410 302 C388 276 382 236 402 202Z" />
-          <path className="owl-body" d="M228 156 C236 88 292 70 320 96 C348 70 404 88 412 156 C426 258 382 326 320 330 C258 326 214 258 228 156Z" />
-          <path className="owl-face" d="M262 166 C272 128 304 126 320 150 C336 126 368 128 378 166 C388 208 350 236 320 220 C290 236 252 208 262 166Z" />
-          <path className="owl-eye" d="M288 172 C294 158 306 158 312 172 M328 172 C334 158 346 158 352 172" />
-          <path className="owl-beak" d="M312 194 L328 194 L320 208Z" />
-        </g>
-      ) : (
-        <g className={`bot-figure state-${activeState}`}>
-          <path className="bot-body" d="M242 214 C256 174 292 158 336 160 C380 162 410 184 416 226 C424 282 384 318 322 316 C260 314 226 268 242 214Z" />
-          <path className="bot-head" d="M224 118 C240 62 292 44 354 56 C406 66 430 104 418 160 C404 218 352 240 288 226 C240 216 210 174 224 118Z" />
-          <rect className="bot-face" x="266" y="104" width="124" height="82" rx="26" />
-          <path className="bot-eye" d="M292 140 C298 126 312 126 318 140 M344 140 C350 126 364 126 370 140" />
-          <path className="bot-smile" d="M308 164 C320 178 344 178 356 164" />
-          <path className="bot-arm left" d="M240 232 C198 248 190 286 218 302" />
-          <path className="bot-arm right" d="M416 220 C462 222 470 184 448 164" />
-        </g>
-      )}
-      <text className="state-label" x="320" y="386" textAnchor="middle">{titleCase(activeState)}</text>
+      <style>{documentAnimationCss(document, activeState)}</style>
+      <rect className="preview-bg" width={width} height={height} rx="18" />
+      <g className={`document-scene state-${activeState}`}>
+        {artboard.nodes.map((node) => <StrutNodePreview key={node.id} node={node} />)}
+      </g>
+      <text className="state-label" x={width / 2} y={height - 24} textAnchor="middle">{titleCase(activeState)}</text>
     </svg>
   );
+}
+
+function StrutNodePreview({ node }: { node: StrutNode }) {
+  const common = {
+    "data-node-id": node.id,
+    "data-node-name": node.name,
+    className: `strut-node node-${cssIdent(node.name)} kind-${cssIdent(node.kind)}`,
+    transform: transformAttribute(node.transform),
+    style: nodeStyle(node.style),
+  };
+  const children = node.children?.map((child) => <StrutNodePreview key={child.id} node={child} />);
+  const shape = node.shape ?? { type: "none" };
+  if (node.kind === "group" || shape.type === "none") {
+    return <g {...common}>{children}</g>;
+  }
+  if (shape.type === "rect") {
+    return <rect {...common} x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx}>{children}</rect>;
+  }
+  if (shape.type === "ellipse") {
+    return <ellipse {...common} cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}>{children}</ellipse>;
+  }
+  if (shape.type === "path") {
+    return <path {...common} d={shape.d}>{children}</path>;
+  }
+  if (shape.type === "text") {
+    return <text {...common} x={shape.x} y={shape.y} fontSize={shape.size}>{shape.value}{children}</text>;
+  }
+  return <g {...common}>{children}</g>;
+}
+
+function nodeStyle(style: StrutNode["style"]): CSSProperties {
+  return {
+    fill: style?.fill ?? undefined,
+    stroke: style?.stroke ?? undefined,
+    strokeWidth: style?.stroke_width,
+    opacity: style?.opacity,
+    strokeLinecap: style?.linecap as CSSProperties["strokeLinecap"],
+    strokeLinejoin: style?.linejoin as CSSProperties["strokeLinejoin"],
+  };
+}
+
+function transformAttribute(transform: StrutNode["transform"]) {
+  if (!transform) {
+    return undefined;
+  }
+  const parts = [];
+  if (transform.translate_x || transform.translate_y) parts.push(`translate(${transform.translate_x ?? 0} ${transform.translate_y ?? 0})`);
+  if (transform.rotate) parts.push(`rotate(${transform.rotate})`);
+  if (transform.scale_x !== undefined || transform.scale_y !== undefined) parts.push(`scale(${transform.scale_x ?? 1} ${transform.scale_y ?? 1})`);
+  return parts.length ? parts.join(" ") : undefined;
+}
+
+function documentAnimationCss(document: StrutDocument, activeState: string) {
+  const timelines = timelinesForState(document, activeState);
+  return timelines
+    .flatMap((timeline) => timeline.tracks?.map((track) => trackAnimationCss(timeline, track)) ?? [])
+    .filter(Boolean)
+    .join("\n");
+}
+
+function timelinesForState(document: StrutDocument, activeState: string) {
+  const machine = document.state_machines[0];
+  const timelineNames = new Set([activeState]);
+  machine?.transitions?.filter((transition) => transition.to === activeState).forEach((transition) => timelineNames.add(transition.timeline));
+  if (activeState === "float") timelineNames.add("idle_float");
+  return document.timelines.filter((timeline) => timelineNames.has(timeline.name));
+}
+
+function trackAnimationCss(timeline: Timeline, track: NonNullable<Timeline["tracks"]>[number]) {
+  const frames = track.keyframes
+    .filter((keyframe) => keyframe.value.type === "number")
+    .map((keyframe) => {
+      const percent = Math.max(0, Math.min(100, (keyframe.time_ms / timeline.duration_ms) * 100));
+      const value = Number(keyframe.value.value);
+      return `${percent}% { ${trackPropertyCss(track.property, value)} }`;
+    })
+    .join("\n");
+  if (!frames) {
+    return "";
+  }
+  const name = `studio-${cssIdent(timeline.name)}-${cssIdent(track.target)}-${cssIdent(track.property)}`;
+  return `
+@keyframes ${name} { ${frames} }
+.document-scene.state-${cssIdent(timeline.name)} [data-node-id="${track.target}"],
+.document-scene.state-${cssIdent(activeStateFromTimeline(timeline.name))} [data-node-id="${track.target}"] {
+  animation: ${name} ${timeline.duration_ms}ms ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}`;
+}
+
+function activeStateFromTimeline(timelineName: string) {
+  return timelineName === "idle_float" ? "float" : timelineName;
+}
+
+function trackPropertyCss(property: string, value: number) {
+  if (property === "translation.y") return `transform: translateY(${value}px);`;
+  if (property === "translation.x") return `transform: translateX(${value}px);`;
+  if (property === "rotation") return `transform: rotate(${value}deg);`;
+  if (property === "scale") return `transform: scale(${value});`;
+  if (property === "scale.y") return `transform: scaleY(${value});`;
+  return `opacity: ${value};`;
+}
+
+function cssIdent(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function App() {

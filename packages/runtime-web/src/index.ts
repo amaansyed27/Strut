@@ -1,17 +1,48 @@
 import JSZip from "jszip";
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 export type StrutManifest = {
   format: "strut";
   schemaVersion: string;
   document: string;
   createdBy: string;
   minimumRuntime: string;
+  features?: string[];
 };
+
+export type StrutTransform = {
+  translate_x?: number;
+  translate_y?: number;
+  rotate?: number;
+  scale_x?: number;
+  scale_y?: number;
+};
+
+export type StrutStyle = {
+  fill?: string | null;
+  stroke?: string | null;
+  stroke_width?: number;
+  opacity?: number;
+  linecap?: string | null;
+  linejoin?: string | null;
+};
+
+export type StrutShape =
+  | { type: "none" }
+  | { type: "rect"; x: number; y: number; width: number; height: number; rx: number }
+  | { type: "ellipse"; cx: number; cy: number; rx: number; ry: number }
+  | { type: "path"; d: string }
+  | { type: "text"; x: number; y: number; value: string; size: number };
 
 export type StrutNode = {
   id: string;
   name: string;
   kind: string;
+  transform?: StrutTransform;
+  style?: StrutStyle;
+  shape?: StrutShape;
+  children?: StrutNode[];
 };
 
 export type StrutArtboard = {
@@ -22,16 +53,62 @@ export type StrutArtboard = {
   nodes: StrutNode[];
 };
 
+export type StrutEasing = "linear" | "ease_in" | "ease_out" | "ease_in_out";
+
+export type StrutPropertyValue =
+  | { type: "number"; value: number }
+  | { type: "text"; value: string }
+  | { type: "color"; value: string }
+  | { type: "point"; value: { x: number; y: number } };
+
+export type StrutKeyframe = {
+  time_ms: number;
+  value: StrutPropertyValue;
+  easing: StrutEasing;
+};
+
+export type StrutTrack = {
+  target: string;
+  property: string;
+  keyframes: StrutKeyframe[];
+};
+
 export type StrutTimeline = {
   id: string;
   name: string;
   duration_ms: number;
+  tracks?: StrutTrack[];
+};
+
+export type StrutInput = {
+  name: string;
+  kind: "boolean" | "number" | "trigger" | "enum";
+};
+
+export type StrutTransition = {
+  from: string;
+  to: string;
+  on: string;
+  timeline: string;
 };
 
 export type StrutStateMachine = {
   id: string;
   name: string;
+  inputs?: StrutInput[];
   states: string[];
+  transitions?: StrutTransition[];
+};
+
+export type StrutBinding = {
+  name: string;
+  target?: string;
+  property?: string;
+};
+
+export type StrutEvent = {
+  name: string;
+  description?: string;
 };
 
 export type StrutDocument = {
@@ -40,8 +117,8 @@ export type StrutDocument = {
   artboards: StrutArtboard[];
   timelines: StrutTimeline[];
   state_machines: StrutStateMachine[];
-  bindings: Array<{ name: string }>;
-  events: Array<{ name: string }>;
+  bindings: StrutBinding[];
+  events: StrutEvent[];
 };
 
 export type StrutPackage = {
@@ -51,9 +128,21 @@ export type StrutPackage = {
 
 export type BotState = "idle" | "float" | "wave" | "blink" | "scan" | "celebrate" | "sleep";
 
+export type MountOptions = {
+  artboard?: string;
+  stateMachine?: string;
+  initialState?: string;
+  reducedMotion?: boolean;
+};
+
 export type MountedStrut = {
   document: StrutDocument;
+  svg: SVGSVGElement;
   setState(state: string): void;
+  setInput(name: string, value: boolean | number | string): void;
+  fireTrigger(name: string): void;
+  setBinding(name: string, value: string): void;
+  on(eventName: string, handler: (event: CustomEvent) => void): () => void;
   destroy(): void;
 };
 
@@ -87,60 +176,333 @@ export async function loadStrutPackage(input: ArrayBuffer | Blob): Promise<Strut
   return { manifest, document };
 }
 
-export function mountMinimalBot(
+export function mountStrut(
   target: HTMLElement,
   document: StrutDocument,
-  initialState: BotState = "idle",
+  options: MountOptions = {},
 ): MountedStrut {
-  injectMinimalBotStyles();
-  target.replaceChildren(createMinimalBotSvg(initialState));
+  validateDocument(document);
+  const artboard = selectArtboard(document, options.artboard);
+  const stateMachine = selectStateMachine(document, options.stateMachine);
+  const initialState = options.initialState ?? stateMachine.states[0] ?? "idle";
+  const svg = renderStrutSvg(document, {
+    artboard: artboard.name,
+    stateMachine: stateMachine.name,
+    state: initialState,
+    reducedMotion: options.reducedMotion,
+  });
 
-  return {
+  target.replaceChildren(svg);
+
+  const mounted: MountedStrut = {
     document,
+    svg,
     setState(state: string) {
-      const nextState = coerceBotState(document, state);
-      const svg = target.querySelector<SVGSVGElement>("[data-strut-bot]");
-      if (!svg) {
-        return;
-      }
-
-      for (const currentClass of Array.from(svg.classList)) {
-        if (currentClass.startsWith("state-")) {
-          svg.classList.remove(currentClass);
+      assertKnownState(stateMachine, state);
+      svg.dataset.state = state;
+      svg.classList.forEach((className) => {
+        if (className.startsWith("state-")) {
+          svg.classList.remove(className);
         }
+      });
+      svg.classList.add(`state-${cssIdent(state)}`);
+      updateStateLabel(svg, state);
+      emitStateEvents(svg, document, stateMachine, state);
+    },
+    setInput(name, value) {
+      const input = stateMachine.inputs?.find((candidate) => candidate.name === name);
+      if (!input) {
+        throw new Error(`unknown input: ${name}`);
       }
-      svg.classList.add(`state-${nextState}`);
-      svg.dataset.state = nextState;
-      const label = svg.querySelector("[data-state-label]");
-      if (label) {
-        label.textContent = titleCase(nextState);
+      svg.dataset[`input${pascalCase(name)}`] = String(value);
+    },
+    fireTrigger(name) {
+      const input = stateMachine.inputs?.find((candidate) => candidate.name === name);
+      if (!input || input.kind !== "trigger") {
+        throw new Error(`unknown trigger: ${name}`);
       }
+      svg.dispatchEvent(new CustomEvent("strut:trigger", { detail: { name } }));
+    },
+    setBinding(name, value) {
+      const binding = document.bindings.find((candidate) => candidate.name === name);
+      if (!binding?.target || !binding.property) {
+        throw new Error(`unknown binding: ${name}`);
+      }
+      const element = svg.querySelector<SVGElement>(`[data-node-id="${cssEscape(binding.target)}"]`);
+      if (!element) {
+        throw new Error(`binding target missing: ${binding.target}`);
+      }
+      applyBinding(element, binding.property, value);
+    },
+    on(eventName, handler) {
+      const type = `strut:${eventName}`;
+      svg.addEventListener(type, handler as EventListener);
+      return () => svg.removeEventListener(type, handler as EventListener);
     },
     destroy() {
       target.replaceChildren();
     },
   };
+
+  mounted.setState(initialState);
+  return mounted;
+}
+
+export function mountMinimalBot(
+  target: HTMLElement,
+  document: StrutDocument,
+  initialState: BotState = "idle",
+): MountedStrut {
+  return mountStrut(target, document, { initialState });
+}
+
+export function renderStrutSvg(
+  document: StrutDocument,
+  options: MountOptions & { state?: string } = {},
+): SVGSVGElement {
+  const artboard = selectArtboard(document, options.artboard);
+  const stateMachine = selectStateMachine(document, options.stateMachine);
+  const state = options.state ?? options.initialState ?? stateMachine.states[0] ?? "idle";
+  const svg = createSvg("svg");
+  svg.classList.add("strut-runtime-svg", `state-${cssIdent(state)}`);
+  svg.dataset.strut = "runtime";
+  svg.dataset.strutBot = "";
+  svg.dataset.state = state;
+  svg.dataset.artboard = artboard.name;
+  svg.dataset.stateMachine = stateMachine.name;
+  svg.setAttribute("viewBox", `0 0 ${artboard.width} ${artboard.height}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", document.name);
+
+  const style = createSvg("style");
+  style.textContent = runtimeCss(document, stateMachine, options.reducedMotion ?? false);
+  svg.append(style);
+
+  for (const node of artboard.nodes) {
+    svg.append(renderNode(node));
+  }
+
+  const label = createSvg("text");
+  label.dataset.stateLabel = "";
+  label.classList.add("strut-state-label");
+  label.setAttribute("x", String(artboard.width / 2));
+  label.setAttribute("y", String(artboard.height - 34));
+  label.setAttribute("text-anchor", "middle");
+  label.textContent = titleCase(state);
+  svg.append(label);
+
+  return svg;
 }
 
 export function createMinimalBotSvg(initialState: BotState = "idle"): SVGSVGElement {
-  const template = document.createElement("template");
-  template.innerHTML = minimalBotSvg(initialState).trim();
-  const svg = template.content.firstElementChild;
-  if (!(svg instanceof SVGSVGElement)) {
-    throw new Error("failed to create minimal bot SVG");
+  const document = minimalBotDocument();
+  return renderStrutSvg(document, { initialState });
+}
+
+function renderNode(node: StrutNode): SVGElement {
+  const shape = node.shape ?? { type: "none" };
+  const element = shapeElement(node, shape);
+  element.dataset.nodeId = node.id;
+  element.dataset.nodeName = node.name;
+  element.classList.add("strut-node", `strut-${cssIdent(node.kind)}`, `node-${cssIdent(node.name)}`);
+  applyTransform(element, node.transform);
+  applyStyle(element, node.style);
+  for (const child of node.children ?? []) {
+    element.append(renderNode(child));
   }
-  return svg;
+  return element;
+}
+
+function shapeElement(node: StrutNode, shape: StrutShape): SVGElement {
+  if (node.kind === "group" || shape.type === "none") {
+    return createSvg("g");
+  }
+  if (shape.type === "rect") {
+    const rect = createSvg("rect");
+    setAttributes(rect, {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      rx: shape.rx,
+    });
+    return rect;
+  }
+  if (shape.type === "ellipse") {
+    const ellipse = createSvg("ellipse");
+    setAttributes(ellipse, { cx: shape.cx, cy: shape.cy, rx: shape.rx, ry: shape.ry });
+    return ellipse;
+  }
+  if (shape.type === "path") {
+    const path = createSvg("path");
+    path.setAttribute("d", shape.d);
+    return path;
+  }
+  if (shape.type === "text") {
+    const text = createSvg("text");
+    setAttributes(text, { x: shape.x, y: shape.y });
+    text.setAttribute("font-size", String(shape.size));
+    text.textContent = shape.value;
+    return text;
+  }
+  return createSvg("g");
+}
+
+function applyStyle(element: SVGElement, style: StrutStyle | undefined) {
+  if (!style) {
+    return;
+  }
+  if (style.fill) element.setAttribute("fill", style.fill);
+  if (style.stroke) element.setAttribute("stroke", style.stroke);
+  if (style.stroke_width !== undefined) element.setAttribute("stroke-width", String(style.stroke_width));
+  if (style.opacity !== undefined) element.setAttribute("opacity", String(style.opacity));
+  if (style.linecap) element.setAttribute("stroke-linecap", style.linecap);
+  if (style.linejoin) element.setAttribute("stroke-linejoin", style.linejoin);
+}
+
+function applyTransform(element: SVGElement, transform: StrutTransform | undefined) {
+  if (!transform) {
+    return;
+  }
+  const transforms = [];
+  if (transform.translate_x || transform.translate_y) {
+    transforms.push(`translate(${transform.translate_x ?? 0} ${transform.translate_y ?? 0})`);
+  }
+  if (transform.rotate) {
+    transforms.push(`rotate(${transform.rotate})`);
+  }
+  if (transform.scale_x !== undefined || transform.scale_y !== undefined) {
+    transforms.push(`scale(${transform.scale_x ?? 1} ${transform.scale_y ?? 1})`);
+  }
+  if (transforms.length) {
+    element.setAttribute("transform", transforms.join(" "));
+  }
+}
+
+function runtimeCss(document: StrutDocument, stateMachine: StrutStateMachine, reducedMotion: boolean) {
+  const base = `
+.strut-runtime-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.strut-runtime-svg [data-node-id] { transform-box: fill-box; transform-origin: center; }
+.strut-runtime-svg .strut-state-label { fill: #17142f; font: 800 22px system-ui, sans-serif; }
+`;
+  if (reducedMotion) {
+    return base;
+  }
+  const timelines = document.timelines.filter((timeline) => timeline.tracks?.length);
+  const animations = timelines
+    .flatMap((timeline) => (timeline.tracks ?? []).map((track) => trackCss(timeline, track)))
+    .filter(Boolean)
+    .join("\n");
+  const stateRules = stateMachine.states
+    .flatMap((state) => timelinesForState(document, stateMachine, state).flatMap((timeline) => stateTimelineCss(state, timeline)))
+    .join("\n");
+  return `${base}\n${animations}\n${stateRules}`;
+}
+
+function trackCss(timeline: StrutTimeline, track: StrutTrack) {
+  const numericKeyframes = track.keyframes
+    .map((keyframe) => ({ ...keyframe, value: numericValue(keyframe.value) }))
+    .filter((keyframe) => keyframe.value !== null) as Array<StrutKeyframe & { value: number }>;
+  if (numericKeyframes.length < 2) {
+    return "";
+  }
+  const frames = numericKeyframes
+    .map((keyframe) => {
+      const percent = Math.max(0, Math.min(100, (keyframe.time_ms / timeline.duration_ms) * 100));
+      return `${percent}% { ${propertyCss(track.property, keyframe.value)} }`;
+    })
+    .join("\n");
+  return `@keyframes ${animationName(timeline, track)} { ${frames} }`;
+}
+
+function stateTimelineCss(state: string, timeline: StrutTimeline) {
+  return (timeline.tracks ?? [])
+    .filter((track) => track.keyframes.length > 1 && track.keyframes.some((keyframe) => numericValue(keyframe.value) !== null))
+    .map((track) => {
+      const easing = cssEasing(track.keyframes[0]?.easing ?? "linear");
+      return `.strut-runtime-svg.state-${cssIdent(state)} [data-node-id="${track.target}"] { animation: ${animationName(timeline, track)} ${timeline.duration_ms}ms ${easing} infinite; }`;
+    });
+}
+
+function propertyCss(property: string, value: number) {
+  if (property === "translation.y") return `transform: translateY(${value}px);`;
+  if (property === "translation.x") return `transform: translateX(${value}px);`;
+  if (property === "rotation") return `transform: rotate(${value}deg);`;
+  if (property === "scale") return `transform: scale(${value});`;
+  if (property === "scale.y") return `transform: scaleY(${value});`;
+  if (property === "scale.x") return `transform: scaleX(${value});`;
+  return `opacity: ${value};`;
+}
+
+function timelinesForState(document: StrutDocument, stateMachine: StrutStateMachine, state: string) {
+  const transitionTimelines = new Set(
+    (stateMachine.transitions ?? [])
+      .filter((transition) => transition.to === state)
+      .map((transition) => transition.timeline),
+  );
+  const timelineNames = new Set([state, ...transitionTimelines]);
+  if (state === "float") timelineNames.add("idle_float");
+  return document.timelines.filter((timeline) => timelineNames.has(timeline.name));
+}
+
+function emitStateEvents(svg: SVGSVGElement, document: StrutDocument, stateMachine: StrutStateMachine, state: string) {
+  const transition = (stateMachine.transitions ?? []).find((candidate) => candidate.to === state);
+  const event = document.events.find((candidate) => candidate.name === `${state}_started`) ?? document.events[0];
+  if (event && transition) {
+    svg.dispatchEvent(new CustomEvent(`strut:${event.name}`, { detail: { state, transition } }));
+  }
+}
+
+function updateStateLabel(svg: SVGSVGElement, state: string) {
+  const label = svg.querySelector("[data-state-label]");
+  if (label) {
+    label.textContent = titleCase(state);
+  }
+}
+
+function applyBinding(element: SVGElement, property: string, value: string) {
+  if (property === "text") {
+    element.textContent = value;
+  } else if (property === "fill" || property === "stroke" || property === "opacity") {
+    element.setAttribute(property, value);
+  } else {
+    throw new Error(`unsupported binding property: ${property}`);
+  }
+}
+
+function selectArtboard(document: StrutDocument, name: string | undefined) {
+  const artboard = name
+    ? document.artboards.find((candidate) => candidate.name === name || candidate.id === name)
+    : document.artboards[0];
+  if (!artboard) {
+    throw new Error(name ? `unknown artboard: ${name}` : "document must contain at least one artboard");
+  }
+  return artboard;
+}
+
+function selectStateMachine(document: StrutDocument, name: string | undefined) {
+  const stateMachine = name
+    ? document.state_machines.find((candidate) => candidate.name === name || candidate.id === name)
+    : document.state_machines[0];
+  if (!stateMachine) {
+    throw new Error(name ? `unknown state machine: ${name}` : "document must contain at least one state machine");
+  }
+  return stateMachine;
+}
+
+function assertKnownState(stateMachine: StrutStateMachine, state: string) {
+  if (!stateMachine.states.includes(state)) {
+    throw new Error(`unknown state: ${state}`);
+  }
 }
 
 function validateManifest(manifest: StrutManifest) {
   if (manifest.format !== "strut") {
     throw new Error("manifest format must be strut");
   }
-
-  if (!manifest.schemaVersion.startsWith("0.1")) {
+  if (!manifest.schemaVersion.startsWith("0.1") && !manifest.schemaVersion.startsWith("0.2")) {
     throw new Error(`unsupported schema version: ${manifest.schemaVersion}`);
   }
-
   if (manifest.document.includes("..") || manifest.document.startsWith("/")) {
     throw new Error("manifest document path is unsafe");
   }
@@ -150,29 +512,49 @@ function validateDocument(document: StrutDocument) {
   if (!document.artboards.length) {
     throw new Error("document must contain at least one artboard");
   }
-
   if (!document.state_machines.length) {
     throw new Error("document must contain at least one state machine");
   }
 }
 
-function coerceBotState(document: StrutDocument, state: string): BotState {
-  const states = document.state_machines[0]?.states ?? [];
-  if (!states.includes(state)) {
-    throw new Error(`unknown state: ${state}`);
-  }
-  return state as BotState;
+function createSvg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+  return document.createElementNS(SVG_NS, tag);
 }
 
-function injectMinimalBotStyles() {
-  if (document.getElementById("strut-minimal-bot-runtime-styles")) {
-    return;
+function setAttributes(element: SVGElement, attributes: Record<string, string | number>) {
+  for (const [key, value] of Object.entries(attributes)) {
+    element.setAttribute(key, String(value));
   }
+}
 
-  const style = document.createElement("style");
-  style.id = "strut-minimal-bot-runtime-styles";
-  style.textContent = minimalBotCss;
-  document.head.append(style);
+function numericValue(value: StrutPropertyValue): number | null {
+  return value.type === "number" ? value.value : null;
+}
+
+function animationName(timeline: StrutTimeline, track: StrutTrack) {
+  return `strut-${cssIdent(timeline.name)}-${cssIdent(track.target)}-${cssIdent(track.property)}`;
+}
+
+function cssEasing(easing: StrutEasing) {
+  if (easing === "ease_in") return "ease-in";
+  if (easing === "ease_out") return "ease-out";
+  if (easing === "ease_in_out") return "ease-in-out";
+  return "linear";
+}
+
+function cssIdent(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function cssEscape(value: string) {
+  return value.replace(/"/g, '\\"');
+}
+
+function pascalCase(value: string) {
+  return value
+    .split(/[_\s-]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
 }
 
 function titleCase(value: string) {
@@ -182,69 +564,28 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function minimalBotSvg(state: BotState) {
-  return `
-<svg class="strut-minimal-bot state-${state}" data-strut-bot data-state="${state}" viewBox="0 0 960 540" role="img" aria-label="Minimal bot">
-  <rect width="960" height="540" class="bot-sky" />
-  <ellipse class="bot-shadow" cx="480" cy="442" rx="116" ry="18" />
-  <g class="bot-rig">
-    <g class="right-arm">
-      <path d="M624 286 C686 296 716 252 690 218 C666 186 622 214 596 260" />
-      <circle cx="696" cy="216" r="12" />
-      <circle cx="716" cy="228" r="10" />
-    </g>
-    <g class="legs">
-      <path d="M420 376 C390 410 392 448 426 454 C458 460 476 424 482 388" />
-      <path d="M532 382 C552 424 584 448 612 424 C636 402 610 366 570 344" />
-    </g>
-    <g class="body">
-      <path d="M372 274 C386 226 430 204 492 206 C558 208 602 236 612 288 C624 356 576 402 486 400 C398 398 350 346 372 274Z" />
-      <circle class="chest-light" cx="512" cy="308" r="17" />
-    </g>
-    <g class="helmet">
-      <path class="helmet-shell" d="M330 154 C348 70 434 38 544 58 C628 74 662 142 642 224 C620 312 540 350 432 328 C354 312 312 236 330 154Z" />
-      <rect class="face-panel" x="386" y="118" width="214" height="136" rx="42" />
-      <rect class="scan-line" x="404" y="136" width="178" height="12" rx="6" />
-      <path class="eye" d="M430 176 C438 154 462 154 470 176" />
-      <path class="eye" d="M518 174 C526 152 550 152 558 174" />
-      <path class="smile" d="M464 210 C480 230 512 230 528 208" />
-    </g>
-  </g>
-  <text data-state-label class="state-label" x="480" y="506" text-anchor="middle">${titleCase(state)}</text>
-</svg>`;
+function minimalBotDocument(): StrutDocument {
+  return {
+    id: "minimal-bot-runtime-fallback",
+    name: "Minimal Bot",
+    artboards: [
+      {
+        id: "minimal-bot-artboard",
+        name: "MinimalBot",
+        width: 960,
+        height: 540,
+        nodes: [],
+      },
+    ],
+    timelines: [],
+    state_machines: [
+      {
+        id: "minimal-bot-machine",
+        name: "BotMoods",
+        states: ["idle", "float", "wave", "blink", "scan", "celebrate", "sleep"],
+      },
+    ],
+    bindings: [],
+    events: [],
+  };
 }
-
-const minimalBotCss = `
-.strut-minimal-bot { width: 100%; height: 100%; display: block; }
-.strut-minimal-bot .bot-sky { fill: #51bfd0; }
-.strut-minimal-bot .bot-rig { transform-box: fill-box; transform-origin: center; }
-.strut-minimal-bot .bot-shadow { fill: #17142f; opacity: 0.9; transform-origin: center; }
-.strut-minimal-bot .helmet-shell,
-.strut-minimal-bot .body path,
-.strut-minimal-bot .legs path,
-.strut-minimal-bot .right-arm path,
-.strut-minimal-bot .right-arm circle {
-  fill: #f6f1e8;
-  stroke: #17142f;
-  stroke-width: 8;
-  stroke-linejoin: round;
-}
-.strut-minimal-bot .face-panel { fill: #17142f; stroke: #ffffff; stroke-width: 6; }
-.strut-minimal-bot .eye,
-.strut-minimal-bot .smile { fill: none; stroke: #51bfd0; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
-.strut-minimal-bot .chest-light { fill: #51bfd0; stroke: #17142f; stroke-width: 5; }
-.strut-minimal-bot .scan-line { fill: #2dffb8; opacity: 0; }
-.strut-minimal-bot .state-label { fill: #17142f; font: 800 22px system-ui, sans-serif; }
-.strut-minimal-bot.state-idle .bot-rig,
-.strut-minimal-bot.state-float .bot-rig { animation: strutBotFloat 1.5s ease-in-out infinite; }
-.strut-minimal-bot.state-wave .right-arm { animation: strutBotWave 0.9s ease-in-out infinite; transform-box: fill-box; transform-origin: 18% 18%; }
-.strut-minimal-bot.state-blink .eye { animation: strutBotBlink 0.9s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.strut-minimal-bot.state-scan .scan-line { animation: strutFaceScan 1.2s linear infinite; opacity: 0.75; }
-.strut-minimal-bot.state-celebrate .bot-rig { animation: strutCelebrate 1s ease-in-out infinite; }
-.strut-minimal-bot.state-sleep .eye { transform: scaleY(0.16); transform-box: fill-box; transform-origin: center; }
-@keyframes strutBotFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
-@keyframes strutBotWave { 0%, 100% { transform: rotate(0deg); } 45% { transform: rotate(-24deg); } 70% { transform: rotate(12deg); } }
-@keyframes strutBotBlink { 0%, 45%, 100% { transform: scaleY(1); } 55%, 62% { transform: scaleY(0.08); } }
-@keyframes strutFaceScan { 0% { transform: translateY(0); } 100% { transform: translateY(92px); } }
-@keyframes strutCelebrate { 0%, 100% { transform: scale(1) translateY(-8px); } 35% { transform: scale(1.08) translateY(-24px); } }
-`;

@@ -61,6 +61,8 @@ def run_smoke() -> None:
             preview = page.locator("[data-strut-bot]")
             expect(preview).to_be_visible()
             expect(preview).to_have_attribute("data-state", "idle")
+            expect(page.locator('[data-node-name="FacePanel"]')).to_be_visible()
+            expect(page.locator('[data-node-name="GroundShadow"]')).to_be_visible()
 
             for state in ["Float", "Wave", "Blink", "Scan", "Celebrate", "Sleep"]:
                 page.get_by_role("button", name=state).click()
