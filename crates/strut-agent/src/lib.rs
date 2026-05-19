@@ -46,9 +46,8 @@ mod tests {
 
     #[test]
     fn ollama_is_first_class() {
-        assert!(planned_adapters()
-            .iter()
-            .any(|adapter| adapter.id == "ollama"
-                && matches!(adapter.kind, AdapterKind::LocalModel)));
+        assert!(planned_adapters().iter().any(
+            |adapter| adapter.id == "ollama" && matches!(adapter.kind, AdapterKind::LocalModel)
+        ));
     }
 }
