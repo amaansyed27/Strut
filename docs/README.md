@@ -15,6 +15,7 @@ Strut is pre-alpha, so some screenshots and commands will change. The main ideas
 ## Guides
 
 - [Import A Mockup](./guides/import-a-mockup.md)
+- [Generate A Character](./guides/generate-a-character.md)
 - [Export To React](./guides/export-to-react.md)
 - [Use Local AI](./guides/use-local-ai.md)
 

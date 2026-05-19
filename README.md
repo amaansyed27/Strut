@@ -41,6 +41,7 @@ Start with the public docs:
 - [Quick Start](./docs/learn/quick-start.md)
 - [Create Your First Animation](./docs/learn/first-animation.md)
 - [Plan Mode](./docs/learn/plan-mode.md)
+- [Generate A Character](./docs/guides/generate-a-character.md)
 - [AI And Providers](./docs/learn/ai-and-providers.md)
 
 Contributor and milestone review notes live in [docs/internal](./docs/internal/README.md).
