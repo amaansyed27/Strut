@@ -1,22 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  ChevronRight,
   Cpu,
   FileText,
-  FolderOpen,
+  Folder,
+  FolderPlus,
   Layers3,
+  MessageSquarePlus,
+  PanelRight,
   Play,
+  Plus,
   Route,
   Save,
+  Search,
   Send,
   Settings2,
-  Sparkles,
+  Square,
+  WandSparkles,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import "./App.css";
 
 type StudioStatus = {
   format_version: string;
-  sample_source: string;
 };
 
 type StrutNode = {
@@ -69,6 +76,8 @@ type ProjectInfo = {
 };
 
 type ProviderMode = "built-in" | "local" | "byok";
+type ViewMode = "chat" | "preview" | "editor";
+type MainPanel = "chat" | "providers" | "settings";
 
 type LocalAdapter = {
   id: string;
@@ -114,6 +123,26 @@ type ChatMessage = {
   id: number;
   role: "assistant" | "user" | "system";
   text: string;
+};
+
+type ChatThread = {
+  id: string;
+  title: string;
+  projectId: string;
+  updated: string;
+};
+
+type ProjectRecord = {
+  id: string;
+  name: string;
+  path: string;
+  chats: ChatThread[];
+};
+
+type ViewModeOption = {
+  id: ViewMode;
+  Icon: LucideIcon;
+  label: string;
 };
 
 const fallbackDocument: StrutDocument = {
@@ -176,16 +205,28 @@ const owlDocument: StrutDocument = {
       ],
     },
   ],
-  state_machines: [
-    {
-      ...fallbackDocument.state_machines[0],
-      id: "230",
-      name: "OwlMoods",
-    },
-  ],
+  state_machines: [{ ...fallbackDocument.state_machines[0], id: "230", name: "OwlMoods" }],
   bindings: [{ name: "face_glow" }, { name: "feather_tint" }],
   events: [{ name: "wing_wave_started" }, { name: "celebration_complete" }],
 };
+
+const initialProjects: ProjectRecord[] = [
+  {
+    id: "strut",
+    name: "Strut",
+    path: "D:\\Strut Projects\\Strut",
+    chats: [
+      { id: "strut-plan", title: "Strut Plan", projectId: "strut", updated: "now" },
+      { id: "bot-test", title: "Build bot character", projectId: "strut", updated: "1h" },
+    ],
+  },
+  {
+    id: "brand-motion",
+    name: "Brand motion",
+    path: "D:\\Strut Projects\\Brand motion",
+    chats: [{ id: "owl-guide", title: "Owl guide animation", projectId: "brand-motion", updated: "2d" }],
+  },
+];
 
 const fallbackLocalAdapters: LocalAdapter[] = [
   { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
@@ -218,18 +259,33 @@ function flattenNodes(nodes: StrutNode[]): StrutNode[] {
 
 function fallbackGenerateCharacter(prompt: string): StrutDocument {
   const normalized = prompt.toLowerCase();
-  if (normalized.includes("owl") || normalized.includes("duo") || normalized.includes("duolingo")) {
-    return owlDocument;
-  }
-  return fallbackDocument;
+  return normalized.includes("owl") || normalized.includes("duo") || normalized.includes("duolingo")
+    ? owlDocument
+    : fallbackDocument;
+}
+
+function projectFiles(project: ProjectRecord): ProjectFile[] {
+  return [
+    { name: "strut.project.json", path: `${project.path}\\strut.project.json`, kind: "project" },
+    { name: "starter.strut.json", path: `${project.path}\\scenes\\starter.strut.json`, kind: "scene" },
+    { name: "assets", path: `${project.path}\\assets`, kind: "folder" },
+    { name: "exports", path: `${project.path}\\exports`, kind: "folder" },
+  ];
 }
 
 function CharacterPreview({ document, activeState }: { document: StrutDocument; activeState: string }) {
   const isOwl = document.name.toLowerCase().includes("owl");
 
   return (
-    <svg className="character-preview" data-testid="character-preview" data-character={isOwl ? "owl" : "bot"} data-state={activeState} viewBox="0 0 640 420" role="img">
-      <rect className="preview-bg" width="640" height="420" rx="0" />
+    <svg
+      className="character-preview"
+      data-character={isOwl ? "owl" : "bot"}
+      data-state={activeState}
+      data-testid="character-preview"
+      viewBox="0 0 640 420"
+      role="img"
+    >
+      <rect className="preview-bg" width="640" height="420" rx="18" />
       <ellipse className="preview-shadow" cx="320" cy="340" rx={isOwl ? 88 : 78} ry="12" />
       {isOwl ? (
         <g className={`owl-figure state-${activeState}`}>
@@ -259,15 +315,23 @@ function CharacterPreview({ document, activeState }: { document: StrutDocument; 
 function App() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [desktopRuntime, setDesktopRuntime] = useState(true);
-  const [project, setProject] = useState<ProjectInfo | null>(null);
+  const [projects, setProjects] = useState<ProjectRecord[]>(initialProjects);
+  const [activeProjectId, setActiveProjectId] = useState("strut");
+  const [activeChatId, setActiveChatId] = useState("strut-plan");
+  const [mainPanel, setMainPanel] = useState<MainPanel>("chat");
+  const [viewMode, setViewMode] = useState<ViewMode>("chat");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Strut Project");
   const [projectLocation, setProjectLocation] = useState("");
   const [document, setDocument] = useState<StrutDocument>(fallbackDocument);
   const [activeState, setActiveState] = useState("wave");
-  const [activeView, setActiveView] = useState<"chat" | "files" | "editor" | "ai">("chat");
+  const [partsVisible, setPartsVisible] = useState(true);
+  const [activeTool, setActiveTool] = useState("select");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 1, role: "assistant", text: "Create a project, then describe the character or interaction you want. Strut will build an editable scene, not a flat image." },
+    { id: 1, role: "assistant", text: "What should we build in Strut? Describe a character, attach a mockup later, or ask for a plan first." },
   ]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("built-in");
   const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(fallbackLocalAdapters);
@@ -276,7 +340,7 @@ function App() {
   const [apiKey, setApiKey] = useState("");
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
   const [providerModel, setProviderModel] = useState(byokProviders[0].model);
-  const [activity, setActivity] = useState("Ready");
+  const [activity, setActivity] = useState("Built-in planner ready");
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status")
@@ -288,22 +352,37 @@ function App() {
         setDesktopRuntime(false);
         setStatus(null);
       });
-
     invoke<string>("default_project_location")
       .then(setProjectLocation)
       .catch(() => {
         setDesktopRuntime(false);
         setProjectLocation("D:\\Strut Projects");
       });
-
     invoke<StrutDocument>("sample_document").then(setDocument).catch(() => setDocument(fallbackDocument));
     invoke<LocalAdapter[]>("local_agent_adapters").then(setLocalAdapters).catch(() => setDesktopRuntime(false));
   }, []);
 
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
+  const activeChat = activeProject.chats.find((chat) => chat.id === activeChatId) ?? activeProject.chats[0];
+  const files = projectFiles(activeProject);
   const activeArtboard = document.artboards[0] ?? fallbackDocument.artboards[0];
   const activeMachine = document.state_machines[0] ?? fallbackDocument.state_machines[0];
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
+  const viewModes: ViewModeOption[] = [
+    { id: "chat", Icon: MessageSquarePlus, label: "Chat only" },
+    { id: "preview", Icon: PanelRight, label: "Chat + preview" },
+    { id: "editor", Icon: Layers3, label: "Editor" },
+  ];
+
+  const filteredProjects = projects
+    .map((project) => ({
+      ...project,
+      chats: project.chats.filter((chat) =>
+        `${project.name} ${chat.title}`.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    }))
+    .filter((project) => project.chats.length > 0 || project.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   function providerPayload(): GenerationProvider | undefined {
     if (providerMode === "built-in") {
@@ -327,17 +406,42 @@ function App() {
     setMessages((current) => [...current, { id: Date.now() + Math.random(), role, text }]);
   }
 
+  function openChat(projectId: string, chatId: string) {
+    setActiveProjectId(projectId);
+    setActiveChatId(chatId);
+    setMainPanel("chat");
+  }
+
+  function newChat(projectId = activeProjectId) {
+    const project = projects.find((item) => item.id === projectId) ?? activeProject;
+    const chat: ChatThread = {
+      id: `chat-${Date.now()}`,
+      title: "New character chat",
+      projectId: project.id,
+      updated: "now",
+    };
+    setProjects((current) =>
+      current.map((item) => (item.id === project.id ? { ...item, chats: [chat, ...item.chats] } : item)),
+    );
+    setActiveProjectId(project.id);
+    setActiveChatId(chat.id);
+    setMainPanel("chat");
+    setMessages([{ id: Date.now(), role: "assistant", text: "New chat ready. Tell Strut what to design or ask for a plan." }]);
+  }
+
   async function createProject() {
     if (!desktopRuntime) {
-      const previewProject = {
+      const id = `project-${Date.now()}`;
+      const project: ProjectRecord = {
+        id,
         name: projectName.trim() || "Untitled Strut Project",
         path: projectLocation,
-        files: [
-          { name: "strut.project.json", path: `${projectLocation}\\strut.project.json`, kind: "project" },
-          { name: "starter.strut.json", path: `${projectLocation}\\scenes\\starter.strut.json`, kind: "scene" },
-        ],
+        chats: [{ id: `${id}-chat`, title: "Project brief", projectId: id, updated: "now" }],
       };
-      setProject(previewProject);
+      setProjects((current) => [project, ...current]);
+      setActiveProjectId(id);
+      setActiveChatId(project.chats[0].id);
+      setNewProjectOpen(false);
       setActivity("Browser preview project. Disk was not written.");
       appendMessage("system", "Browser preview opened an in-memory project. Run the desktop app to create files on disk.");
       return;
@@ -345,7 +449,17 @@ function App() {
 
     try {
       const created = await invoke<ProjectInfo>("create_project", { name: projectName, location: projectLocation });
-      setProject(created);
+      const id = `project-${Date.now()}`;
+      const project: ProjectRecord = {
+        id,
+        name: created.name,
+        path: created.path,
+        chats: [{ id: `${id}-chat`, title: "Project brief", projectId: id, updated: "now" }],
+      };
+      setProjects((current) => [project, ...current]);
+      setActiveProjectId(id);
+      setActiveChatId(project.chats[0].id);
+      setNewProjectOpen(false);
       setActivity(`Project created at ${created.path}`);
       appendMessage("system", `Project created: ${created.path}`);
     } catch (error) {
@@ -390,12 +504,11 @@ function App() {
     }
   }
 
-  async function runGeneration(input = prompt) {
-    const trimmed = input.trim();
+  async function runGeneration() {
+    const trimmed = prompt.trim();
     if (!trimmed) {
       return;
     }
-
     appendMessage("user", trimmed);
     setActivity("Generating");
 
@@ -420,26 +533,119 @@ function App() {
     }
   }
 
-  if (!project) {
-    return (
-      <main className="home-shell">
-        <header className="home-top">
-          <div className="brand">
-            <img src="/strut-mark.svg" alt="" />
-            <span>Strut</span>
+  return (
+    <main className="strut-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <img src="/strut-mark.svg" alt="" />
+          <span>Strut</span>
+        </div>
+
+        <div className="sidebar-actions">
+          <button type="button" onClick={() => newChat()}>
+            <MessageSquarePlus size={16} />
+            New chat
+          </button>
+          <button type="button" onClick={() => setNewProjectOpen(true)}>
+            <FolderPlus size={16} />
+            New project
+          </button>
+          <button type="button" onClick={() => setSearchOpen((isOpen) => !isOpen)}>
+            <Search size={16} />
+            Search
+          </button>
+          <button type="button" onClick={() => setMainPanel("providers")}>
+            <Cpu size={16} />
+            Providers
+          </button>
+        </div>
+
+        {searchOpen ? (
+          <label className="sidebar-search">
+            <Search size={14} />
+            <input aria-label="Search projects and chats" value={searchQuery} onChange={(event) => setSearchQuery(event.currentTarget.value)} placeholder="Search projects" />
+          </label>
+        ) : null}
+
+        <div className="project-list">
+          <span className="section-label">Projects</span>
+          {filteredProjects.map((project) => (
+            <div className="project-group" key={project.id}>
+              <div className="project-button">
+                <button className="project-open" type="button" onClick={() => openChat(project.id, project.chats[0]?.id ?? activeChatId)}>
+                  <Folder size={15} />
+                  <span>{project.name}</span>
+                </button>
+                <button
+                  aria-label={`New chat in ${project.name}`}
+                  className="inline-add"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    newChat(project.id);
+                  }}
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
+              {project.chats.map((chat) => (
+                <button
+                  className={chat.id === activeChatId ? "chat-link active" : "chat-link"}
+                  key={chat.id}
+                  type="button"
+                  onClick={() => openChat(project.id, chat.id)}
+                >
+                  <span>{chat.title}</span>
+                  <em>{chat.updated}</em>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="sidebar-footer">
+          <button className="provider-status" data-testid="activity-pill" type="button" onClick={() => setMainPanel("providers")}>
+            <span>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+            <em>{activity}</em>
+          </button>
+          <button type="button" onClick={() => setMainPanel("settings")}>
+            <Settings2 size={16} />
+            Settings
+          </button>
+        </div>
+      </aside>
+
+      <section className="workspace">
+        <header className="workspace-top">
+          <nav className="view-switcher" aria-label="View mode">
+            {viewModes.map(({ id, Icon, label }) => (
+              <button
+                aria-pressed={viewMode === id}
+                className={viewMode === id ? "active" : ""}
+                key={id}
+                type="button"
+                onClick={() => {
+                  setViewMode(id);
+                  setMainPanel("chat");
+                }}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="workspace-context">
+            <strong>{activeChat?.title ?? "New chat"}</strong>
+            <span>{activeProject.name} / {status?.format_version ?? "browser preview"}</span>
           </div>
-          <span>{status?.format_version ?? "desktop app required for disk projects"}</span>
         </header>
 
-        <section className="home-grid">
-          <div className="home-intro">
-            <p>AI-first motion design for editable characters and product animation.</p>
-            <textarea aria-label="Initial prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} />
-          </div>
-
-          <div className="new-project">
-            <h1>New project</h1>
-            {!desktopRuntime ? <p className="runtime-note">Browser preview only. Project creation here will not write files.</p> : null}
+        {newProjectOpen ? (
+          <section className="project-sheet" aria-label="New project panel">
+            <div>
+              <h2>New project</h2>
+              <p>Choose where Strut should create the editable scene files.</p>
+            </div>
             <label>
               <span>Name</span>
               <input aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.currentTarget.value)} />
@@ -448,55 +654,124 @@ function App() {
               <span>Location</span>
               <input aria-label="Project location" value={projectLocation} onChange={(event) => setProjectLocation(event.currentTarget.value)} />
             </label>
-            <button type="button" onClick={createProject}>
-              <FolderOpen size={17} />
-              Create project
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
+            <div className="sheet-actions">
+              <button type="button" onClick={() => setNewProjectOpen(false)}>Cancel</button>
+              <button type="button" onClick={() => void createProject()}>Create project</button>
+            </div>
+          </section>
+        ) : null}
 
-  return (
-    <main className="app-shell">
-      <header className="app-top">
-        <div className="brand">
-          <img src="/strut-mark.svg" alt="" />
-          <span>{project.name}</span>
-        </div>
-        <nav aria-label="Workspace">
-          {[
-            ["chat", Sparkles, "Chat"],
-            ["files", FileText, "Files"],
-            ["editor", Layers3, "Editor"],
-            ["ai", Cpu, "AI"],
-          ].map(([id, Icon, label]) => (
-            <button className={activeView === id ? "active" : ""} key={String(id)} type="button" onClick={() => setActiveView(id as typeof activeView)}>
-              <Icon size={15} />
-              {String(label)}
+        {mainPanel === "providers" ? (
+          <section className="provider-page">
+            <div className="page-heading">
+              <h1>Providers</h1>
+              <p>Connect local CLIs, local models, or BYOK APIs. Browser preview cannot run real provider checks.</p>
+            </div>
+            <div className="provider-tabs">
+              {["built-in", "local", "byok"].map((mode) => (
+                <button className={providerMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setProviderMode(mode as ProviderMode)}>
+                  {mode === "built-in" ? "Built-in" : mode === "local" ? "Local CLI" : "BYOK"}
+                </button>
+              ))}
+            </div>
+            {providerMode === "local" ? (
+              <div className="provider-list">
+                {localAdapters.map((adapter) => (
+                  <button className={selectedLocalAdapterId === adapter.id ? "active" : ""} key={adapter.id} type="button" onClick={() => setSelectedLocalAdapterId(adapter.id)}>
+                    <span>{adapter.name}</span>
+                    <em>{adapter.detail}</em>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {providerMode === "byok" ? (
+              <div className="byok-form">
+                <select aria-label="BYOK provider" value={selectedByokProviderId} onChange={(event) => {
+                  const provider = byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
+                  setSelectedByokProviderId(provider.id);
+                  setProviderEndpoint(provider.endpoint);
+                  setProviderModel(provider.model);
+                }}>
+                  {byokProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                </select>
+                <input aria-label={`${activeByokProvider.name} API key`} placeholder={activeByokProvider.env} type="password" value={apiKey} onChange={(event) => setApiKey(event.currentTarget.value)} />
+                <input aria-label={`${activeByokProvider.name} base URL`} value={providerEndpoint} onChange={(event) => setProviderEndpoint(event.currentTarget.value)} />
+                <input aria-label={`${activeByokProvider.name} model`} value={providerModel} onChange={(event) => setProviderModel(event.currentTarget.value)} />
+                <button type="button" onClick={() => void saveProvider()}>
+                  <Save size={16} />
+                  Save provider
+                </button>
+              </div>
+            ) : null}
+            <button className="secondary-button" type="button" onClick={() => void testProvider()}>
+              Test selected provider
+              <ChevronRight size={16} />
             </button>
-          ))}
-        </nav>
-        <span className="activity" data-testid="activity-pill">{activity}</span>
-      </header>
+          </section>
+        ) : null}
 
-      <section className="workspace-shell">
-        <aside className="file-rail">
-          <strong>Files</strong>
-          {project.files.map((file) => (
-            <button key={file.path} type="button" onClick={() => setActiveView("files")}>
-              <FileText size={14} />
-              <span>{file.name}</span>
-              <em>{file.kind}</em>
-            </button>
-          ))}
-        </aside>
+        {mainPanel === "settings" ? (
+          <section className="settings-page">
+            <div className="page-heading">
+              <h1>Settings</h1>
+              <p>Workspace defaults, editor behavior, and provider status.</p>
+            </div>
+            <div className="settings-list">
+              <section className="settings-section">
+                <div>
+                  <h2>Workspace</h2>
+                  <p>Project creation and local file defaults.</p>
+                </div>
+                <label>
+                  <span>Default project location</span>
+                  <input aria-label="Default project location" value={projectLocation} onChange={(event) => setProjectLocation(event.currentTarget.value)} />
+                </label>
+              </section>
+              <section className="settings-section">
+                <div>
+                  <h2>Generation</h2>
+                  <p>Choose the provider Strut should use for new character work.</p>
+                </div>
+                <label>
+                  <span>Generation mode</span>
+                  <select aria-label="Generation mode" value={providerMode} onChange={(event) => setProviderMode(event.currentTarget.value as ProviderMode)}>
+                    <option value="built-in">Built-in planner</option>
+                    <option value="local">Local CLI</option>
+                    <option value="byok">BYOK provider</option>
+                  </select>
+                </label>
+                <div className="status-line">
+                  <span>Current provider</span>
+                  <strong>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
+                  <em>{activity}</em>
+                </div>
+              </section>
+              <section className="settings-section">
+                <div>
+                  <h2>Editor</h2>
+                  <p>Default panels and viewport behavior.</p>
+                </div>
+                <label className="toggle-row">
+                  <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
+                  <span>Show character parts in editor</span>
+                </label>
+                <label className="toggle-row">
+                  <input defaultChecked type="checkbox" />
+                  <span>Preview motion when switching states</span>
+                </label>
+              </section>
+            </div>
+          </section>
+        ) : null}
 
-        <section className="main-work">
-          {activeView === "chat" ? (
-            <div className="chat-view">
-              <div className="messages">
+        {mainPanel === "chat" && viewMode !== "editor" ? (
+          <section className={viewMode === "preview" ? "chat-layout with-preview" : "chat-layout"}>
+            <div className="chat-panel">
+              <div className="message-stack">
+                <div className="home-heading">
+                  <h1>What should we build in Strut?</h1>
+                  <p>{activeProject.name} is ready for a prompt, mockup, or plan-first sketch.</p>
+                </div>
                 {messages.map((message) => (
                   <p className={`message ${message.role}`} key={message.id}>
                     <span>{message.role}</span>
@@ -505,114 +780,101 @@ function App() {
                 ))}
               </div>
               <div className="composer">
-                <textarea aria-label="Character prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} />
-                <button type="button" onClick={() => void runGeneration()}>
-                  <Send size={17} />
-                  Generate
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {activeView === "files" ? (
-            <div className="files-view">
-              <h2>Project files</h2>
-              {project.files.map((file) => (
-                <div className="file-row" key={file.path}>
-                  <span>{file.name}</span>
-                  <em>{file.path}</em>
+                <textarea aria-label="Character prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut to make a character, storyboard, or editable animation" />
+                <div className="composer-controls">
+                  <span>{providerMode === "built-in" ? "Built-in" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+                  <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
+                    <Send size={17} />
+                  </button>
                 </div>
+              </div>
+            </div>
+            {viewMode === "preview" ? (
+              <PreviewPane activeMachine={activeMachine} activeState={activeState} document={document} setActiveState={setActiveState} />
+            ) : null}
+          </section>
+        ) : null}
+
+        {mainPanel === "chat" && viewMode === "editor" ? (
+          <section className="editor-layout">
+            <div className="editor-toolbar">
+              {["select", "shape", "path", "bind", "animate"].map((tool) => (
+                <button className={activeTool === tool ? "active" : ""} key={tool} type="button" onClick={() => setActiveTool(tool)}>
+                  {tool === "select" ? <Square size={15} /> : <WandSparkles size={15} />}
+                  {titleCase(tool)}
+                </button>
               ))}
+              <label>
+                <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
+                Parts
+              </label>
             </div>
-          ) : null}
-
-          {activeView === "editor" ? (
-            <div className="editor-view">
-              <div>
-                <h2>{activeArtboard.name}</h2>
-                <p>{activeMachine.name}: {layers.length} layers, {document.timelines.length} timelines</p>
-              </div>
-              <div className="layer-list">
-                {layers.map((layer) => (
-                  <button key={layer.id} type="button">
-                    <span>{layer.name}</span>
-                    <em>{layer.kind}</em>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {activeView === "ai" ? (
-            <div className="ai-view">
-              <h2>AI provider</h2>
-              <div className="segmented">
-                {["built-in", "local", "byok"].map((mode) => (
-                  <button className={providerMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setProviderMode(mode as ProviderMode)}>
-                    {mode === "built-in" ? "Built-in" : mode === "local" ? "Local CLI" : "BYOK"}
-                  </button>
-                ))}
-              </div>
-
-              {providerMode === "local" ? (
-                <div className="provider-list">
-                  {localAdapters.map((adapter) => (
-                    <button className={selectedLocalAdapterId === adapter.id ? "active" : ""} key={adapter.id} type="button" onClick={() => setSelectedLocalAdapterId(adapter.id)}>
-                      <span>{adapter.name}</span>
-                      <em>{adapter.detail}</em>
+            <div className="editor-main">
+              <div className="parts-panel">
+                <strong>Project files</strong>
+                <div className="file-list">
+                  {files.map((file) => (
+                    <button key={file.path} type="button">
+                      <FileText size={14} />
+                      <span>{file.name}</span>
+                      <em>{file.kind}</em>
                     </button>
                   ))}
                 </div>
-              ) : null}
-
-              {providerMode === "byok" ? (
-                <div className="byok-form">
-                  <select aria-label="BYOK provider" value={selectedByokProviderId} onChange={(event) => {
-                    const provider = byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
-                    setSelectedByokProviderId(provider.id);
-                    setProviderEndpoint(provider.endpoint);
-                    setProviderModel(provider.model);
-                  }}>
-                    {byokProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-                  </select>
-                  <input aria-label={`${activeByokProvider.name} API key`} placeholder={activeByokProvider.env} type="password" value={apiKey} onChange={(event) => setApiKey(event.currentTarget.value)} />
-                  <input aria-label={`${activeByokProvider.name} base URL`} value={providerEndpoint} onChange={(event) => setProviderEndpoint(event.currentTarget.value)} />
-                  <input aria-label={`${activeByokProvider.name} model`} value={providerModel} onChange={(event) => setProviderModel(event.currentTarget.value)} />
-                  <button type="button" onClick={() => void saveProvider()}>
-                    <Save size={16} />
-                    Save provider
-                  </button>
-                </div>
-              ) : null}
-
-              <button className="test-provider" type="button" onClick={() => void testProvider()}>
-                <Settings2 size={16} />
-                Test selected provider
-              </button>
+                <strong>{activeArtboard.name}</strong>
+                {partsVisible ? (
+                  <div className="layer-list">
+                    {layers.map((layer) => (
+                      <button key={layer.id} type="button">
+                        <span>{layer.name}</span>
+                        <em>{layer.kind}</em>
+                      </button>
+                    ))}
+                  </div>
+                ) : <p>Parts hidden</p>}
+              </div>
+              <PreviewPane activeMachine={activeMachine} activeState={activeState} document={document} setActiveState={setActiveState} />
             </div>
-          ) : null}
-        </section>
-
-        <aside className="preview-rail">
-          <div className="preview-title">
-            <span>{document.name}</span>
-            <button type="button" onClick={() => setActiveState("wave")}>
-              <Play size={15} />
-              Preview
-            </button>
-          </div>
-          <CharacterPreview document={document} activeState={activeState} />
-          <div className="state-row">
-            {activeMachine.states.map((state) => (
-              <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
-                <Route size={13} />
-                {titleCase(state)}
-              </button>
-            ))}
-          </div>
-        </aside>
+          </section>
+        ) : null}
       </section>
     </main>
+  );
+}
+
+function PreviewPane({
+  activeMachine,
+  activeState,
+  document,
+  setActiveState,
+}: {
+  activeMachine: StateMachine;
+  activeState: string;
+  document: StrutDocument;
+  setActiveState: (state: string) => void;
+}) {
+  return (
+    <aside className="preview-pane">
+      <div className="preview-title">
+        <div>
+          <span>{document.name}</span>
+          <em>{activeMachine.name}</em>
+        </div>
+        <button type="button" onClick={() => setActiveState("wave")}>
+          <Play size={15} />
+          Preview
+        </button>
+      </div>
+      <CharacterPreview document={document} activeState={activeState} />
+      <div className="state-row">
+        {activeMachine.states.map((state) => (
+          <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
+            <Route size={13} />
+            {titleCase(state)}
+          </button>
+        ))}
+      </div>
+    </aside>
   );
 }
 
