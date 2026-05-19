@@ -27,7 +27,7 @@ The desktop app should open with:
 
 - a layer list
 - a central stage
-- a sample login button
+- a sample animated bot
 - a timeline
 - state-machine controls
 - an agent panel

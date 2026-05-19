@@ -12,7 +12,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let package = strut_format::StrutPackage::current(strut_core::Document::sample_login_button());
+    let document = match path.file_stem().and_then(|stem| stem.to_str()) {
+        Some(stem) if stem.contains("bot") => strut_core::Document::sample_minimal_bot(),
+        _ => strut_core::Document::sample_login_button(),
+    };
+    let package = strut_format::StrutPackage::current(document);
     strut_format::write_strut_file(&path, &package)?;
 
     println!("wrote {}", path.display());

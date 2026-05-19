@@ -48,6 +48,11 @@ login-button.strut
 - bindings
 - events
 
+## Included Samples
+
+- `samples/login-button.strut`: small product button component.
+- `samples/minimal-bot.strut`: minimalist bot character with idle, float, wave, blink, scan, celebrate, and sleep states.
+
 ## Compatibility
 
 Strut runtimes should reject unsupported major versions and show a clear error instead of trying to play a file incorrectly.
@@ -58,4 +63,5 @@ From the repository root:
 
 ```powershell
 cargo run -p strut-format --example validate -- samples/login-button.strut
+cargo run -p strut-format --example validate -- samples/minimal-bot.strut
 ```

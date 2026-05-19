@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Component, Path};
@@ -50,12 +50,22 @@ pub enum FormatError {
     UnsafeDocumentPath,
     #[error("document must contain at least one artboard")]
     MissingArtboard,
+    #[error("artboard '{0}' dimensions must be greater than zero")]
+    InvalidArtboardSize(String),
+    #[error("node id '{0}' appears more than once")]
+    DuplicateNodeId(String),
     #[error("state machine '{0}' must contain at least one state")]
     MissingState(String),
     #[error("state machine '{machine}' has duplicate input '{input}'")]
     DuplicateInput { machine: String, input: String },
     #[error("timeline '{0}' duration must be greater than zero")]
     InvalidTimelineDuration(String),
+    #[error("timeline '{timeline}' targets unknown node '{target}'")]
+    MissingTimelineTarget { timeline: String, target: String },
+    #[error("transition in '{machine}' references unknown state '{state}'")]
+    UnknownTransitionState { machine: String, state: String },
+    #[error("transition in '{machine}' references unknown timeline '{timeline}'")]
+    UnknownTransitionTimeline { machine: String, timeline: String },
     #[error("zip entry '{0}' is missing")]
     MissingZipEntry(String),
     #[error("io error: {0}")]
@@ -128,9 +138,37 @@ pub fn validate_document(document: &Document) -> Result<(), FormatError> {
         return Err(FormatError::MissingArtboard);
     }
 
+    let mut node_ids = HashSet::new();
+    for artboard in &document.artboards {
+        if artboard.width <= 0.0 || artboard.height <= 0.0 {
+            return Err(FormatError::InvalidArtboardSize(artboard.name.clone()));
+        }
+
+        for node in &artboard.nodes {
+            if !node_ids.insert(node.id) {
+                return Err(FormatError::DuplicateNodeId(node.id.to_string()));
+            }
+        }
+    }
+
+    let timeline_names: HashMap<_, _> = document
+        .timelines
+        .iter()
+        .map(|timeline| (timeline.name.as_str(), timeline))
+        .collect();
+
     for timeline in &document.timelines {
         if timeline.duration_ms == 0 {
             return Err(FormatError::InvalidTimelineDuration(timeline.name.clone()));
+        }
+
+        for track in &timeline.tracks {
+            if !node_ids.contains(&track.target) {
+                return Err(FormatError::MissingTimelineTarget {
+                    timeline: timeline.name.clone(),
+                    target: track.target.to_string(),
+                });
+            }
         }
     }
 
@@ -145,6 +183,25 @@ pub fn validate_document(document: &Document) -> Result<(), FormatError> {
                 return Err(FormatError::DuplicateInput {
                     machine: machine.name.clone(),
                     input: input.name.clone(),
+                });
+            }
+        }
+
+        let states: HashSet<_> = machine.states.iter().map(String::as_str).collect();
+        for transition in &machine.transitions {
+            for state in [&transition.from, &transition.to] {
+                if !states.contains(state.as_str()) {
+                    return Err(FormatError::UnknownTransitionState {
+                        machine: machine.name.clone(),
+                        state: state.clone(),
+                    });
+                }
+            }
+
+            if !timeline_names.contains_key(transition.timeline.as_str()) {
+                return Err(FormatError::UnknownTransitionTimeline {
+                    machine: machine.name.clone(),
+                    timeline: transition.timeline.clone(),
                 });
             }
         }
@@ -248,6 +305,13 @@ mod tests {
     #[test]
     fn sample_document_validates() {
         let document = Document::sample_login_button();
+
+        assert!(validate_document(&document).is_ok());
+    }
+
+    #[test]
+    fn bot_document_validates() {
+        let document = Document::sample_minimal_bot();
 
         assert!(validate_document(&document).is_ok());
     }
