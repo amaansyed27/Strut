@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Component, Path};
 use strut_core::Document;
+use strut_core::Node;
 use thiserror::Error;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -144,7 +145,7 @@ pub fn validate_document(document: &Document) -> Result<(), FormatError> {
             return Err(FormatError::InvalidArtboardSize(artboard.name.clone()));
         }
 
-        for node in &artboard.nodes {
+        for node in flatten_nodes(&artboard.nodes) {
             if !node_ids.insert(node.id) {
                 return Err(FormatError::DuplicateNodeId(node.id.to_string()));
             }
@@ -291,6 +292,15 @@ fn validate_document_path(path: &str) -> Result<(), FormatError> {
     }
 
     Ok(())
+}
+
+fn flatten_nodes(nodes: &[Node]) -> Vec<&Node> {
+    let mut flattened = Vec::new();
+    for node in nodes {
+        flattened.push(node);
+        flattened.extend(flatten_nodes(&node.children));
+    }
+    flattened
 }
 
 #[cfg(test)]

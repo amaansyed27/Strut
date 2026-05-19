@@ -26,6 +26,14 @@ pub struct Node {
     pub id: Uuid,
     pub name: String,
     pub kind: NodeKind,
+    #[serde(default)]
+    pub transform: Transform,
+    #[serde(default)]
+    pub style: Style,
+    #[serde(default)]
+    pub shape: Shape,
+    #[serde(default)]
+    pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,6 +46,325 @@ pub enum NodeKind {
     Text,
     Image,
     HitArea,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Transform {
+    pub translate_x: f32,
+    pub translate_y: f32,
+    pub rotate: f32,
+    pub scale_x: f32,
+    pub scale_y: f32,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            translate_x: 0.0,
+            translate_y: 0.0,
+            rotate: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Style {
+    pub fill: Option<String>,
+    pub stroke: Option<String>,
+    pub stroke_width: f32,
+    pub opacity: f32,
+    pub linecap: Option<String>,
+    pub linejoin: Option<String>,
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Self {
+            fill: None,
+            stroke: None,
+            stroke_width: 0.0,
+            opacity: 1.0,
+            linecap: None,
+            linejoin: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Shape {
+    #[default]
+    None,
+    Rect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        rx: f32,
+    },
+    Ellipse {
+        cx: f32,
+        cy: f32,
+        rx: f32,
+        ry: f32,
+    },
+    Path {
+        d: String,
+    },
+    Text {
+        x: f32,
+        y: f32,
+        value: String,
+        size: f32,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CharacterSpec {
+    pub variant: String,
+    pub name: Option<String>,
+    pub accent: Option<String>,
+    pub shell: Option<String>,
+}
+
+impl Default for CharacterSpec {
+    fn default() -> Self {
+        Self {
+            variant: "floating-helper".to_string(),
+            name: Some("Minimal Bot".to_string()),
+            accent: Some("#51bfd0".to_string()),
+            shell: Some("#f6f1e8".to_string()),
+        }
+    }
+}
+
+impl Node {
+    pub fn new(id: u128, name: impl Into<String>, kind: NodeKind) -> Self {
+        Self {
+            id: Uuid::from_u128(id),
+            name: name.into(),
+            kind,
+            transform: Transform::default(),
+            style: Style::default(),
+            shape: Shape::None,
+            children: Vec::new(),
+        }
+    }
+
+    pub fn with_shape(mut self, shape: Shape) -> Self {
+        self.shape = shape;
+        self
+    }
+
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    pub fn with_children(mut self, children: Vec<Node>) -> Self {
+        self.children = children;
+        self
+    }
+}
+
+fn style(fill: Option<&str>, stroke: Option<&str>, stroke_width: f32) -> Style {
+    Style {
+        fill: fill.map(str::to_string),
+        stroke: stroke.map(str::to_string),
+        stroke_width,
+        opacity: 1.0,
+        linecap: Some("round".to_string()),
+        linejoin: Some("round".to_string()),
+    }
+}
+
+pub fn character_spec_from_prompt(prompt: &str) -> CharacterSpec {
+    let prompt = prompt.to_lowercase();
+    let mut spec = CharacterSpec::default();
+
+    if prompt.contains("owl") || prompt.contains("duo") || prompt.contains("duolingo") {
+        spec.variant = "owl-guide".to_string();
+        spec.name = Some("Owl Mascot".to_string());
+        spec.accent = Some("#78d64b".to_string());
+        spec.shell = Some("#8ee15a".to_string());
+    } else if prompt.contains("scan") || prompt.contains("data") || prompt.contains("visor") {
+        spec.variant = "scanner-bot".to_string();
+        spec.name = Some("Scanner Bot".to_string());
+        spec.accent = Some("#2dffb8".to_string());
+    } else if prompt.contains("success")
+        || prompt.contains("celebrate")
+        || prompt.contains("party")
+        || prompt.contains("confetti")
+    {
+        spec.variant = "celebration-bot".to_string();
+        spec.name = Some("Celebration Bot".to_string());
+        spec.accent = Some("#f6d365".to_string());
+    } else if prompt.contains("robot") || prompt.contains("bot") || prompt.contains("astronaut") {
+        spec.variant = "floating-helper".to_string();
+        spec.name = Some("Minimal Bot".to_string());
+    }
+
+    if prompt.contains("purple") {
+        spec.accent = Some("#b69cff".to_string());
+    } else if prompt.contains("blue") || prompt.contains("cyan") {
+        spec.accent = Some("#51bfd0".to_string());
+    } else if prompt.contains("green") {
+        spec.accent = Some("#78d64b".to_string());
+    } else if prompt.contains("yellow") || prompt.contains("gold") {
+        spec.accent = Some("#f6d365".to_string());
+    }
+
+    spec
+}
+
+fn bot_nodes(shell: &str, accent: &str) -> Vec<Node> {
+    vec![
+        Node::new(102, "BotRig", NodeKind::Group),
+        Node::new(103, "GroundShadow", NodeKind::Ellipse)
+            .with_shape(Shape::Ellipse {
+                cx: 480.0,
+                cy: 442.0,
+                rx: 116.0,
+                ry: 18.0,
+            })
+            .with_style(style(Some("#17142f"), None, 0.0)),
+        Node::new(104, "HelmetShell", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M330 154 C348 70 434 38 544 58 C628 74 662 142 642 224 C620 312 540 350 432 328 C354 312 312 236 330 154Z".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(105, "FacePanel", NodeKind::Rect)
+            .with_shape(Shape::Rect {
+                x: 386.0,
+                y: 118.0,
+                width: 214.0,
+                height: 136.0,
+                rx: 42.0,
+            })
+            .with_style(style(Some("#17142f"), Some("#ffffff"), 6.0)),
+        Node::new(106, "Eyes", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M430 176 C438 154 462 154 470 176 M518 174 C526 152 550 152 558 174".to_string(),
+            })
+            .with_style(style(None, Some(accent), 9.0)),
+        Node::new(107, "Smile", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M464 210 C480 230 512 230 528 208".to_string(),
+            })
+            .with_style(style(None, Some(accent), 9.0)),
+        Node::new(108, "Torso", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M372 274 C386 226 430 204 492 206 C558 208 602 236 612 288 C624 356 576 402 486 400 C398 398 350 346 372 274Z".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(109, "ChestLight", NodeKind::Ellipse)
+            .with_shape(Shape::Ellipse {
+                cx: 512.0,
+                cy: 308.0,
+                rx: 17.0,
+                ry: 17.0,
+            })
+            .with_style(style(Some(accent), Some("#17142f"), 5.0)),
+        Node::new(110, "LeftArm", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M332 304 C268 320 252 372 282 398 C310 424 352 388 382 344".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(111, "RightArm", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M624 286 C686 296 716 252 690 218 C666 186 622 214 596 260".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(112, "LeftLeg", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M420 376 C390 410 392 448 426 454 C458 460 476 424 482 388".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(113, "RightLeg", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M532 382 C552 424 584 448 612 424 C636 402 610 366 570 344".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+        Node::new(114, "Antennae", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M376 172 L346 112 M584 166 L616 86".to_string(),
+            })
+            .with_style(style(None, Some("#17142f"), 6.0)),
+    ]
+}
+
+fn owl_nodes(shell: &str, accent: &str) -> Vec<Node> {
+    vec![
+        Node::new(102, "OwlRig", NodeKind::Group),
+        Node::new(103, "GroundShadow", NodeKind::Ellipse)
+            .with_shape(Shape::Ellipse {
+                cx: 480.0,
+                cy: 444.0,
+                rx: 126.0,
+                ry: 18.0,
+            })
+            .with_style(style(Some("#17331f"), None, 0.0)),
+        Node::new(104, "OwlBody", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M340 178 C350 92 424 62 480 96 C536 60 612 94 624 182 C642 310 582 406 480 410 C378 406 322 306 340 178Z".to_string(),
+            })
+            .with_style(style(Some(shell), Some("#17331f"), 8.0)),
+        Node::new(105, "FaceMask", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M384 184 C394 134 446 122 480 156 C514 122 566 134 576 184 C586 244 538 286 480 262 C422 286 374 244 384 184Z".to_string(),
+            })
+            .with_style(style(Some("#f6f1e8"), Some("#17331f"), 7.0)),
+        Node::new(106, "Eyes", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M424 196 C432 174 458 174 466 196 M494 196 C502 174 528 174 536 196".to_string(),
+            })
+            .with_style(style(None, Some("#17331f"), 10.0)),
+        Node::new(107, "Beak", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M472 220 L488 220 L480 236Z".to_string(),
+            })
+            .with_style(style(Some("#f6d365"), Some("#17331f"), 4.0)),
+        Node::new(108, "Belly", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M420 282 C430 342 530 342 540 282 C520 304 444 304 420 282Z".to_string(),
+            })
+            .with_style(style(Some("#d7f7c6"), Some("#17331f"), 5.0)),
+        Node::new(109, "ChestMark", NodeKind::Ellipse)
+            .with_shape(Shape::Ellipse {
+                cx: 480.0,
+                cy: 304.0,
+                rx: 18.0,
+                ry: 14.0,
+            })
+            .with_style(style(Some(accent), Some("#17331f"), 4.0)),
+        Node::new(110, "LeftWing", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M368 248 C304 270 298 346 354 370 C382 332 390 292 368 248Z".to_string(),
+            })
+            .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
+        Node::new(111, "RightWing", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M592 248 C656 270 662 346 606 370 C578 332 570 292 592 248Z".to_string(),
+            })
+            .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
+        Node::new(112, "LeftFoot", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M430 404 C418 428 444 438 462 414".to_string(),
+            })
+            .with_style(style(None, Some("#f6d365"), 8.0)),
+        Node::new(113, "RightFoot", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M530 404 C542 428 516 438 498 414".to_string(),
+            })
+            .with_style(style(None, Some("#f6d365"), 8.0)),
+        Node::new(114, "BrowTufts", NodeKind::Path)
+            .with_shape(Shape::Path {
+                d: "M412 138 L382 108 M548 138 L578 108".to_string(),
+            })
+            .with_style(style(None, Some("#17331f"), 8.0)),
+    ]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -136,21 +463,22 @@ impl Document {
                 width: 960.0,
                 height: 600.0,
                 nodes: vec![
-                    Node {
-                        id: Uuid::from_u128(2),
-                        name: "ButtonSurface".to_string(),
-                        kind: NodeKind::Rect,
-                    },
-                    Node {
-                        id: Uuid::from_u128(3),
-                        name: "Label".to_string(),
-                        kind: NodeKind::Text,
-                    },
-                    Node {
-                        id: Uuid::from_u128(4),
-                        name: "SpinnerArc".to_string(),
-                        kind: NodeKind::Path,
-                    },
+                    Node::new(2, "ButtonSurface", NodeKind::Rect).with_shape(Shape::Rect {
+                        x: 370.0,
+                        y: 268.0,
+                        width: 220.0,
+                        height: 64.0,
+                        rx: 8.0,
+                    }),
+                    Node::new(3, "Label", NodeKind::Text).with_shape(Shape::Text {
+                        x: 480.0,
+                        y: 309.0,
+                        value: "Sign in".to_string(),
+                        size: 18.0,
+                    }),
+                    Node::new(4, "SpinnerArc", NodeKind::Path).with_shape(Shape::Path {
+                        d: "M462 300 A18 18 0 1 1 461 299".to_string(),
+                    }),
                 ],
             }],
             timelines: vec![
@@ -269,81 +597,91 @@ impl Document {
     }
 
     pub fn sample_minimal_bot() -> Self {
+        Self::generate_character(CharacterSpec::default())
+    }
+
+    pub fn sample_owl_mascot() -> Self {
+        Self::generate_character(CharacterSpec {
+            variant: "owl-guide".to_string(),
+            name: Some("Owl Mascot".to_string()),
+            accent: Some("#78d64b".to_string()),
+            shell: Some("#8ee15a".to_string()),
+        })
+    }
+
+    pub fn generate_character(spec: CharacterSpec) -> Self {
+        let variant = spec.variant.as_str();
+        let accent = spec.accent.as_deref().unwrap_or(match variant {
+            "owl-guide" => "#78d64b",
+            "scanner-bot" => "#2dffb8",
+            "celebration-bot" => "#f6d365",
+            _ => "#51bfd0",
+        });
+        let shell = spec.shell.as_deref().unwrap_or(match variant {
+            "owl-guide" => "#8ee15a",
+            _ => "#f6f1e8",
+        });
+        let name = spec.name.unwrap_or_else(|| match variant {
+            "owl-guide" => "Owl Mascot".to_string(),
+            "scanner-bot" => "Scanner Bot".to_string(),
+            "celebration-bot" => "Celebration Bot".to_string(),
+            _ => "Minimal Bot".to_string(),
+        });
+
+        let mut nodes = if variant == "owl-guide" {
+            owl_nodes(shell, accent)
+        } else {
+            bot_nodes(shell, accent)
+        };
+        if variant == "scanner-bot" {
+            nodes.push(
+                Node::new(190, "ScannerBadge", NodeKind::Rect)
+                    .with_shape(Shape::Rect {
+                        x: 598.0,
+                        y: 96.0,
+                        width: 42.0,
+                        height: 22.0,
+                        rx: 8.0,
+                    })
+                    .with_style(style(Some("#2dffb8"), Some("#17142f"), 4.0)),
+            );
+        }
+        if variant == "celebration-bot" {
+            nodes.push(
+                Node::new(191, "Confetti", NodeKind::Group).with_children(vec![
+                    Node::new(192, "ConfettiDotA", NodeKind::Ellipse)
+                        .with_shape(Shape::Ellipse {
+                            cx: 318.0,
+                            cy: 118.0,
+                            rx: 8.0,
+                            ry: 8.0,
+                        })
+                        .with_style(style(Some("#f6d365"), Some("#17142f"), 3.0)),
+                    Node::new(193, "ConfettiDotB", NodeKind::Ellipse)
+                        .with_shape(Shape::Ellipse {
+                            cx: 644.0,
+                            cy: 172.0,
+                            rx: 7.0,
+                            ry: 7.0,
+                        })
+                        .with_style(style(Some("#ff6b35"), Some("#17142f"), 3.0)),
+                ]),
+            );
+        }
+
         Self {
             id: Uuid::from_u128(100),
-            name: "Minimal Bot".to_string(),
+            name,
             artboards: vec![Artboard {
                 id: Uuid::from_u128(101),
-                name: "MinimalBot".to_string(),
+                name: if variant == "owl-guide" {
+                    "OwlMascot".to_string()
+                } else {
+                    "MinimalBot".to_string()
+                },
                 width: 960.0,
                 height: 540.0,
-                nodes: vec![
-                    Node {
-                        id: Uuid::from_u128(102),
-                        name: "BotRig".to_string(),
-                        kind: NodeKind::Group,
-                    },
-                    Node {
-                        id: Uuid::from_u128(103),
-                        name: "GroundShadow".to_string(),
-                        kind: NodeKind::Ellipse,
-                    },
-                    Node {
-                        id: Uuid::from_u128(104),
-                        name: "HelmetShell".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(105),
-                        name: "FacePanel".to_string(),
-                        kind: NodeKind::Rect,
-                    },
-                    Node {
-                        id: Uuid::from_u128(106),
-                        name: "Eyes".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(107),
-                        name: "Smile".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(108),
-                        name: "Torso".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(109),
-                        name: "ChestLight".to_string(),
-                        kind: NodeKind::Ellipse,
-                    },
-                    Node {
-                        id: Uuid::from_u128(110),
-                        name: "LeftArm".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(111),
-                        name: "RightArm".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(112),
-                        name: "LeftLeg".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(113),
-                        name: "RightLeg".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                    Node {
-                        id: Uuid::from_u128(114),
-                        name: "Antennae".to_string(),
-                        kind: NodeKind::Path,
-                    },
-                ],
+                nodes,
             }],
             timelines: vec![
                 Timeline {
@@ -479,7 +817,11 @@ impl Document {
             ],
             state_machines: vec![StateMachine {
                 id: Uuid::from_u128(130),
-                name: "BotMoods".to_string(),
+                name: if variant == "owl-guide" {
+                    "OwlMoods".to_string()
+                } else {
+                    "BotMoods".to_string()
+                },
                 inputs: vec![
                     Input {
                         name: "mode".to_string(),
@@ -589,5 +931,19 @@ mod tests {
             .timelines
             .iter()
             .any(|timeline| timeline.name == "wave"));
+    }
+
+    #[test]
+    fn prompt_can_generate_owl_mascot() {
+        let spec = super::character_spec_from_prompt("make an owl like Duo from Duolingo");
+        let document = Document::generate_character(spec);
+
+        assert_eq!(document.name, "Owl Mascot");
+        assert_eq!(document.artboards[0].name, "OwlMascot");
+        assert_eq!(document.state_machines[0].name, "OwlMoods");
+        assert!(document.artboards[0]
+            .nodes
+            .iter()
+            .any(|node| node.name == "Beak"));
     }
 }
