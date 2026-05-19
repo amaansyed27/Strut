@@ -1394,6 +1394,13 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn collect_layer_names<'a>(nodes: &'a [strut_core::Node], names: &mut Vec<&'a str>) {
+        for node in nodes {
+            names.push(node.name.as_str());
+            collect_layer_names(&node.children, names);
+        }
+    }
+
     #[test]
     fn local_agent_catalog_includes_requested_providers() {
         let adapters = local_agent_adapters();
@@ -1493,11 +1500,8 @@ mod tests {
         assert_eq!(spec.variant, "owl-guide");
 
         let document = strut_core::Document::generate_character(spec);
-        let layer_names = document.artboards[0]
-            .nodes
-            .iter()
-            .map(|node| node.name.as_str())
-            .collect::<Vec<_>>();
+        let mut layer_names = Vec::new();
+        collect_layer_names(&document.artboards[0].nodes, &mut layer_names);
         let states = &document.state_machines[0].states;
 
         assert_eq!(document.artboards[0].name, "OwlMascot");

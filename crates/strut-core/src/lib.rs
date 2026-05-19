@@ -180,9 +180,20 @@ fn style(fill: Option<&str>, stroke: Option<&str>, stroke_width: f32) -> Style {
     }
 }
 
+fn style_with_opacity(
+    fill: Option<&str>,
+    stroke: Option<&str>,
+    stroke_width: f32,
+    opacity: f32,
+) -> Style {
+    Style {
+        opacity,
+        ..style(fill, stroke, stroke_width)
+    }
+}
+
 fn bot_nodes(shell: &str, accent: &str) -> Vec<Node> {
     vec![
-        Node::new(102, "BotRig", NodeKind::Group),
         Node::new(103, "GroundShadow", NodeKind::Ellipse)
             .with_shape(Shape::Ellipse {
                 cx: 480.0,
@@ -191,74 +202,84 @@ fn bot_nodes(shell: &str, accent: &str) -> Vec<Node> {
                 ry: 18.0,
             })
             .with_style(style(Some("#17142f"), None, 0.0)),
-        Node::new(104, "HelmetShell", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M330 154 C348 70 434 38 544 58 C628 74 662 142 642 224 C620 312 540 350 432 328 C354 312 312 236 330 154Z".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(105, "FacePanel", NodeKind::Rect)
-            .with_shape(Shape::Rect {
-                x: 386.0,
-                y: 118.0,
-                width: 214.0,
-                height: 136.0,
-                rx: 42.0,
-            })
-            .with_style(style(Some("#17142f"), Some("#ffffff"), 6.0)),
-        Node::new(106, "Eyes", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M430 176 C438 154 462 154 470 176 M518 174 C526 152 550 152 558 174".to_string(),
-            })
-            .with_style(style(None, Some(accent), 9.0)),
-        Node::new(107, "Smile", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M464 210 C480 230 512 230 528 208".to_string(),
-            })
-            .with_style(style(None, Some(accent), 9.0)),
-        Node::new(108, "Torso", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M372 274 C386 226 430 204 492 206 C558 208 602 236 612 288 C624 356 576 402 486 400 C398 398 350 346 372 274Z".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(109, "ChestLight", NodeKind::Ellipse)
-            .with_shape(Shape::Ellipse {
-                cx: 512.0,
-                cy: 308.0,
-                rx: 17.0,
-                ry: 17.0,
-            })
-            .with_style(style(Some(accent), Some("#17142f"), 5.0)),
-        Node::new(110, "LeftArm", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M332 304 C268 320 252 372 282 398 C310 424 352 388 382 344".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(111, "RightArm", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M624 286 C686 296 716 252 690 218 C666 186 622 214 596 260".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(112, "LeftLeg", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M420 376 C390 410 392 448 426 454 C458 460 476 424 482 388".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(113, "RightLeg", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M532 382 C552 424 584 448 612 424 C636 402 610 366 570 344".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17142f"), 8.0)),
-        Node::new(114, "Antennae", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M376 172 L346 112 M584 166 L616 86".to_string(),
-            })
-            .with_style(style(None, Some("#17142f"), 6.0)),
+        Node::new(102, "BotRig", NodeKind::Group).with_children(vec![
+            Node::new(104, "HelmetShell", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M330 154 C348 70 434 38 544 58 C628 74 662 142 642 224 C620 312 540 350 432 328 C354 312 312 236 330 154Z".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(105, "FacePanel", NodeKind::Rect)
+                .with_shape(Shape::Rect {
+                    x: 386.0,
+                    y: 118.0,
+                    width: 214.0,
+                    height: 136.0,
+                    rx: 42.0,
+                })
+                .with_style(style(Some("#17142f"), Some("#ffffff"), 6.0)),
+            Node::new(115, "ScanSweep", NodeKind::Rect)
+                .with_shape(Shape::Rect {
+                    x: 404.0,
+                    y: 170.0,
+                    width: 178.0,
+                    height: 10.0,
+                    rx: 5.0,
+                })
+                .with_style(style_with_opacity(Some(accent), None, 0.0, 0.0)),
+            Node::new(106, "Eyes", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M430 176 C438 154 462 154 470 176 M518 174 C526 152 550 152 558 174".to_string(),
+                })
+                .with_style(style(None, Some(accent), 9.0)),
+            Node::new(107, "Smile", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M464 210 C480 230 512 230 528 208".to_string(),
+                })
+                .with_style(style(None, Some(accent), 9.0)),
+            Node::new(108, "Torso", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M372 274 C386 226 430 204 492 206 C558 208 602 236 612 288 C624 356 576 402 486 400 C398 398 350 346 372 274Z".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(109, "ChestLight", NodeKind::Ellipse)
+                .with_shape(Shape::Ellipse {
+                    cx: 512.0,
+                    cy: 308.0,
+                    rx: 17.0,
+                    ry: 17.0,
+                })
+                .with_style(style(Some(accent), Some("#17142f"), 5.0)),
+            Node::new(110, "LeftArm", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M332 304 C268 320 252 372 282 398 C310 424 352 388 382 344".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(111, "RightArm", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M624 286 C686 296 716 252 690 218 C666 186 622 214 596 260".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(112, "LeftLeg", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M420 376 C390 410 392 448 426 454 C458 460 476 424 482 388".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(113, "RightLeg", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M532 382 C552 424 584 448 612 424 C636 402 610 366 570 344".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17142f"), 8.0)),
+            Node::new(114, "Antennae", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M376 172 L346 112 M584 166 L616 86".to_string(),
+                })
+                .with_style(style(None, Some("#17142f"), 6.0)),
+        ]),
     ]
 }
 
 fn owl_nodes(shell: &str, accent: &str) -> Vec<Node> {
     vec![
-        Node::new(102, "OwlRig", NodeKind::Group),
         Node::new(103, "GroundShadow", NodeKind::Ellipse)
             .with_shape(Shape::Ellipse {
                 cx: 480.0,
@@ -267,64 +288,75 @@ fn owl_nodes(shell: &str, accent: &str) -> Vec<Node> {
                 ry: 18.0,
             })
             .with_style(style(Some("#17331f"), None, 0.0)),
-        Node::new(104, "OwlBody", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M340 178 C350 92 424 62 480 96 C536 60 612 94 624 182 C642 310 582 406 480 410 C378 406 322 306 340 178Z".to_string(),
-            })
-            .with_style(style(Some(shell), Some("#17331f"), 8.0)),
-        Node::new(105, "FaceMask", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M384 184 C394 134 446 122 480 156 C514 122 566 134 576 184 C586 244 538 286 480 262 C422 286 374 244 384 184Z".to_string(),
-            })
-            .with_style(style(Some("#f6f1e8"), Some("#17331f"), 7.0)),
-        Node::new(106, "Eyes", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M424 196 C432 174 458 174 466 196 M494 196 C502 174 528 174 536 196".to_string(),
-            })
-            .with_style(style(None, Some("#17331f"), 10.0)),
-        Node::new(107, "Beak", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M472 220 L488 220 L480 236Z".to_string(),
-            })
-            .with_style(style(Some("#f6d365"), Some("#17331f"), 4.0)),
-        Node::new(108, "Belly", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M420 282 C430 342 530 342 540 282 C520 304 444 304 420 282Z".to_string(),
-            })
-            .with_style(style(Some("#d7f7c6"), Some("#17331f"), 5.0)),
-        Node::new(109, "ChestMark", NodeKind::Ellipse)
-            .with_shape(Shape::Ellipse {
-                cx: 480.0,
-                cy: 304.0,
-                rx: 18.0,
-                ry: 14.0,
-            })
-            .with_style(style(Some(accent), Some("#17331f"), 4.0)),
-        Node::new(110, "LeftWing", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M368 248 C304 270 298 346 354 370 C382 332 390 292 368 248Z".to_string(),
-            })
-            .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
-        Node::new(111, "RightWing", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M592 248 C656 270 662 346 606 370 C578 332 570 292 592 248Z".to_string(),
-            })
-            .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
-        Node::new(112, "LeftFoot", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M430 404 C418 428 444 438 462 414".to_string(),
-            })
-            .with_style(style(None, Some("#f6d365"), 8.0)),
-        Node::new(113, "RightFoot", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M530 404 C542 428 516 438 498 414".to_string(),
-            })
-            .with_style(style(None, Some("#f6d365"), 8.0)),
-        Node::new(114, "BrowTufts", NodeKind::Path)
-            .with_shape(Shape::Path {
-                d: "M412 138 L382 108 M548 138 L578 108".to_string(),
-            })
-            .with_style(style(None, Some("#17331f"), 8.0)),
+        Node::new(102, "OwlRig", NodeKind::Group).with_children(vec![
+            Node::new(104, "OwlBody", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M340 178 C350 92 424 62 480 96 C536 60 612 94 624 182 C642 310 582 406 480 410 C378 406 322 306 340 178Z".to_string(),
+                })
+                .with_style(style(Some(shell), Some("#17331f"), 8.0)),
+            Node::new(105, "FaceMask", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M384 184 C394 134 446 122 480 156 C514 122 566 134 576 184 C586 244 538 286 480 262 C422 286 374 244 384 184Z".to_string(),
+                })
+                .with_style(style(Some("#f6f1e8"), Some("#17331f"), 7.0)),
+            Node::new(115, "ScanSweep", NodeKind::Rect)
+                .with_shape(Shape::Rect {
+                    x: 402.0,
+                    y: 194.0,
+                    width: 156.0,
+                    height: 9.0,
+                    rx: 5.0,
+                })
+                .with_style(style_with_opacity(Some(accent), None, 0.0, 0.0)),
+            Node::new(106, "Eyes", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M424 196 C432 174 458 174 466 196 M494 196 C502 174 528 174 536 196".to_string(),
+                })
+                .with_style(style(None, Some("#17331f"), 10.0)),
+            Node::new(107, "Beak", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M472 220 L488 220 L480 236Z".to_string(),
+                })
+                .with_style(style(Some("#f6d365"), Some("#17331f"), 4.0)),
+            Node::new(108, "Belly", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M420 282 C430 342 530 342 540 282 C520 304 444 304 420 282Z".to_string(),
+                })
+                .with_style(style(Some("#d7f7c6"), Some("#17331f"), 5.0)),
+            Node::new(109, "ChestMark", NodeKind::Ellipse)
+                .with_shape(Shape::Ellipse {
+                    cx: 480.0,
+                    cy: 304.0,
+                    rx: 18.0,
+                    ry: 14.0,
+                })
+                .with_style(style(Some(accent), Some("#17331f"), 4.0)),
+            Node::new(110, "LeftWing", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M368 248 C304 270 298 346 354 370 C382 332 390 292 368 248Z".to_string(),
+                })
+                .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
+            Node::new(111, "RightWing", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M592 248 C656 270 662 346 606 370 C578 332 570 292 592 248Z".to_string(),
+                })
+                .with_style(style(Some("#65c83e"), Some("#17331f"), 8.0)),
+            Node::new(112, "LeftFoot", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M430 404 C418 428 444 438 462 414".to_string(),
+                })
+                .with_style(style(None, Some("#f6d365"), 8.0)),
+            Node::new(113, "RightFoot", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M530 404 C542 428 516 438 498 414".to_string(),
+                })
+                .with_style(style(None, Some("#f6d365"), 8.0)),
+            Node::new(114, "BrowTufts", NodeKind::Path)
+                .with_shape(Shape::Path {
+                    d: "M412 138 L382 108 M548 138 L578 108".to_string(),
+                })
+                .with_style(style(None, Some("#17331f"), 8.0)),
+        ]),
     ]
 }
 
@@ -672,58 +704,333 @@ impl Document {
                     id: Uuid::from_u128(120),
                     name: "idle_float".to_string(),
                     duration_ms: 1400,
-                    tracks: vec![Track {
-                        target: Uuid::from_u128(102),
-                        property: "translation.y".to_string(),
-                        keyframes: vec![
-                            Keyframe {
-                                time_ms: 0,
-                                value: PropertyValue::Number(0.0),
-                                easing: Easing::EaseInOut,
-                            },
-                            Keyframe {
-                                time_ms: 700,
-                                value: PropertyValue::Number(-18.0),
-                                easing: Easing::EaseInOut,
-                            },
-                            Keyframe {
-                                time_ms: 1400,
-                                value: PropertyValue::Number(0.0),
-                                easing: Easing::EaseInOut,
-                            },
-                        ],
-                    }],
+                    tracks: vec![
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 700,
+                                    value: PropertyValue::Number(-18.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1400,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(103),
+                            property: "scale.x".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 700,
+                                    value: PropertyValue::Number(0.78),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1400,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(103),
+                            property: "opacity".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 700,
+                                    value: PropertyValue::Number(0.55),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1400,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(110),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 700,
+                                    value: PropertyValue::Number(-4.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1400,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(110),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 240,
+                                    value: PropertyValue::Number(-10.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 560,
+                                    value: PropertyValue::Number(3.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(111),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 700,
+                                    value: PropertyValue::Number(4.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1400,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                    ],
                 },
                 Timeline {
                     id: Uuid::from_u128(121),
                     name: "wave".to_string(),
                     duration_ms: 900,
-                    tracks: vec![Track {
-                        target: Uuid::from_u128(111),
-                        property: "rotation".to_string(),
-                        keyframes: vec![
-                            Keyframe {
-                                time_ms: 0,
-                                value: PropertyValue::Number(0.0),
-                                easing: Easing::EaseOut,
-                            },
-                            Keyframe {
-                                time_ms: 260,
-                                value: PropertyValue::Number(-34.0),
-                                easing: Easing::EaseOut,
-                            },
-                            Keyframe {
-                                time_ms: 520,
-                                value: PropertyValue::Number(-8.0),
-                                easing: Easing::EaseInOut,
-                            },
-                            Keyframe {
-                                time_ms: 900,
-                                value: PropertyValue::Number(0.0),
-                                easing: Easing::EaseInOut,
-                            },
-                        ],
-                    }],
+                    tracks: vec![
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(-12.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 520,
+                                    value: PropertyValue::Number(-6.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "scale.x".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(1.04),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "scale.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(0.96),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(110),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 240,
+                                    value: PropertyValue::Number(8.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 560,
+                                    value: PropertyValue::Number(-4.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(111),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(-58.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 360,
+                                    value: PropertyValue::Number(24.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 560,
+                                    value: PropertyValue::Number(-44.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(111),
+                            property: "translation.x".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(18.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 360,
+                                    value: PropertyValue::Number(4.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 560,
+                                    value: PropertyValue::Number(14.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(111),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 180,
+                                    value: PropertyValue::Number(-34.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 360,
+                                    value: PropertyValue::Number(-6.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 560,
+                                    value: PropertyValue::Number(-26.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 900,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                    ],
                 },
                 Timeline {
                     id: Uuid::from_u128(122),
@@ -755,48 +1062,219 @@ impl Document {
                     id: Uuid::from_u128(123),
                     name: "scan".to_string(),
                     duration_ms: 1200,
-                    tracks: vec![Track {
-                        target: Uuid::from_u128(105),
-                        property: "scan_line.y".to_string(),
-                        keyframes: vec![
-                            Keyframe {
-                                time_ms: 0,
-                                value: PropertyValue::Number(-52.0),
-                                easing: Easing::Linear,
-                            },
-                            Keyframe {
-                                time_ms: 1200,
-                                value: PropertyValue::Number(52.0),
-                                easing: Easing::Linear,
-                            },
-                        ],
-                    }],
+                    tracks: vec![
+                        Track {
+                            target: Uuid::from_u128(115),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(-42.0),
+                                    easing: Easing::Linear,
+                                },
+                                Keyframe {
+                                    time_ms: 1200,
+                                    value: PropertyValue::Number(48.0),
+                                    easing: Easing::Linear,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(115),
+                            property: "opacity".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::Linear,
+                                },
+                                Keyframe {
+                                    time_ms: 140,
+                                    value: PropertyValue::Number(0.62),
+                                    easing: Easing::Linear,
+                                },
+                                Keyframe {
+                                    time_ms: 980,
+                                    value: PropertyValue::Number(0.62),
+                                    easing: Easing::Linear,
+                                },
+                                Keyframe {
+                                    time_ms: 1200,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::Linear,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(105),
+                            property: "opacity".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 600,
+                                    value: PropertyValue::Number(0.7),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1200,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                    ],
                 },
                 Timeline {
                     id: Uuid::from_u128(124),
                     name: "celebrate".to_string(),
                     duration_ms: 1000,
-                    tracks: vec![Track {
-                        target: Uuid::from_u128(102),
-                        property: "scale".to_string(),
-                        keyframes: vec![
-                            Keyframe {
-                                time_ms: 0,
-                                value: PropertyValue::Number(1.0),
-                                easing: Easing::EaseOut,
-                            },
-                            Keyframe {
-                                time_ms: 260,
-                                value: PropertyValue::Number(1.08),
-                                easing: Easing::EaseOut,
-                            },
-                            Keyframe {
-                                time_ms: 1000,
-                                value: PropertyValue::Number(1.0),
-                                easing: Easing::EaseInOut,
-                            },
-                        ],
-                    }],
+                    tracks: vec![
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "translation.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 220,
+                                    value: PropertyValue::Number(-24.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 520,
+                                    value: PropertyValue::Number(8.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "scale.x".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 220,
+                                    value: PropertyValue::Number(1.1),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 520,
+                                    value: PropertyValue::Number(0.94),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(102),
+                            property: "scale.y".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 220,
+                                    value: PropertyValue::Number(0.92),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 520,
+                                    value: PropertyValue::Number(1.08),
+                                    easing: Easing::EaseInOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(110),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 260,
+                                    value: PropertyValue::Number(-26.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(111),
+                            property: "rotation".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 260,
+                                    value: PropertyValue::Number(26.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(0.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                        Track {
+                            target: Uuid::from_u128(109),
+                            property: "scale".to_string(),
+                            keyframes: vec![
+                                Keyframe {
+                                    time_ms: 0,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 260,
+                                    value: PropertyValue::Number(1.35),
+                                    easing: Easing::EaseOut,
+                                },
+                                Keyframe {
+                                    time_ms: 1000,
+                                    value: PropertyValue::Number(1.0),
+                                    easing: Easing::EaseInOut,
+                                },
+                            ],
+                        },
+                    ],
                 },
             ],
             state_machines: vec![StateMachine {
@@ -892,6 +1370,12 @@ impl Document {
 mod tests {
     use super::Document;
 
+    fn contains_node(nodes: &[super::Node], name: &str) -> bool {
+        nodes
+            .iter()
+            .any(|node| node.name == name || contains_node(&node.children, name))
+    }
+
     #[test]
     fn sample_document_has_the_mvp_state_machine() {
         let document = Document::sample_login_button();
@@ -939,9 +1423,6 @@ mod tests {
         assert_eq!(document.name, "Owl Mascot");
         assert_eq!(document.artboards[0].name, "OwlMascot");
         assert_eq!(document.state_machines[0].name, "OwlMoods");
-        assert!(document.artboards[0]
-            .nodes
-            .iter()
-            .any(|node| node.name == "Beak"));
+        assert!(contains_node(&document.artboards[0].nodes, "Beak"));
     }
 }

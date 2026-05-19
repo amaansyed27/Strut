@@ -388,50 +388,195 @@ function runtimeCss(document: StrutDocument, stateMachine: StrutStateMachine, re
   if (reducedMotion) {
     return base;
   }
+  const transforms = nodeTransformMap(document);
   const timelines = document.timelines.filter((timeline) => timeline.tracks?.length);
   const animations = timelines
-    .flatMap((timeline) => (timeline.tracks ?? []).map((track) => trackCss(timeline, track)))
+    .map((timeline) => timelineAnimationCss(timeline, transforms))
     .filter(Boolean)
     .join("\n");
   const stateRules = stateMachine.states
-    .flatMap((state) => timelinesForState(document, stateMachine, state).flatMap((timeline) => stateTimelineCss(state, timeline)))
+    .flatMap((state) => timelinesForState(document, stateMachine, state).flatMap((timeline) => stateTimelineCss(state, timeline, transforms)))
     .join("\n");
   return `${base}\n${animations}\n${stateRules}`;
 }
 
-function trackCss(timeline: StrutTimeline, track: StrutTrack) {
-  const numericKeyframes = track.keyframes
-    .map((keyframe) => ({ ...keyframe, value: numericValue(keyframe.value) }))
-    .filter((keyframe) => keyframe.value !== null) as Array<StrutKeyframe & { value: number }>;
+function timelineAnimationCss(timeline: StrutTimeline, transforms: Map<string, StrutTransform>) {
+  return Array.from(timelineTrackGroups(timeline).entries())
+    .flatMap(([target, tracks]) => [
+      transformTracksCss(timeline, target, tracks.filter((track) => isTransformProperty(track.property)), transforms.get(target)),
+      ...tracks.filter((track) => isScalarProperty(track.property)).map((track) => scalarTrackCss(timeline, track)),
+    ])
+    .filter(Boolean)
+    .join("\n");
+}
+
+function transformTracksCss(
+  timeline: StrutTimeline,
+  target: string,
+  tracks: StrutTrack[],
+  baseTransform: StrutTransform | undefined,
+) {
+  if (!tracks.length) {
+    return "";
+  }
+  const times = sortedTimelineTimes(timeline, tracks);
+  const frames = times
+    .map((time) => {
+      const percent = Math.max(0, Math.min(100, (time / timeline.duration_ms) * 100));
+      const base = normalizeTransform(baseTransform);
+      const tx = base.translate_x + trackValue(tracks, "translation.x", time, 0);
+      const ty = base.translate_y + trackValue(tracks, "translation.y", time, 0);
+      const rotate = base.rotate + trackValue(tracks, "rotation", time, 0);
+      const scale = trackValue(tracks, "scale", time, 1);
+      const sx = base.scale_x * scale * trackValue(tracks, "scale.x", time, 1);
+      const sy = base.scale_y * scale * trackValue(tracks, "scale.y", time, 1);
+      return `${percent}% { transform: translate(${round(tx)}px, ${round(ty)}px) rotate(${round(rotate)}deg) scale(${round(sx)}, ${round(sy)}); }`;
+    })
+    .join("\n");
+  return `@keyframes ${transformAnimationName(timeline, target)} { ${frames} }`;
+}
+
+function scalarTrackCss(timeline: StrutTimeline, track: StrutTrack) {
+  const numericKeyframes = numericTrackKeyframes(track);
   if (numericKeyframes.length < 2) {
     return "";
   }
   const frames = numericKeyframes
     .map((keyframe) => {
       const percent = Math.max(0, Math.min(100, (keyframe.time_ms / timeline.duration_ms) * 100));
-      return `${percent}% { ${propertyCss(track.property, keyframe.value)} }`;
+      return `${percent}% { ${track.property}: ${round(keyframe.value)}; }`;
     })
     .join("\n");
-  return `@keyframes ${animationName(timeline, track)} { ${frames} }`;
+  return `@keyframes ${scalarAnimationName(timeline, track)} { ${frames} }`;
 }
 
-function stateTimelineCss(state: string, timeline: StrutTimeline) {
-  return (timeline.tracks ?? [])
-    .filter((track) => track.keyframes.length > 1 && track.keyframes.some((keyframe) => numericValue(keyframe.value) !== null))
-    .map((track) => {
-      const easing = cssEasing(track.keyframes[0]?.easing ?? "linear");
-      return `.strut-runtime-svg.state-${cssIdent(state)} [data-node-id="${track.target}"] { animation: ${animationName(timeline, track)} ${timeline.duration_ms}ms ${easing} infinite; }`;
-    });
+function stateTimelineCss(state: string, timeline: StrutTimeline, transforms: Map<string, StrutTransform>) {
+  return Array.from(timelineTrackGroups(timeline).entries())
+    .map(([target, tracks]) => {
+      const animations = [
+        tracks.some((track) => isTransformProperty(track.property))
+          ? `${transformAnimationName(timeline, target)} ${timeline.duration_ms}ms ${groupEasing(tracks)} infinite`
+          : "",
+        ...tracks
+          .filter((track) => isScalarProperty(track.property))
+          .map((track) => `${scalarAnimationName(timeline, track)} ${timeline.duration_ms}ms ${cssEasing(track.keyframes[0]?.easing ?? "linear")} infinite`),
+      ].filter(Boolean);
+      if (!animations.length) {
+        return "";
+      }
+      const base = transforms.get(target);
+      const baseRule = tracks.some((track) => isTransformProperty(track.property))
+        ? ` transform: ${transformCss(normalizeTransform(base))};`
+        : "";
+      return `.strut-runtime-svg.state-${cssIdent(state)} [data-node-id="${target}"] {${baseRule} animation: ${animations.join(", ")}; }`;
+    })
+    .filter(Boolean);
 }
 
-function propertyCss(property: string, value: number) {
-  if (property === "translation.y") return `transform: translateY(${value}px);`;
-  if (property === "translation.x") return `transform: translateX(${value}px);`;
-  if (property === "rotation") return `transform: rotate(${value}deg);`;
-  if (property === "scale") return `transform: scale(${value});`;
-  if (property === "scale.y") return `transform: scaleY(${value});`;
-  if (property === "scale.x") return `transform: scaleX(${value});`;
-  return `opacity: ${value};`;
+function timelineTrackGroups(timeline: StrutTimeline) {
+  const groups = new Map<string, StrutTrack[]>();
+  for (const track of timeline.tracks ?? []) {
+    if (!hasNumericMotion(track) || (!isTransformProperty(track.property) && !isScalarProperty(track.property))) {
+      continue;
+    }
+    groups.set(track.target, [...(groups.get(track.target) ?? []), track]);
+  }
+  return groups;
+}
+
+function sortedTimelineTimes(timeline: StrutTimeline, tracks: StrutTrack[]) {
+  return Array.from(
+    new Set([
+      0,
+      timeline.duration_ms,
+      ...tracks.flatMap((track) => numericTrackKeyframes(track).map((keyframe) => keyframe.time_ms)),
+    ]),
+  ).sort((a, b) => a - b);
+}
+
+function trackValue(tracks: StrutTrack[], property: string, time: number, fallback: number) {
+  const track = tracks.find((candidate) => candidate.property === property);
+  return track ? interpolatedTrackValue(track, time, fallback) : fallback;
+}
+
+function interpolatedTrackValue(track: StrutTrack, time: number, fallback: number) {
+  const keyframes = numericTrackKeyframes(track).sort((a, b) => a.time_ms - b.time_ms);
+  if (!keyframes.length) {
+    return fallback;
+  }
+  if (time <= keyframes[0].time_ms) {
+    return keyframes[0].value;
+  }
+  const last = keyframes[keyframes.length - 1];
+  if (time >= last.time_ms) {
+    return last.value;
+  }
+  for (let index = 0; index < keyframes.length - 1; index += 1) {
+    const left = keyframes[index];
+    const right = keyframes[index + 1];
+    if (time >= left.time_ms && time <= right.time_ms) {
+      const span = Math.max(1, right.time_ms - left.time_ms);
+      const progress = (time - left.time_ms) / span;
+      return left.value + (right.value - left.value) * progress;
+    }
+  }
+  return fallback;
+}
+
+function numericTrackKeyframes(track: StrutTrack) {
+  return track.keyframes
+    .map((keyframe) => ({ ...keyframe, value: numericValue(keyframe.value) }))
+    .filter((keyframe) => keyframe.value !== null) as Array<StrutKeyframe & { value: number }>;
+}
+
+function hasNumericMotion(track: StrutTrack) {
+  return numericTrackKeyframes(track).length > 1;
+}
+
+function isTransformProperty(property: string) {
+  return ["translation.x", "translation.y", "rotation", "scale", "scale.x", "scale.y"].includes(property);
+}
+
+function isScalarProperty(property: string) {
+  return property === "opacity";
+}
+
+function groupEasing(tracks: StrutTrack[]) {
+  return cssEasing(tracks[0]?.keyframes[0]?.easing ?? "linear");
+}
+
+function nodeTransformMap(document: StrutDocument) {
+  const transforms = new Map<string, StrutTransform>();
+  const visit = (node: StrutNode) => {
+    transforms.set(node.id, node.transform ?? {});
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+  for (const artboard of document.artboards) {
+    for (const node of artboard.nodes) {
+      visit(node);
+    }
+  }
+  return transforms;
+}
+
+function normalizeTransform(transform: StrutTransform | undefined): Required<StrutTransform> {
+  return {
+    translate_x: transform?.translate_x ?? 0,
+    translate_y: transform?.translate_y ?? 0,
+    rotate: transform?.rotate ?? 0,
+    scale_x: transform?.scale_x ?? 1,
+    scale_y: transform?.scale_y ?? 1,
+  };
+}
+
+function transformCss(transform: Required<StrutTransform>) {
+  return `translate(${round(transform.translate_x)}px, ${round(transform.translate_y)}px) rotate(${round(transform.rotate)}deg) scale(${round(transform.scale_x)}, ${round(transform.scale_y)})`;
+}
+
+function round(value: number) {
+  return Number(value.toFixed(4));
 }
 
 function timelinesForState(document: StrutDocument, stateMachine: StrutStateMachine, state: string) {
@@ -531,7 +676,11 @@ function numericValue(value: StrutPropertyValue): number | null {
   return value.type === "number" ? value.value : null;
 }
 
-function animationName(timeline: StrutTimeline, track: StrutTrack) {
+function transformAnimationName(timeline: StrutTimeline, target: string) {
+  return `strut-${cssIdent(timeline.name)}-${cssIdent(target)}-transform`;
+}
+
+function scalarAnimationName(timeline: StrutTimeline, track: StrutTrack) {
   return `strut-${cssIdent(timeline.name)}-${cssIdent(track.target)}-${cssIdent(track.property)}`;
 }
 
