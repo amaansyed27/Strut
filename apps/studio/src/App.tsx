@@ -35,6 +35,7 @@ type StrutNode = {
   id: string;
   name: string;
   kind: string;
+  children?: StrutNode[];
 };
 
 type Artboard = {
@@ -127,20 +128,69 @@ const botSketches = [
     name: "Floating Helper",
     detail: "Soft hover loop, small wave, friendly face.",
     state: "wave",
+    prompt: "make a minimalist waving robot like the reference image",
   },
   {
     id: "scanner-bot",
     name: "Scanner Bot",
     detail: "Face scan line, alert posture, data-ready motion.",
     state: "scan",
+    prompt: "make a scanner robot with a face scan animation",
   },
   {
     id: "celebration-bot",
     name: "Celebration Bot",
     detail: "Pop motion, bright face, success feedback.",
     state: "celebrate",
+    prompt: "make a celebration robot with success and confetti animation",
+  },
+  {
+    id: "owl-guide",
+    name: "Owl Guide",
+    detail: "Rounded green mascot, wing wave, blink, celebrate.",
+    state: "wave",
+    prompt: "make an owl mascot like Duo from Duolingo with wave and blink animations",
   },
 ];
+
+const defaultCharacterPrompt = "make a minimalist waving robot like the reference image";
+
+const owlDocument: StrutDocument = {
+  ...fallbackDocument,
+  id: "00000000-0000-0000-0000-000000000200",
+  name: "Owl Mascot",
+  artboards: [
+    {
+      ...fallbackDocument.artboards[0],
+      id: "00000000-0000-0000-0000-000000000201",
+      name: "OwlMascot",
+      nodes: [
+        { id: "102", name: "OwlRig", kind: "group" },
+        { id: "103", name: "GroundShadow", kind: "ellipse" },
+        { id: "104", name: "OwlBody", kind: "path" },
+        { id: "105", name: "FaceMask", kind: "path" },
+        { id: "106", name: "Eyes", kind: "path" },
+        { id: "107", name: "Beak", kind: "path" },
+        { id: "108", name: "Belly", kind: "path" },
+        { id: "109", name: "ChestMark", kind: "ellipse" },
+        { id: "110", name: "LeftWing", kind: "path" },
+        { id: "111", name: "RightWing", kind: "path" },
+        { id: "112", name: "LeftFoot", kind: "path" },
+        { id: "113", name: "RightFoot", kind: "path" },
+        { id: "114", name: "BrowTufts", kind: "path" },
+      ],
+    },
+  ],
+  state_machines: [
+    {
+      ...fallbackDocument.state_machines[0],
+      id: "230",
+      name: "OwlMoods",
+    },
+  ],
+  bindings: [{ name: "face_glow" }, { name: "feather_tint" }],
+  events: [{ name: "wing_wave_started" }, { name: "celebration_complete" }],
+};
 
 function titleCase(value: string) {
   return value
@@ -153,8 +203,9 @@ function BotPreview({ activeState }: { activeState: string }) {
   return (
     <svg
       className={`bot-preview state-${activeState}`}
+      data-character="bot"
       data-state={activeState}
-      data-testid="bot-preview"
+      data-testid="character-preview"
       viewBox="0 0 960 540"
       role="img"
       aria-label={`Minimal bot preview in ${activeState} state`}
@@ -219,12 +270,91 @@ function BotPreview({ activeState }: { activeState: string }) {
   );
 }
 
+function OwlPreview({ activeState }: { activeState: string }) {
+  return (
+    <svg
+      className={`owl-preview state-${activeState}`}
+      data-character="owl"
+      data-state={activeState}
+      data-testid="character-preview"
+      viewBox="0 0 960 540"
+      role="img"
+      aria-label={`Owl mascot preview in ${activeState} state`}
+    >
+      <rect width="960" height="540" className="owl-sky" />
+      <g className="owl-confetti" aria-hidden="true">
+        <circle cx="340" cy="120" r="8" />
+        <circle cx="620" cy="128" r="7" />
+        <rect x="596" y="92" width="13" height="13" rx="3" />
+      </g>
+      <ellipse className="owl-shadow" cx="480" cy="444" rx="126" ry="18" />
+      <g className="owl-rig">
+        <path className="owl-left-wing" d="M368 248 C304 270 298 346 354 370 C382 332 390 292 368 248Z" />
+        <path className="owl-right-wing" d="M592 248 C656 270 662 346 606 370 C578 332 570 292 592 248Z" />
+        <path className="owl-body" d="M340 178 C350 92 424 62 480 96 C536 60 612 94 624 182 C642 310 582 406 480 410 C378 406 322 306 340 178Z" />
+        <path className="owl-face" d="M384 184 C394 134 446 122 480 156 C514 122 566 134 576 184 C586 244 538 286 480 262 C422 286 374 244 384 184Z" />
+        <path className="owl-brow" d="M412 138 L382 108 M548 138 L578 108" />
+        <path className="owl-eye left" d="M424 196 C432 174 458 174 466 196" />
+        <path className="owl-eye right" d="M494 196 C502 174 528 174 536 196" />
+        <path className="owl-beak" d="M472 220 L488 220 L480 236Z" />
+        <path className="owl-belly" d="M420 282 C430 342 530 342 540 282 C520 304 444 304 420 282Z" />
+        <circle className="owl-chest" cx="480" cy="304" r="16" />
+        <path className="owl-left-foot" d="M430 404 C418 428 444 438 462 414" />
+        <path className="owl-right-foot" d="M530 404 C542 428 516 438 498 414" />
+        <rect className="owl-scan-line" x="398" y="174" width="164" height="10" rx="5" />
+      </g>
+      <text className="bot-state-label" x="480" y="506" textAnchor="middle">
+        {titleCase(activeState)}
+      </text>
+    </svg>
+  );
+}
+
+function CharacterPreview({
+  document,
+  activeState,
+}: {
+  document: StrutDocument;
+  activeState: string;
+}) {
+  const isOwl = document.name.toLowerCase().includes("owl");
+  return isOwl ? <OwlPreview activeState={activeState} /> : <BotPreview activeState={activeState} />;
+}
+
+function flattenNodes(nodes: StrutNode[]): StrutNode[] {
+  return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
+}
+
+function fallbackGenerateCharacter(prompt: string): StrutDocument {
+  const normalized = prompt.toLowerCase();
+  if (normalized.includes("owl") || normalized.includes("duo") || normalized.includes("duolingo")) {
+    return owlDocument;
+  }
+
+  if (normalized.includes("scan") || normalized.includes("data")) {
+    return {
+      ...fallbackDocument,
+      name: "Scanner Bot",
+    };
+  }
+
+  if (normalized.includes("celebrate") || normalized.includes("success") || normalized.includes("confetti")) {
+    return {
+      ...fallbackDocument,
+      name: "Celebration Bot",
+    };
+  }
+
+  return fallbackDocument;
+}
+
 function App() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [document, setDocument] = useState<StrutDocument>(fallbackDocument);
   const [activeState, setActiveState] = useState("wave");
   const [showSketches, setShowSketches] = useState(false);
   const [selectedSketch, setSelectedSketch] = useState(botSketches[0]);
+  const [characterPrompt, setCharacterPrompt] = useState(defaultCharacterPrompt);
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status").then(setStatus).catch(() => {
@@ -246,11 +376,31 @@ function App() {
 
   const activeArtboard = document.artboards[0] ?? fallbackDocument.artboards[0];
   const activeMachine = document.state_machines[0] ?? fallbackDocument.state_machines[0];
+  const visibleLayers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const states = activeMachine.states;
   const totalTimelineMs = useMemo(
     () => document.timelines.reduce((total, timeline) => total + timeline.duration_ms, 0),
     [document.timelines],
   );
+
+  async function generateCharacter(prompt = characterPrompt, preferredState?: string) {
+    let generatedDocument: StrutDocument;
+    try {
+      generatedDocument = await invoke<StrutDocument>("generate_character", { prompt });
+    } catch {
+      generatedDocument = fallbackGenerateCharacter(prompt);
+    }
+
+    setDocument(generatedDocument);
+    const generatedStates = generatedDocument.state_machines[0]?.states ?? [];
+    if (preferredState && generatedStates.includes(preferredState)) {
+      setActiveState(preferredState);
+    } else if (generatedStates.includes("wave")) {
+      setActiveState("wave");
+    } else if (generatedStates[0]) {
+      setActiveState(generatedStates[0]);
+    }
+  }
 
   return (
     <main className="studio-shell">
@@ -317,10 +467,10 @@ function App() {
               <Layers3 size={16} />
               Layers
             </span>
-            <small>{activeArtboard.nodes.length}</small>
+            <small>{visibleLayers.length}</small>
           </div>
           <div className="layer-list">
-            {activeArtboard.nodes.map((layer) => (
+            {visibleLayers.map((layer) => (
               <button className="layer-row" key={layer.id} type="button">
                 <i style={{ background: layerColors[layer.kind] ?? "#9ba3b4" }} />
                 <span>{layer.name}</span>
@@ -364,7 +514,7 @@ function App() {
 
           <div className="stage">
             <div className="artboard bot-artboard">
-              <BotPreview activeState={activeState} />
+              <CharacterPreview document={document} activeState={activeState} />
             </div>
           </div>
 
@@ -413,13 +563,21 @@ function App() {
               <Zap size={17} />
               Plan Mode
             </div>
-            <p>Sketch directions before full generation when no mockup is attached.</p>
+            <textarea
+              aria-label="Character prompt"
+              value={characterPrompt}
+              onChange={(event) => setCharacterPrompt(event.currentTarget.value)}
+              placeholder="make a mascot character with wave, blink, scan and celebrate animations"
+            />
             <button
               className="wide-action"
               type="button"
-              onClick={() => setShowSketches(true)}
+              onClick={() => {
+                setShowSketches(true);
+                void generateCharacter();
+              }}
             >
-              Generate Sketches
+              Generate Character
             </button>
           </div>
 
@@ -430,7 +588,10 @@ function App() {
                   className={selectedSketch.id === sketch.id ? "sketch-card selected" : "sketch-card"}
                   key={sketch.id}
                   type="button"
-                  onClick={() => setSelectedSketch(sketch)}
+                  onClick={() => {
+                    setSelectedSketch(sketch);
+                    setCharacterPrompt(sketch.prompt ?? sketch.detail);
+                  }}
                 >
                   <span className={`sketch-thumb ${sketch.id}`} />
                   <strong>{sketch.name}</strong>
@@ -440,9 +601,11 @@ function App() {
               <button
                 className="wide-action build-action"
                 type="button"
-                onClick={() => setActiveState(selectedSketch.state)}
+                onClick={() => {
+                  void generateCharacter(selectedSketch.prompt ?? selectedSketch.detail, selectedSketch.state);
+                }}
               >
-                Build Minimal Bot
+                Build Character
               </button>
             </div>
           ) : null}

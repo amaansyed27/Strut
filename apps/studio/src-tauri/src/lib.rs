@@ -26,11 +26,21 @@ fn sample_document() -> strut_core::Document {
         .unwrap_or_else(|_| strut_core::Document::sample_minimal_bot())
 }
 
+#[tauri::command]
+fn generate_character(prompt: String) -> strut_core::Document {
+    let spec = strut_core::character_spec_from_prompt(&prompt);
+    strut_core::Document::generate_character(spec)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![studio_status, sample_document])
+        .invoke_handler(tauri::generate_handler![
+            studio_status,
+            sample_document,
+            generate_character
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

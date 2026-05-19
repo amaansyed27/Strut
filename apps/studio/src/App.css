@@ -333,6 +333,12 @@ button {
   display: block;
 }
 
+.owl-preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .bot-sky {
   fill: #51bfd0;
 }
@@ -440,6 +446,85 @@ button {
   letter-spacing: 0;
 }
 
+.owl-sky {
+  fill: #8ee15a;
+}
+
+.owl-rig,
+.owl-left-wing,
+.owl-right-wing,
+.owl-eye,
+.owl-brow,
+.owl-beak,
+.owl-belly {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.owl-shadow {
+  fill: #17331f;
+  opacity: 0.7;
+  transform-origin: center;
+}
+
+.owl-body {
+  fill: #78d64b;
+  stroke: #17331f;
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+
+.owl-face,
+.owl-belly {
+  fill: #f6f1e8;
+  stroke: #17331f;
+  stroke-width: 7;
+  stroke-linejoin: round;
+}
+
+.owl-left-wing,
+.owl-right-wing {
+  fill: #65c83e;
+  stroke: #17331f;
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+
+.owl-eye,
+.owl-brow,
+.owl-left-foot,
+.owl-right-foot {
+  fill: none;
+  stroke: #17331f;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.owl-beak,
+.owl-chest {
+  fill: #f6d365;
+  stroke: #17331f;
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+
+.owl-confetti,
+.owl-scan-line {
+  opacity: 0;
+}
+
+.owl-confetti circle,
+.owl-confetti rect {
+  fill: #f6d365;
+  stroke: #17331f;
+  stroke-width: 3;
+}
+
+.owl-scan-line {
+  fill: #2dffb8;
+}
+
 .state-idle .bot-rig {
   animation: botFloat 2.4s ease-in-out infinite;
 }
@@ -500,6 +585,41 @@ button {
 .state-sleep .bot-shadow {
   transform: scaleX(1.12);
   opacity: 0.72;
+}
+
+.state-idle .owl-rig,
+.state-float .owl-rig {
+  animation: botFloat 1.5s ease-in-out infinite;
+}
+
+.state-wave .owl-right-wing {
+  animation: owlWave 0.9s ease-in-out infinite;
+  transform-origin: 20% 18%;
+}
+
+.state-blink .owl-eye {
+  animation: botBlink 0.9s ease-in-out infinite;
+}
+
+.state-scan .owl-scan-line {
+  animation: faceScan 1.2s linear infinite;
+  opacity: 0.72;
+}
+
+.state-celebrate .owl-rig {
+  animation: celebratePop 1s ease-in-out infinite;
+}
+
+.state-celebrate .owl-confetti {
+  animation: confettiPop 1s ease-in-out infinite;
+}
+
+.state-sleep .owl-eye {
+  transform: scaleY(0.12);
+}
+
+.state-sleep .owl-rig {
+  transform: translateY(18px) rotate(2deg);
 }
 
 .motion-path {
@@ -629,6 +749,26 @@ button {
   margin: 10px 0 14px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.agent-card textarea {
+  width: 100%;
+  min-height: 82px;
+  margin: 10px 0 12px;
+  resize: none;
+  color: var(--text);
+  background: #0f141e;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.agent-card textarea:focus {
+  outline: none;
+  border-color: rgba(45, 255, 184, 0.72);
 }
 
 .wide-action {
@@ -779,6 +919,19 @@ button {
   }
   65% {
     transform: rotate(12deg);
+  }
+}
+
+@keyframes owlWave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-18deg) translateY(-4px);
+  }
+  65% {
+    transform: rotate(10deg);
   }
 }
 
