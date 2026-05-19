@@ -593,6 +593,9 @@ fn command_search_dirs() -> Vec<PathBuf> {
 
 fn command_candidates(command: &str) -> Vec<PathBuf> {
     if cfg!(windows) {
+        if Path::new(command).extension().is_some() {
+            return vec![PathBuf::from(command)];
+        }
         let extensions = std::env::var_os("PATHEXT")
             .map(|value| {
                 value
@@ -605,16 +608,17 @@ fn command_candidates(command: &str) -> Vec<PathBuf> {
             .filter(|extensions| !extensions.is_empty())
             .unwrap_or_else(|| vec![".EXE".to_string(), ".CMD".to_string(), ".BAT".to_string()]);
 
-        extensions
+        let mut candidates = extensions
             .into_iter()
             .flat_map(|extension| {
                 [
-                    PathBuf::from(command),
                     PathBuf::from(format!("{command}{extension}")),
                     PathBuf::from(format!("{command}{}", extension.to_lowercase())),
                 ]
             })
-            .collect()
+            .collect::<Vec<_>>();
+        candidates.push(PathBuf::from(command));
+        candidates
     } else {
         vec![PathBuf::from(command)]
     }
@@ -1291,10 +1295,7 @@ fn cli_assistant_text(text: &str) -> String {
 fn collect_text_fields(value: &Value, out: &mut String) {
     match value {
         Value::String(text) => {
-            if text.contains("\"variant\"") || text.contains('{') {
-                out.push_str(text);
-                out.push('\n');
-            }
+            out.push_str(text);
         }
         Value::Array(values) => {
             for value in values {
@@ -1302,6 +1303,9 @@ fn collect_text_fields(value: &Value, out: &mut String) {
             }
         }
         Value::Object(map) => {
+            if map.get("role").and_then(Value::as_str) == Some("user") {
+                return;
+            }
             for key in ["text", "content", "message", "delta", "output", "response"] {
                 if let Some(value) = map.get(key) {
                     collect_text_fields(value, out);
@@ -1432,6 +1436,21 @@ mod tests {
     }
 
     #[test]
+    fn parses_json_spec_from_gemini_delta_chunks() {
+        let text = cli_assistant_text(
+            r##"{"type":"message","role":"user","content":"Return only JSON with keys variant, name, accent, shell."}
+{"type":"message","role":"assistant","content":"{\n  \"variant\": \"owl-guide\",\n  \"name\":","delta":true}
+{"type":"message","role":"assistant","content":" \"Duo-style Owl\",\n  \"accent\": \"#58cc02\",\n  \"shell\": \"#","delta":true}
+{"type":"message","role":"assistant","content":"ffffff\"\n}","delta":true}"##,
+        );
+        let spec = parse_character_spec(&text).expect("spec should parse");
+
+        assert_eq!(spec.variant, "owl-guide");
+        assert_eq!(spec.name.as_deref(), Some("Duo-style Owl"));
+        assert_eq!(spec.accent.as_deref(), Some("#58cc02"));
+    }
+
+    #[test]
     fn provider_config_path_is_local() {
         let path = provider_config_path().expect("config path");
         assert!(path.ends_with("byok.json"));
@@ -1444,6 +1463,50 @@ mod tests {
         assert!(ensure_safe_endpoint("https://api.openai.com/v1").is_ok());
         assert!(ensure_safe_endpoint("http://192.168.1.20:8080").is_err());
         assert!(ensure_safe_endpoint("ftp://api.example.com").is_err());
+    }
+
+    #[test]
+    fn windows_command_candidates_prefer_executable_shims() {
+        let candidates = command_candidates("gemini");
+        if cfg!(windows) {
+            let first = candidates
+                .first()
+                .and_then(|path| path.extension())
+                .and_then(|extension| extension.to_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            assert_ne!(first, "");
+        } else {
+            assert_eq!(candidates, vec![PathBuf::from("gemini")]);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires authenticated Gemini CLI"]
+    fn gemini_cli_generates_owl_mascot_end_to_end() {
+        let spec = tauri::async_runtime::block_on(generate_spec_with_local_adapter(
+            "gemini-cli",
+            "Make a friendly owl style mascot like Duo. Keep it simple and editable, with wave, blink, scan, and celebrate animation states.",
+            &[],
+        ))
+        .expect("Gemini CLI should return a Strut character spec");
+        assert_eq!(spec.variant, "owl-guide");
+
+        let document = strut_core::Document::generate_character(spec);
+        let layer_names = document.artboards[0]
+            .nodes
+            .iter()
+            .map(|node| node.name.as_str())
+            .collect::<Vec<_>>();
+        let states = &document.state_machines[0].states;
+
+        assert_eq!(document.artboards[0].name, "OwlMascot");
+        assert_eq!(document.state_machines[0].name, "OwlMoods");
+        assert!(layer_names.contains(&"OwlBody"));
+        assert!(layer_names.contains(&"Beak"));
+        for state in ["wave", "blink", "scan", "celebrate"] {
+            assert!(states.iter().any(|item| item == state));
+        }
     }
 
     #[test]

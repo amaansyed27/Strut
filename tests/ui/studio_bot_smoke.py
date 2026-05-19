@@ -117,6 +117,12 @@ def run_smoke() -> None:
 
             page.get_by_role("button", name="Providers", exact=True).click()
             expect(page.get_by_role("heading", name="Providers")).to_be_visible()
+            gemini_cli = page.get_by_role("button").filter(has_text="Gemini CLI").first
+            expect(gemini_cli).to_be_visible()
+            gemini_cli.click()
+            page.get_by_role("button", name="Test selected provider").click()
+            expect(activity).to_contain_text("Desktop app required for real provider checks")
+
             page.get_by_role("button", name="BYOK").click()
             page.get_by_label("BYOK provider").select_option("openai")
             page.get_by_label("OpenAI API key").fill("sk-test-strut")
@@ -125,6 +131,8 @@ def run_smoke() -> None:
             expect(activity).to_contain_text("Desktop app required for provider config")
             page.get_by_role("button", name="Test selected provider").click()
             expect(activity).to_contain_text("Desktop app required for real provider checks")
+            page.get_by_role("button", name="Local CLI").click()
+            gemini_cli.click()
 
             page.get_by_role("button", name="Chat + preview", exact=True).click()
             preview = page.locator('[data-testid="character-preview"]')
