@@ -89,14 +89,12 @@ npm run studio:dev
 
 ## Current Provider Flow
 
-In the desktop app, open **Providers** from the sidebar. The provider panel has three modes.
+In the desktop app, open **Providers** from the sidebar. The provider panel has two real generation modes.
 
-**Built-in** uses Strut's local planner and deterministic generator. It is useful for trying the workflow without keys or installed tools.
+**Local CLI** checks installed tools on your `PATH` and common tool directories. Strut invokes supported agents through stdin with a structured generation prompt, matching the pattern used by Open Design for CLIs such as Codex, Claude Code, Gemini CLI, OpenCode, Cursor Agent, Qwen, Qoder, Copilot CLI, and Ollama. ACP-only runtimes such as Kiro and Antigravity are detected, but generation stays disabled until Strut ships a real ACP transport.
 
-**Local CLI** checks installed tools on your `PATH` and runs a real `--version` command for adapters such as Codex, Claude Code, Gemini CLI, Copilot CLI, Kiro, Antigravity, and Ollama.
+**BYOK APIs** accepts a provider, API key, base URL, and model. Strut saves the provider endpoint/model locally and keeps the API key in the current app session. Test Connection makes a real structured generation request from the Tauri backend.
 
-**BYOK APIs** accepts a provider, API key, base URL, and model. Strut saves the provider endpoint/model locally and keeps the API key in the current app session. Test Connection makes a real provider request from the Tauri backend.
+Character generation is routed through the selected provider only. Ollama generation uses the local Ollama API with image payloads. BYOK vision-capable providers receive attached reference images. Local CLIs receive the prompt plus temporary reference image file paths when references are attached.
 
-Character generation is routed through the selected BYOK provider when credentials are configured. Ollama generation uses the local Ollama HTTP API. The built-in generator is only a fallback when no provider is selected or when the browser preview is being used.
-
-The sidebar footer always shows the selected provider mode and the latest provider status, so you can see whether Strut is using the built-in planner, a local CLI, or a BYOK provider before you generate.
+There is no built-in fake generator. If no real provider is selected, credentials are missing, the CLI is not installed, or the browser preview is being used, Strut stops and shows the exact reason. The sidebar footer always shows the selected provider mode and the latest provider status before you generate.

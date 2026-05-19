@@ -32,7 +32,9 @@ Press the generate button in the composer. Strut creates a `.strut` document wit
 - runtime inputs
 - events
 
-The current pre-alpha built-in generator creates a small set of deterministic character families. When a BYOK or local vision-capable provider is selected in the desktop app, attached references are included in the generation request so the model can use the image composition, silhouette, pose, and palette. The workflow is the important contract: prompts and references produce editable Strut documents, not flat images.
+Generation requires a real provider in the desktop app. BYOK vision-capable providers receive attached reference images directly. Ollama receives image payloads through the local API. Local CLI agents receive the prompt plus temporary reference image file paths so they can inspect the images when the runtime supports local file access.
+
+The workflow is the important contract: prompts and references produce editable Strut documents, not flat images. If no provider is connected, Strut stops instead of using a fake fallback.
 
 ## Review The Result
 
@@ -101,7 +103,7 @@ That means future Strut tools can edit the character, retime motion, rename laye
 
 ## Current Limits
 
-Strut is pre-alpha. Character generation currently uses a local deterministic generator so the workflow can be tested without API keys.
+Strut is pre-alpha. Character generation is provider-routed only, so you need one configured local CLI, Ollama model, or BYOK provider to create a scene.
 
 The intended AI-first path is:
 

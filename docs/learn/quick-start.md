@@ -72,7 +72,7 @@ Then open:
 
 - **Chat + preview** to see the animated character beside the conversation.
 - **Editor** to inspect project files, layers, parts, state machines, and motion states.
-- **Providers** in the sidebar to select the built-in planner, local CLI tools, Ollama, or BYOK providers.
+- **Providers** in the sidebar to select local CLI tools, Ollama, or BYOK providers.
 - **Settings** in the sidebar footer to change appearance, workspace, generation, and editor defaults. Appearance supports **Auto**, **Light**, and **Dark**.
 
 The browser preview is only for frontend inspection. Use the desktop app for real project creation, local CLI checks, BYOK provider calls, and provider-routed generation.
