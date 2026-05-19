@@ -51,3 +51,11 @@ login-button.strut
 ## Compatibility
 
 Strut runtimes should reject unsupported major versions and show a clear error instead of trying to play a file incorrectly.
+
+## Validate A File
+
+From the repository root:
+
+```powershell
+cargo run -p strut-format --example validate -- samples/login-button.strut
+```

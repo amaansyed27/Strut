@@ -66,7 +66,7 @@ Run:
 ```powershell
 npm run check
 cargo test --workspace
-cargo run -p strut-format --example validate samples/login-button.strut
+cargo run -p strut-format --example validate -- samples/login-button.strut
 ```
 
 Inspect:

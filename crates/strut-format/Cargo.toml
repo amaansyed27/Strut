@@ -9,3 +9,4 @@ serde.workspace = true
 serde_json.workspace = true
 strut-core = { path = "../strut-core" }
 thiserror.workspace = true
+zip.workspace = true

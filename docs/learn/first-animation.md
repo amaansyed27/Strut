@@ -39,4 +39,10 @@ Events: submit, completed
 
 ## Current Status
 
-The sample login button is currently a scaffold used to prove the Studio shell, Rust core, and validation path. The next milestones will turn it into a real `.strut` sample file that Studio loads and validates.
+The sample login button is a real `.strut` file used to prove the Studio shell, Rust core, and validation path.
+
+You can validate it from the repository root:
+
+```powershell
+cargo run -p strut-format --example validate -- samples/login-button.strut
+```
