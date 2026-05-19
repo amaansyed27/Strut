@@ -42,6 +42,15 @@ Use these when you want Strut to coordinate with coding tools installed on your 
 
 Strut asks AI to create structured edits, not random images.
 
+Reference images can be attached from the Studio chat composer. The desktop app keeps those images with the chat and passes them to the selected generation route:
+
+- OpenAI-compatible providers receive image URL content blocks.
+- Anthropic receives image content blocks.
+- Gemini receives inline image parts.
+- Ollama receives base64 image payloads through its local generate API.
+
+Provider support still depends on the selected model. Use a vision-capable model when you expect Strut to read a raster mockup or character reference.
+
 Good AI output:
 
 ```txt

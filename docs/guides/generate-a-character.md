@@ -1,12 +1,18 @@
 # Generate A Character
 
-Strut can start from a plain prompt and create an editable character animation.
+Strut can start from a plain prompt or attached reference images and create an editable character animation.
 
 This is useful when you want a product mascot, helper bot, empty-state character, onboarding guide, or small animated brand moment but do not have a finished mockup yet.
 
 ## Try It
 
-Open Strut Studio and use the prompt box on the home screen.
+Open Strut Studio, create or open a project, then use the chat composer.
+
+To use a reference:
+
+1. Click **Reference** in the composer.
+2. Attach a PNG, JPEG, WebP, GIF, or SVG.
+3. Add a short instruction such as "make this a friendly helper bot" or generate from the reference alone.
 
 Example prompts:
 
@@ -17,7 +23,7 @@ make a scanner robot with a face scan animation
 make a celebration robot with success and confetti animation
 ```
 
-Press the generate button in the prompt box. Strut creates a `.strut` document with:
+Press the generate button in the composer. Strut creates a `.strut` document with:
 
 - an artboard
 - named layers
@@ -26,7 +32,7 @@ Press the generate button in the prompt box. Strut creates a `.strut` document w
 - runtime inputs
 - events
 
-The current pre-alpha generator creates a small set of deterministic character families. The workflow is the important contract: prompts produce editable Strut documents, not flat images.
+The current pre-alpha built-in generator creates a small set of deterministic character families. When a BYOK or local vision-capable provider is selected in the desktop app, attached references are included in the generation request so the model can use the image composition, silhouette, pose, and palette. The workflow is the important contract: prompts and references produce editable Strut documents, not flat images.
 
 ## Review The Result
 

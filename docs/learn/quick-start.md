@@ -23,7 +23,9 @@ npm run test
 npm run studio:dev
 ```
 
-The desktop app opens on the Strut home screen. The left sidebar is where you move between projects and chats. The main area starts in **Chat only** mode, with **Chat + preview** and **Editor** available from the view switcher at the top.
+The desktop app opens on an empty Strut home screen. The left sidebar is where you move between your projects and chats. Nothing is seeded for you: create a project, pick a folder, then start a chat inside that project.
+
+The main area starts in **Chat only** mode. Use the view switcher at the top to move between **Chat only**, **Chat + preview**, and **Editor**.
 
 To create a project:
 
@@ -59,7 +61,7 @@ http://127.0.0.1:1420
 
 ## What To Try First
 
-In the chat box, ask Strut to make a character:
+In the chat box, ask Strut to make a character. You can also attach reference images with the **Reference** button in the composer. PNG, JPEG, WebP, GIF, and SVG references are shown in the conversation and passed to the desktop generation pipeline.
 
 ```txt
 make a minimalist waving robot character like the reference image
