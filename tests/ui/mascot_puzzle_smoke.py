@@ -20,14 +20,16 @@ def npm_command() -> str:
     return "npm.cmd" if os.name == "nt" else "npm"
 
 
-def wait_for_server(timeout_seconds: int = 30) -> None:
+def wait_for_server(process: subprocess.Popen[str], timeout_seconds: int = 30) -> None:
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
 
     while time.time() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"Mascot puzzle server exited before startup with code {process.returncode}")
         try:
             with urllib.request.urlopen(URL, timeout=1) as response:
-                if response.status == 200:
+                if response.status == 200 and process.poll() is None:
                     return
         except Exception as exc:  # noqa: BLE001 - surfaced after timeout.
             last_error = exc
@@ -41,7 +43,7 @@ def run_smoke() -> None:
     output_dir.mkdir(exist_ok=True)
 
     process = subprocess.Popen(
-        [npm_command(), "exec", "vite", "--", "--host", "127.0.0.1", "--port", str(PORT)],
+        [npm_command(), "exec", "vite", "--", "--host", "127.0.0.1", "--port", str(PORT), "--strictPort"],
         cwd=ROOT,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -50,7 +52,7 @@ def run_smoke() -> None:
     )
 
     try:
-        wait_for_server()
+        wait_for_server(process)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 920})
@@ -93,19 +95,45 @@ def run_smoke() -> None:
                 if index < len(sequences) - 1:
                     page.get_by_role("button", name="Next level").click()
                 else:
-                    page.wait_for_timeout(650)
+                    page.wait_for_timeout(260)
+                    early_transform = page.locator("[data-screen-mascot]").evaluate("node => getComputedStyle(node).transform")
+                    page.screenshot(path=str(output_dir / "mascot-puzzle-motion-early.png"), full_page=True)
+                    page.wait_for_timeout(390)
+                    mid_transform = page.locator("[data-screen-mascot]").evaluate("node => getComputedStyle(node).transform")
                     page.screenshot(path=str(output_dir / "mascot-puzzle-complete.png"), full_page=True)
+                    page.wait_for_timeout(540)
+                    late_transform = page.locator("[data-screen-mascot]").evaluate("node => getComputedStyle(node).transform")
+                    page.screenshot(path=str(output_dir / "mascot-puzzle-motion-late.png"), full_page=True)
+                    assert len({early_transform, mid_transform, late_transform}) == 3
                     expect(page.locator("[data-cleared]")).to_have_text("5")
                     expect(page.get_by_role("button", name="Finish run")).to_be_enabled()
 
             browser.close()
     finally:
-        process.terminate()
+        stop_process_tree(process)
+
+
+def stop_process_tree(process: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
         try:
             process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=8)
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=8)
 
 
 if __name__ == "__main__":

@@ -19,14 +19,16 @@ def npm_command() -> str:
     return "npm.cmd" if os.name == "nt" else "npm"
 
 
-def wait_for_server(timeout_seconds: int = 30) -> None:
+def wait_for_server(process: subprocess.Popen[str], timeout_seconds: int = 30) -> None:
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
 
     while time.time() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"Studio test server exited before startup with code {process.returncode}")
         try:
             with urllib.request.urlopen(URL, timeout=1) as response:
-                if response.status == 200:
+                if response.status == 200 and process.poll() is None:
                     return
         except Exception as exc:  # noqa: BLE001 - surfaced after timeout.
             last_error = exc
@@ -63,6 +65,7 @@ def run_smoke() -> None:
         "127.0.0.1",
         "--port",
         str(PORT),
+        "--strictPort",
     ]
 
     process = subprocess.Popen(
@@ -75,7 +78,7 @@ def run_smoke() -> None:
     )
 
     try:
-        wait_for_server()
+        wait_for_server(process)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 920})
@@ -184,12 +187,30 @@ def run_smoke() -> None:
             page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
             browser.close()
     finally:
-        process.terminate()
+        stop_process_tree(process)
+
+
+def stop_process_tree(process: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
         try:
             process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=8)
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=8)
 
 
 if __name__ == "__main__":

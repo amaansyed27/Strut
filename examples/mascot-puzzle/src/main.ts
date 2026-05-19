@@ -251,7 +251,7 @@ function runMascotAcrossScreen(message: string) {
     mascot?.setState("float");
     speechElement.textContent = activeLevel === levels.length - 1 ? "You cleared the whole run." : "Tap Next level.";
     mascotStatusElement.textContent = "Waiting for the next trail";
-  }, 1850);
+  }, 2250);
 }
 
 function setMascotMood(state: string, speech: string, status: string) {
