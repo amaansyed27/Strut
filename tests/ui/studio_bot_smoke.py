@@ -94,10 +94,25 @@ def run_smoke() -> None:
 
             page.get_by_role("button", name="Grid").click()
             expect(activity).to_have_text("Grid hidden")
+            expect(page.locator('[data-testid="runtime-warning"]')).to_contain_text("Browser preview only")
 
-            page.get_by_role("button", name="OpenAI").click()
-            expect(page.get_by_role("button", name="OpenAI")).to_have_attribute("aria-pressed", "true")
+            page.get_by_role("button", name="Codex").click()
+            expect(page.get_by_role("button", name="Codex")).to_have_attribute("aria-pressed", "true")
+            expect(activity).to_have_text("Codex selected")
+            page.get_by_role("button", name="Test Connection").click()
+            expect(page.locator('[data-testid="connection-status"]')).to_have_text("Desktop runtime required")
+
+            page.get_by_role("button", name="BYOK APIs").click()
+            expect(page.get_by_role("button", name="BYOK APIs")).to_have_attribute("aria-pressed", "true")
+            page.get_by_role("button", name="OpenAI", exact=True).click()
+            expect(page.get_by_role("button", name="OpenAI", exact=True)).to_have_attribute("aria-pressed", "true")
             expect(activity).to_have_text("OpenAI selected")
+            page.get_by_label("OpenAI API key").fill("sk-test-strut")
+            page.get_by_label("OpenAI model").fill("gpt-5.2")
+            page.get_by_role("button", name="Save Provider").click()
+            expect(page.locator('[data-testid="connection-status"]')).to_have_text("Desktop runtime required")
+            page.get_by_role("button", name="Test Connection").click()
+            expect(page.locator('[data-testid="connection-status"]')).to_have_text("Desktop runtime required")
 
             page.get_by_title("Save project").click()
             expect(activity).to_have_text("Saved Minimal Bot.strut")

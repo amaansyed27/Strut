@@ -68,6 +68,48 @@ type StrutDocument = {
   events: Array<{ name: string }>;
 };
 
+type ProviderMode = "local" | "byok";
+
+type LocalAdapter = {
+  id: string;
+  name: string;
+  kind: string;
+  command?: string | null;
+  installed: boolean;
+  detail: string;
+};
+
+type ByokProvider = {
+  id: string;
+  name: string;
+  env: string;
+  endpoint: string;
+  model: string;
+};
+
+type ProviderOperationResult = {
+  ok: boolean;
+  status: string;
+  detail: string;
+};
+
+type GenerationProvider = {
+  mode: ProviderMode;
+  localAdapterId?: string;
+  byok?: {
+    providerId: string;
+    apiKey?: string;
+    endpoint: string;
+    model: string;
+  };
+};
+
+type GeneratedCharacter = {
+  document: StrutDocument;
+  source: string;
+  message: string;
+};
+
 const fallbackDocument: StrutDocument = {
   id: "00000000-0000-0000-0000-000000000100",
   name: "Minimal Bot",
@@ -167,7 +209,109 @@ const studioTools = [
   { id: "ai", label: "AI create", Icon: WandSparkles },
 ];
 
-const providers = ["Ollama", "OpenAI", "Anthropic", "Gemini", "OpenRouter"];
+const fallbackLocalAdapters: LocalAdapter[] = [
+  {
+    id: "ollama",
+    name: "Ollama",
+    kind: "local-model",
+    command: "ollama",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    kind: "local-agent",
+    command: "codex",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "gemini-cli",
+    name: "Gemini CLI",
+    kind: "local-agent",
+    command: "gemini",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    kind: "local-agent",
+    command: "claude",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "copilot-cli",
+    name: "Copilot CLI",
+    kind: "local-agent",
+    command: "gh",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    kind: "local-agent",
+    command: "antigravity",
+    installed: false,
+    detail: "desktop check required",
+  },
+  {
+    id: "kiro",
+    name: "Kiro",
+    kind: "local-agent",
+    command: "kiro",
+    installed: false,
+    detail: "desktop check required",
+  },
+];
+
+const byokProviders: ByokProvider[] = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    env: "OPENAI_API_KEY",
+    endpoint: "https://api.openai.com/v1",
+    model: "gpt-5.2",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    env: "ANTHROPIC_API_KEY",
+    endpoint: "https://api.anthropic.com",
+    model: "claude-opus-4-5",
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    env: "GEMINI_API_KEY",
+    endpoint: "https://generativelanguage.googleapis.com",
+    model: "gemini-3-pro",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    env: "OPENROUTER_API_KEY",
+    endpoint: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-5.2",
+  },
+  {
+    id: "azure-openai",
+    name: "Azure OpenAI",
+    env: "AZURE_OPENAI_API_KEY",
+    endpoint: "https://your-resource.openai.azure.com",
+    model: "deployment-name",
+  },
+  {
+    id: "openai-compatible",
+    name: "OpenAI Compatible",
+    env: "API_KEY",
+    endpoint: "http://localhost:1234/v1",
+    model: "local-model",
+  },
+];
 
 const defaultCharacterPrompt = "make a minimalist waving robot like the reference image";
 
@@ -377,14 +521,26 @@ function App() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [zoomMode, setZoomMode] = useState("Fit");
   const [gridVisible, setGridVisible] = useState(true);
-  const [selectedProvider, setSelectedProvider] = useState("Ollama");
+  const [providerMode, setProviderMode] = useState<ProviderMode>("local");
+  const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(fallbackLocalAdapters);
+  const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("ollama");
+  const [selectedByokProviderId, setSelectedByokProviderId] = useState("openai");
+  const [apiKey, setApiKey] = useState("");
+  const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
+  const [providerModel, setProviderModel] = useState(byokProviders[0].model);
+  const [connectionStatus, setConnectionStatus] = useState("Ollama selected");
   const [activity, setActivity] = useState("Ready");
+  const [desktopRuntime, setDesktopRuntime] = useState(true);
   const [showSketches, setShowSketches] = useState(false);
   const [selectedSketch, setSelectedSketch] = useState(botSketches[0]);
   const [characterPrompt, setCharacterPrompt] = useState(defaultCharacterPrompt);
 
   useEffect(() => {
-    invoke<StudioStatus>("studio_status").then(setStatus).catch(() => {
+    invoke<StudioStatus>("studio_status").then((loadedStatus) => {
+      setDesktopRuntime(true);
+      setStatus(loadedStatus);
+    }).catch(() => {
+      setDesktopRuntime(false);
       setStatus(null);
     });
 
@@ -397,12 +553,31 @@ function App() {
         }
       })
       .catch(() => {
+        setDesktopRuntime(false);
         setDocument(fallbackDocument);
+      });
+
+    invoke<LocalAdapter[]>("local_agent_adapters")
+      .then((adapters) => {
+        setLocalAdapters(adapters);
+        const selectedAdapter = adapters.find((adapter) => adapter.id === selectedLocalAdapterId);
+        if (selectedAdapter) {
+          setConnectionStatus(selectedAdapter.detail);
+        }
+      })
+      .catch(() => {
+        setDesktopRuntime(false);
+        setLocalAdapters(fallbackLocalAdapters);
+        setConnectionStatus("Desktop runtime required");
       });
   }, []);
 
   const activeArtboard = document.artboards[0] ?? fallbackDocument.artboards[0];
   const activeMachine = document.state_machines[0] ?? fallbackDocument.state_machines[0];
+  const activeLocalAdapter =
+    localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0];
+  const activeByokProvider =
+    byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const visibleLayers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const states = activeMachine.states;
   const totalTimelineMs = useMemo(
@@ -410,17 +585,121 @@ function App() {
     [document.timelines],
   );
 
+  function selectLocalAdapter(adapter: LocalAdapter) {
+    setProviderMode("local");
+    setSelectedLocalAdapterId(adapter.id);
+    setConnectionStatus(adapter.detail);
+    setActivity(`${adapter.name} selected`);
+  }
+
+  function selectByokProvider(provider: ByokProvider) {
+    setProviderMode("byok");
+    setSelectedByokProviderId(provider.id);
+    setProviderEndpoint(provider.endpoint);
+    setProviderModel(provider.model);
+    setConnectionStatus(`${provider.env} required`);
+    setActivity(`${provider.name} selected`);
+  }
+
+  function currentProviderPayload(): GenerationProvider {
+    if (providerMode === "local") {
+      return {
+        mode: "local",
+        localAdapterId: selectedLocalAdapterId,
+      };
+    }
+
+    return {
+      mode: "byok",
+      byok: {
+        providerId: selectedByokProviderId,
+        apiKey: apiKey.trim() || undefined,
+        endpoint: providerEndpoint.trim(),
+        model: providerModel.trim(),
+      },
+    };
+  }
+
+  async function saveByokProvider() {
+    if (!desktopRuntime) {
+      setConnectionStatus("Desktop runtime required");
+      setActivity("Open Strut desktop app");
+      return;
+    }
+
+    try {
+      const result = await invoke<ProviderOperationResult>("save_byok_provider", {
+        config: currentProviderPayload().byok,
+      });
+      setConnectionStatus(result.status);
+      setActivity(result.ok ? `${activeByokProvider.name} config saved` : result.status);
+    } catch (error) {
+      const message = String(error);
+      setConnectionStatus(message);
+      setActivity("Save failed");
+    }
+  }
+
+  async function testProviderConnection() {
+    if (!desktopRuntime) {
+      setConnectionStatus("Desktop runtime required");
+      setActivity("Open Strut desktop app");
+      return;
+    }
+
+    if (providerMode === "local") {
+      try {
+        const result = await invoke<ProviderOperationResult>("test_local_adapter", {
+          adapterId: selectedLocalAdapterId,
+        });
+        setConnectionStatus(result.status);
+        setActivity(result.status);
+      } catch (error) {
+        const message = String(error);
+        setConnectionStatus(message);
+        setActivity("Local test failed");
+      }
+      return;
+    }
+
+    try {
+      const result = await invoke<ProviderOperationResult>("test_byok_provider", {
+        config: currentProviderPayload().byok,
+      });
+      setConnectionStatus(result.status);
+      setActivity(result.status);
+    } catch (error) {
+      const message = String(error);
+      setConnectionStatus(message);
+      setActivity("BYOK test failed");
+    }
+  }
+
   async function generateCharacter(prompt = characterPrompt, preferredState?: string) {
     let generatedDocument: StrutDocument;
+    let generatedMessage = "Generated with browser preview";
     try {
-      generatedDocument = await invoke<StrutDocument>("generate_character", { prompt });
-    } catch {
+      const result = await invoke<GeneratedCharacter>("generate_character", {
+        prompt,
+        provider: currentProviderPayload(),
+      });
+      generatedDocument = result.document;
+      generatedMessage = result.message;
+      setConnectionStatus(`${result.source}: ${result.message}`);
+    } catch (error) {
+      if (desktopRuntime) {
+        const message = String(error);
+        setConnectionStatus(message);
+        setActivity("Generation failed");
+        return;
+      }
       generatedDocument = fallbackGenerateCharacter(prompt);
+      setConnectionStatus("Browser preview uses built-in generator");
     }
 
     setDocument(generatedDocument);
     setSelectedLayerId(generatedDocument.artboards[0]?.nodes[0]?.id ?? null);
-    setActivity(`Generated ${generatedDocument.name}`);
+    setActivity(`${generatedMessage}: ${generatedDocument.name}`);
     const generatedStates = generatedDocument.state_machines[0]?.states ?? [];
     if (preferredState && generatedStates.includes(preferredState)) {
       setActiveState(preferredState);
@@ -718,22 +997,121 @@ function App() {
             </div>
           ) : null}
 
-          <div className="provider-stack">
-            {providers.map((provider) => (
+          <div className="provider-console">
+            {!desktopRuntime ? (
+              <div className="runtime-warning" data-testid="runtime-warning">
+                Browser preview only. Run the Tauri desktop app for real CLI checks, BYOK HTTP calls, saved
+                provider config, and provider-routed generation.
+              </div>
+            ) : null}
+
+            <div className="provider-mode-tabs" aria-label="Provider mode">
               <button
-                aria-pressed={selectedProvider === provider}
-                className={selectedProvider === provider ? "active" : ""}
-                key={provider}
+                aria-pressed={providerMode === "local"}
+                className={providerMode === "local" ? "active" : ""}
                 type="button"
                 onClick={() => {
-                  setSelectedProvider(provider);
-                  setActivity(`${provider} selected`);
+                  setProviderMode("local");
+                  setActivity(`${activeLocalAdapter.name} selected`);
+                  setConnectionStatus(activeLocalAdapter.detail);
                 }}
               >
-                <Cpu size={15} />
-                {provider}
+                Local CLI
               </button>
-            ))}
+              <button
+                aria-pressed={providerMode === "byok"}
+                className={providerMode === "byok" ? "active" : ""}
+                type="button"
+                onClick={() => {
+                  setProviderMode("byok");
+                  setActivity(`${activeByokProvider.name} selected`);
+                  setConnectionStatus(`${activeByokProvider.env} required`);
+                }}
+              >
+                BYOK APIs
+              </button>
+            </div>
+
+            {providerMode === "local" ? (
+              <div className="provider-stack" data-testid="local-provider-list">
+                {localAdapters.map((adapter) => (
+                  <button
+                    aria-label={adapter.name}
+                    aria-pressed={selectedLocalAdapterId === adapter.id}
+                    className={selectedLocalAdapterId === adapter.id ? "active" : ""}
+                    key={adapter.id}
+                    type="button"
+                    onClick={() => selectLocalAdapter(adapter)}
+                  >
+                    <Cpu size={15} />
+                    <span>
+                      <strong>{adapter.name}</strong>
+                      <em>{adapter.command ?? "endpoint"} - {adapter.kind}</em>
+                    </span>
+                    <i className={adapter.installed ? "status-dot ready" : "status-dot"} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="byok-panel" data-testid="byok-provider-panel">
+                <div className="provider-stack byok-provider-stack">
+                  {byokProviders.map((provider) => (
+                    <button
+                      aria-label={provider.name}
+                      aria-pressed={selectedByokProviderId === provider.id}
+                      className={selectedByokProviderId === provider.id ? "active" : ""}
+                      key={provider.id}
+                      type="button"
+                      onClick={() => selectByokProvider(provider)}
+                    >
+                      <Cpu size={15} />
+                      <span>
+                        <strong>{provider.name}</strong>
+                        <em>{provider.env}</em>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <label className="provider-field">
+                  <span>API key</span>
+                  <input
+                    aria-label={`${activeByokProvider.name} API key`}
+                    autoComplete="off"
+                    placeholder={activeByokProvider.env}
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="provider-field">
+                  <span>Base URL</span>
+                  <input
+                    aria-label={`${activeByokProvider.name} base URL`}
+                    value={providerEndpoint}
+                    onChange={(event) => setProviderEndpoint(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="provider-field">
+                  <span>Model</span>
+                  <input
+                    aria-label={`${activeByokProvider.name} model`}
+                    value={providerModel}
+                    onChange={(event) => setProviderModel(event.currentTarget.value)}
+                  />
+                </label>
+                <button className="wide-action secondary-action" type="button" onClick={saveByokProvider}>
+                  Save Provider
+                </button>
+              </div>
+            )}
+
+            <div className="connection-footer">
+              <span data-testid="connection-status">{connectionStatus}</span>
+              <button type="button" onClick={testProviderConnection}>
+                Test Connection
+              </button>
+            </div>
           </div>
 
           <div className="verifier-list">
@@ -751,6 +1129,11 @@ function App() {
               <Braces size={16} />
               <span>{document.bindings.length} runtime bindings</span>
               <strong>ready</strong>
+            </div>
+            <div>
+              <Cpu size={16} />
+              <span>{providerMode === "local" ? activeLocalAdapter.name : activeByokProvider.name}</span>
+              <strong>{providerMode}</strong>
             </div>
           </div>
         </aside>

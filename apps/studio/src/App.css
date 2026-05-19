@@ -31,9 +31,9 @@
 
 body {
   margin: 0;
-  min-width: 1180px;
+  min-width: 0;
   min-height: 760px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 button {
@@ -43,7 +43,8 @@ button {
 .studio-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-width: 1120px;
+  min-height: 100vh;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(0deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
@@ -150,8 +151,8 @@ button {
 .workspace {
   display: grid;
   grid-template-columns: 56px 260px minmax(540px, 1fr) 320px;
-  height: calc(100vh - 68px);
-  min-height: 0;
+  flex: 1;
+  min-height: 720px;
 }
 
 .tool-rail {
@@ -820,10 +821,59 @@ button {
   font-weight: 800;
 }
 
+.provider-console {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.runtime-warning {
+  padding: 9px 10px;
+  color: var(--gold);
+  font-size: 12px;
+  line-height: 1.35;
+  border: 1px solid rgba(246, 211, 101, 0.38);
+  border-radius: 8px;
+  background: rgba(246, 211, 101, 0.08);
+}
+
+.provider-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.provider-mode-tabs button,
+.connection-footer button {
+  min-height: 34px;
+  color: var(--text);
+  background: #111823;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.provider-mode-tabs button.active {
+  color: #06110d;
+  background: var(--mint);
+  border-color: var(--mint);
+  font-weight: 800;
+}
+
 .provider-stack {
   display: grid;
   gap: 8px;
-  margin-top: 14px;
+}
+
+.byok-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.byok-provider-stack {
+  max-height: 132px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .sketch-stack {
@@ -899,6 +949,100 @@ button {
 
 .provider-stack button {
   justify-content: flex-start;
+  min-height: 46px;
+}
+
+.provider-stack button span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-stack button strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-stack button em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--orange);
+}
+
+.status-dot.ready {
+  background: var(--mint);
+}
+
+.provider-field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.provider-field input {
+  min-width: 0;
+  min-height: 34px;
+  color: var(--text);
+  background: #0f141e;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.provider-field input:focus {
+  outline: none;
+  border-color: rgba(45, 255, 184, 0.72);
+}
+
+.secondary-action {
+  min-height: 34px;
+  background: var(--sky);
+  border-color: var(--sky);
+}
+
+.connection-footer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f141e;
+}
+
+.connection-footer span {
+  overflow: hidden;
+  color: var(--sky);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-footer button {
+  padding: 0 10px;
+  color: #06110d;
+  background: var(--gold);
+  border-color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .verifier-list {
