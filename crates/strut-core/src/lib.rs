@@ -180,45 +180,6 @@ fn style(fill: Option<&str>, stroke: Option<&str>, stroke_width: f32) -> Style {
     }
 }
 
-pub fn character_spec_from_prompt(prompt: &str) -> CharacterSpec {
-    let prompt = prompt.to_lowercase();
-    let mut spec = CharacterSpec::default();
-
-    if prompt.contains("owl") || prompt.contains("duo") || prompt.contains("duolingo") {
-        spec.variant = "owl-guide".to_string();
-        spec.name = Some("Owl Mascot".to_string());
-        spec.accent = Some("#78d64b".to_string());
-        spec.shell = Some("#8ee15a".to_string());
-    } else if prompt.contains("scan") || prompt.contains("data") || prompt.contains("visor") {
-        spec.variant = "scanner-bot".to_string();
-        spec.name = Some("Scanner Bot".to_string());
-        spec.accent = Some("#2dffb8".to_string());
-    } else if prompt.contains("success")
-        || prompt.contains("celebrate")
-        || prompt.contains("party")
-        || prompt.contains("confetti")
-    {
-        spec.variant = "celebration-bot".to_string();
-        spec.name = Some("Celebration Bot".to_string());
-        spec.accent = Some("#f6d365".to_string());
-    } else if prompt.contains("robot") || prompt.contains("bot") || prompt.contains("astronaut") {
-        spec.variant = "floating-helper".to_string();
-        spec.name = Some("Minimal Bot".to_string());
-    }
-
-    if prompt.contains("purple") {
-        spec.accent = Some("#b69cff".to_string());
-    } else if prompt.contains("blue") || prompt.contains("cyan") {
-        spec.accent = Some("#51bfd0".to_string());
-    } else if prompt.contains("green") {
-        spec.accent = Some("#78d64b".to_string());
-    } else if prompt.contains("yellow") || prompt.contains("gold") {
-        spec.accent = Some("#f6d365".to_string());
-    }
-
-    spec
-}
-
 fn bot_nodes(shell: &str, accent: &str) -> Vec<Node> {
     vec![
         Node::new(102, "BotRig", NodeKind::Group),
@@ -600,6 +561,29 @@ impl Document {
         Self::generate_character(CharacterSpec::default())
     }
 
+    pub fn empty_scene(name: &str) -> Self {
+        Self {
+            id: Uuid::from_u128(500),
+            name: name
+                .trim()
+                .is_empty()
+                .then_some("Untitled Strut Scene")
+                .unwrap_or(name)
+                .to_string(),
+            artboards: vec![Artboard {
+                id: Uuid::from_u128(501),
+                name: "Main".to_string(),
+                width: 960.0,
+                height: 540.0,
+                nodes: Vec::new(),
+            }],
+            timelines: Vec::new(),
+            state_machines: Vec::new(),
+            bindings: Vec::new(),
+            events: Vec::new(),
+        }
+    }
+
     pub fn sample_owl_mascot() -> Self {
         Self::generate_character(CharacterSpec {
             variant: "owl-guide".to_string(),
@@ -934,9 +918,23 @@ mod tests {
     }
 
     #[test]
-    fn prompt_can_generate_owl_mascot() {
-        let spec = super::character_spec_from_prompt("make an owl like Duo from Duolingo");
-        let document = Document::generate_character(spec);
+    fn empty_scene_has_no_generated_character_layers() {
+        let document = Document::empty_scene("New Project");
+
+        assert_eq!(document.name, "New Project");
+        assert!(document.artboards[0].nodes.is_empty());
+        assert!(document.timelines.is_empty());
+        assert!(document.state_machines.is_empty());
+    }
+
+    #[test]
+    fn owl_character_spec_builds_editable_mascot() {
+        let document = Document::generate_character(super::CharacterSpec {
+            variant: "owl-guide".to_string(),
+            name: Some("Owl Mascot".to_string()),
+            accent: Some("#78d64b".to_string()),
+            shell: Some("#8ee15a".to_string()),
+        });
 
         assert_eq!(document.name, "Owl Mascot");
         assert_eq!(document.artboards[0].name, "OwlMascot");

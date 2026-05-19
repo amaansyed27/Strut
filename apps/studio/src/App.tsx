@@ -82,7 +82,7 @@ type ProjectInfo = {
   files: ProjectFile[];
 };
 
-type ProviderMode = "built-in" | "local" | "byok";
+type ProviderMode = "local" | "byok";
 type ViewMode = "chat" | "preview" | "editor";
 type MainPanel = "chat" | "providers" | "settings";
 type ThemeMode = "system" | "light" | "dark";
@@ -173,47 +173,6 @@ type WorkspaceState = {
   themeMode: ThemeMode;
 };
 
-const fallbackDocument: StrutDocument = {
-  id: "00000000-0000-0000-0000-000000000100",
-  name: "Minimal Bot",
-  artboards: [
-    {
-      id: "00000000-0000-0000-0000-000000000101",
-      name: "MinimalBot",
-      width: 960,
-      height: 540,
-      nodes: [
-        { id: "102", name: "BotRig", kind: "group" },
-        { id: "103", name: "GroundShadow", kind: "ellipse" },
-        { id: "104", name: "HelmetShell", kind: "path" },
-        { id: "105", name: "FacePanel", kind: "rect" },
-        { id: "106", name: "Eyes", kind: "path" },
-        { id: "107", name: "Smile", kind: "path" },
-        { id: "108", name: "Torso", kind: "path" },
-        { id: "109", name: "ChestLight", kind: "ellipse" },
-        { id: "110", name: "LeftArm", kind: "path" },
-        { id: "111", name: "RightArm", kind: "path" },
-      ],
-    },
-  ],
-  timelines: [
-    { id: "120", name: "idle_float", duration_ms: 1400 },
-    { id: "121", name: "wave", duration_ms: 900 },
-    { id: "122", name: "blink", duration_ms: 420 },
-    { id: "123", name: "scan", duration_ms: 1200 },
-    { id: "124", name: "celebrate", duration_ms: 1000 },
-  ],
-  state_machines: [
-    {
-      id: "130",
-      name: "BotMoods",
-      states: ["idle", "float", "wave", "blink", "scan", "celebrate", "sleep"],
-    },
-  ],
-  bindings: [{ name: "face_glow" }, { name: "body_tint" }],
-  events: [{ name: "wave_started" }, { name: "celebration_complete" }],
-};
-
 const emptyArtboard: Artboard = {
   id: "empty-artboard",
   name: "No scene yet",
@@ -226,30 +185,6 @@ const emptyMachine: StateMachine = {
   id: "empty-machine",
   name: "No state machine",
   states: ["idle"],
-};
-
-const owlDocument: StrutDocument = {
-  ...fallbackDocument,
-  id: "00000000-0000-0000-0000-000000000200",
-  name: "Owl Mascot",
-  artboards: [
-    {
-      ...fallbackDocument.artboards[0],
-      id: "00000000-0000-0000-0000-000000000201",
-      name: "OwlMascot",
-      nodes: [
-        { id: "102", name: "OwlRig", kind: "group" },
-        { id: "103", name: "OwlBody", kind: "path" },
-        { id: "104", name: "FaceMask", kind: "path" },
-        { id: "105", name: "Beak", kind: "path" },
-        { id: "106", name: "LeftWing", kind: "path" },
-        { id: "107", name: "RightWing", kind: "path" },
-      ],
-    },
-  ],
-  state_machines: [{ ...fallbackDocument.state_machines[0], id: "230", name: "OwlMoods" }],
-  bindings: [{ name: "face_glow" }, { name: "feather_tint" }],
-  events: [{ name: "wing_wave_started" }, { name: "celebration_complete" }],
 };
 
 const STORAGE_KEY = "strut-studio-workspace-v4";
@@ -269,12 +204,17 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
 
 const initialProjects: ProjectRecord[] = [];
 
-const fallbackLocalAdapters: LocalAdapter[] = [
+const browserLocalAdapters: LocalAdapter[] = [
   { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
   { id: "codex", name: "Codex", kind: "local-agent", command: "codex", installed: false, detail: "desktop check required" },
   { id: "gemini-cli", name: "Gemini CLI", kind: "local-agent", command: "gemini", installed: false, detail: "desktop check required" },
-  { id: "claude-code", name: "Claude Code", kind: "local-agent", command: "claude", installed: false, detail: "desktop check required" },
-  { id: "copilot-cli", name: "Copilot CLI", kind: "local-agent", command: "gh", installed: false, detail: "desktop check required" },
+  { id: "claude-code", name: "Claude Code", kind: "local-agent", command: "claude / openclaude", installed: false, detail: "desktop check required" },
+  { id: "opencode", name: "OpenCode", kind: "local-agent", command: "opencode-cli", installed: false, detail: "desktop check required" },
+  { id: "cursor-agent", name: "Cursor Agent", kind: "local-agent", command: "cursor-agent", installed: false, detail: "desktop check required" },
+  { id: "qwen", name: "Qwen Code", kind: "local-agent", command: "qwen", installed: false, detail: "desktop check required" },
+  { id: "qoder", name: "Qoder CLI", kind: "local-agent", command: "qodercli", installed: false, detail: "desktop check required" },
+  { id: "copilot-cli", name: "Copilot CLI", kind: "local-agent", command: "copilot", installed: false, detail: "desktop check required" },
+  { id: "kiro", name: "Kiro", kind: "local-agent", command: "kiro-cli", installed: false, detail: "desktop check required" },
 ];
 
 const byokProviders: ByokProvider[] = [
@@ -453,13 +393,6 @@ function flattenNodes(nodes: StrutNode[]): StrutNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
 }
 
-function fallbackGenerateCharacter(prompt: string): StrutDocument {
-  const normalized = prompt.toLowerCase();
-  return normalized.includes("owl") || normalized.includes("duo") || normalized.includes("duolingo")
-    ? owlDocument
-    : fallbackDocument;
-}
-
 function projectFiles(project: ProjectRecord): ProjectFile[] {
   return [
     { name: "strut.project.json", path: `${project.path}\\strut.project.json`, kind: "project" },
@@ -527,14 +460,14 @@ function App() {
   const [activeTool, setActiveTool] = useState("select");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
-  const [providerMode, setProviderMode] = useState<ProviderMode>("built-in");
-  const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(fallbackLocalAdapters);
+  const [providerMode, setProviderMode] = useState<ProviderMode>("local");
+  const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(browserLocalAdapters);
   const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("ollama");
   const [selectedByokProviderId, setSelectedByokProviderId] = useState("openai");
   const [apiKey, setApiKey] = useState("");
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
   const [providerModel, setProviderModel] = useState(byokProviders[0].model);
-  const [activity, setActivity] = useState("Built-in planner ready");
+  const [activity, setActivity] = useState("Select a real local CLI, Ollama, or BYOK provider");
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.themeMode);
 
   useEffect(() => {
@@ -597,10 +530,7 @@ function App() {
     }))
     .filter((project) => project.chats.length > 0 || project.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  function providerPayload(): GenerationProvider | undefined {
-    if (providerMode === "built-in") {
-      return undefined;
-    }
+  function providerPayload(): GenerationProvider {
     if (providerMode === "local") {
       return { mode: "local", localAdapterId: selectedLocalAdapterId };
     }
@@ -785,7 +715,7 @@ function App() {
     }
     try {
       const result = await invoke<ProviderOperationResult>("save_byok_provider", {
-        config: providerPayload()?.byok,
+        config: providerPayload().byok,
       });
       setActivity(result.status);
     } catch (error) {
@@ -802,9 +732,7 @@ function App() {
       const result =
         providerMode === "local"
           ? await invoke<ProviderOperationResult>("test_local_adapter", { adapterId: selectedLocalAdapterId })
-          : providerMode === "byok"
-            ? await invoke<ProviderOperationResult>("test_byok_provider", { config: providerPayload()?.byok })
-            : { status: "Built-in planner ready", detail: "", ok: true };
+          : await invoke<ProviderOperationResult>("test_byok_provider", { config: providerPayload().byok });
       setActivity(result.status);
     } catch (error) {
       setActivity(String(error));
@@ -824,13 +752,19 @@ function App() {
     const references = pendingReferences;
     const generationPrompt = trimmed || "Use the attached reference image to create an editable animated character.";
     appendUserMessage(trimmed || "Use the attached reference image.", references);
+    updateChat(activeProjectId, activeChatId, (chat) => ({
+      ...chat,
+      title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
+      updated: "now",
+    }));
     setPendingReferences([]);
     setActivity("Generating");
 
     try {
-      const args = providerPayload()
-        ? { prompt: generationPrompt, provider: providerPayload(), references }
-        : { prompt: generationPrompt, references };
+      if (!desktopRuntime) {
+        throw new Error("Desktop app required for real generation. Run the Tauri app and connect a local CLI, Ollama, or BYOK provider.");
+      }
+      const args = { prompt: generationPrompt, provider: providerPayload(), references };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
@@ -842,21 +776,8 @@ function App() {
       setActivity(`${result.source}: ${result.message}`);
       appendMessage("assistant", `${result.document.name} is ready. I created editable layers, states, timelines, bindings, and events.`);
     } catch (error) {
-      if (desktopRuntime) {
-        setActivity(String(error));
-        appendMessage("assistant", `Generation stopped: ${String(error)}`);
-        return;
-      }
-      const generated = fallbackGenerateCharacter(`${trimmed} ${references.map((reference) => reference.name).join(" ")}`);
-      updateChat(activeProjectId, activeChatId, (chat) => ({
-        ...chat,
-        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
-        updated: "now",
-        document: generated,
-        activeState: "wave",
-      }));
-      setActivity("Browser preview used built-in generator");
-      appendMessage("assistant", `${generated.name} preview is ready${references.length ? ` from ${references.length} reference image${references.length === 1 ? "" : "s"}` : ""}. Open the desktop app for real provider-routed generation.`);
+      setActivity(String(error));
+      appendMessage("assistant", `Generation stopped: ${String(error)}`);
     }
   }
 
@@ -957,7 +878,7 @@ function App() {
 
         <div className="sidebar-footer">
           <button className="provider-status" data-testid="activity-pill" type="button" onClick={() => setMainPanel("providers")}>
-            <span>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+            <span>{providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
             <em>{activity}</em>
           </button>
           <button type="button" onClick={() => setMainPanel("settings")}>
@@ -1020,9 +941,9 @@ function App() {
               <p>Connect local CLIs, local models, or BYOK APIs. Browser preview cannot run real provider checks.</p>
             </div>
             <div className="provider-tabs">
-              {["built-in", "local", "byok"].map((mode) => (
+              {["local", "byok"].map((mode) => (
                 <button className={providerMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setProviderMode(mode as ProviderMode)}>
-                  {mode === "built-in" ? "Built-in" : mode === "local" ? "Local CLI" : "BYOK"}
+                  {mode === "local" ? "Local CLI" : "BYOK"}
                 </button>
               ))}
             </div>
@@ -1113,14 +1034,13 @@ function App() {
                   <label>
                     <span>Generation mode</span>
                     <select aria-label="Generation mode" value={providerMode} onChange={(event) => setProviderMode(event.currentTarget.value as ProviderMode)}>
-                      <option value="built-in">Built-in planner</option>
                       <option value="local">Local CLI</option>
                       <option value="byok">BYOK provider</option>
                     </select>
                   </label>
                   <div className="status-line">
                     <span>Current provider</span>
-                    <strong>{providerMode === "built-in" ? "Built-in planner" : providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
+                    <strong>{providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
                     <em>{activity}</em>
                   </div>
                 </div>
@@ -1211,7 +1131,7 @@ function App() {
                       <ImagePlus size={16} />
                       Reference
                     </button>
-                    <span>{providerMode === "built-in" ? "Built-in" : providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+                    <span>{providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
                   </div>
                   <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
                     <Send size={17} />
@@ -1317,7 +1237,7 @@ function HomePanel({
         </button>
         <button type="button" onClick={onOpenProviders}>
           <span>Connect providers</span>
-          <em>Choose built-in, local CLI, Ollama, or BYOK models.</em>
+          <em>Choose a real local CLI, Ollama, or BYOK model.</em>
         </button>
       </div>
     </section>
