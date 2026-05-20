@@ -10,6 +10,35 @@ Strut is not trying to be a free copy of any single tool. The goal is a local-fi
 
 > Status: pre-alpha. The repository is being scaffolded. APIs, file schemas, and runtime contracts will change while the MVP is built.
 
+## Screenshots And Generations
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/studio-home.png" alt="Strut Studio home screen with project actions">
+      <br>
+      <strong>Studio home</strong>
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/studio-chat-preview.png" alt="Strut Studio chat and preview showing a generated StrutBot mascot">
+      <br>
+      <strong>AI chat with editable preview</strong>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/gemini-owl-generation.png" alt="Gemini CLI generated owl mascot state sheet rendered by Strut">
+      <br>
+      <strong>Gemini CLI generated mascot states</strong>
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/mascot-puzzle-motion.png" alt="Strut runtime mascot animation inside the Glyph Trail puzzle demo">
+      <br>
+      <strong>Runtime game animation</strong>
+    </td>
+  </tr>
+</table>
+
 ## Why Strut
 
 - **Open format**: `.strut` files are documented, inspectable, versioned, and designed for long-term portability.
