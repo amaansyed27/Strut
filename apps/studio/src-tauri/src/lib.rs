@@ -85,6 +85,25 @@ struct ReferenceImageInput {
     data_url: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationContext {
+    project_name: Option<String>,
+    project_path: Option<String>,
+    active_chat_title: Option<String>,
+    current_document_summary: Option<String>,
+    chat_history: Vec<GenerationContextMessage>,
+    current_document: Option<strut_core::Document>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationContextMessage {
+    role: String,
+    text: String,
+    attachments: Option<Vec<String>>,
+}
+
 #[derive(Debug)]
 struct WrittenReferenceFiles {
     directory: PathBuf,
@@ -195,8 +214,10 @@ async fn generate_character(
     prompt: String,
     provider: Option<GenerationProvider>,
     references: Option<Vec<ReferenceImageInput>>,
+    context: Option<GenerationContext>,
 ) -> Result<GeneratedCharacter, String> {
     let references = references.unwrap_or_default();
+    let contextual_prompt = contextual_generation_prompt(&prompt, context.as_ref())?;
     let provider = provider.ok_or_else(|| {
         "Select a real local CLI, Ollama, or BYOK provider before generating. Built-in fallback generation has been removed.".to_string()
     })?;
@@ -206,7 +227,8 @@ async fn generate_character(
             let config = provider
                 .byok
                 .ok_or_else(|| "BYOK provider config missing".to_string())?;
-            let document = generate_document_with_byok(&prompt, &config, &references).await?;
+            let document =
+                generate_document_with_byok(&contextual_prompt, &config, &references).await?;
             Ok(GeneratedCharacter {
                 source: config.provider_id,
                 message: reference_message("Generated through BYOK provider", &references),
@@ -218,7 +240,8 @@ async fn generate_character(
                 .local_adapter_id
                 .ok_or_else(|| "Select a local CLI or Ollama adapter".to_string())?;
             let document =
-                generate_document_with_local_adapter(&adapter_id, &prompt, &references).await?;
+                generate_document_with_local_adapter(&adapter_id, &contextual_prompt, &references)
+                    .await?;
             Ok(GeneratedCharacter {
                 source: adapter_id,
                 message: reference_message("Generated through local provider", &references),
@@ -965,6 +988,83 @@ fn prompt_with_reference_context(prompt: &str, references: &[ReferenceImageInput
     format!(
         "{prompt}\n\nReference images attached: {names}. Inspect the image composition, silhouette, pose, palette, and visible parts, then return an editable Strut character spec that matches the reference direction."
     )
+}
+
+fn contextual_generation_prompt(
+    prompt: &str,
+    context: Option<&GenerationContext>,
+) -> Result<String, String> {
+    let Some(context) = context else {
+        return Ok(prompt.to_string());
+    };
+
+    let mut text = String::new();
+    text.push_str("Strut workspace context:\n");
+    if let Some(project_name) = context
+        .project_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        text.push_str(&format!("- Project: {}\n", project_name.trim()));
+    }
+    if let Some(project_path) = context
+        .project_path
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        text.push_str(&format!("- Project path: {}\n", project_path.trim()));
+    }
+    if let Some(chat_title) = context
+        .active_chat_title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        text.push_str(&format!("- Active chat: {}\n", chat_title.trim()));
+    }
+    if let Some(summary) = context
+        .current_document_summary
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        text.push_str(&format!("- Current document: {}\n", summary.trim()));
+    }
+
+    if !context.chat_history.is_empty() {
+        text.push_str("\nRecent chat history. Use it to resolve follow-up edits and pronouns:\n");
+        for message in context.chat_history.iter().take(16) {
+            let role = message.role.trim();
+            let body = message.text.trim();
+            if body.is_empty() && message.attachments.as_ref().map_or(true, Vec::is_empty) {
+                continue;
+            }
+            text.push_str(&format!("- {}: {}", role, body));
+            if let Some(attachments) = &message.attachments {
+                let names = attachments
+                    .iter()
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| name.trim())
+                    .collect::<Vec<_>>();
+                if !names.is_empty() {
+                    text.push_str(&format!(" [attachments: {}]", names.join(", ")));
+                }
+            }
+            text.push('\n');
+        }
+    }
+
+    if let Some(document) = &context.current_document {
+        let document_json = serde_json::to_string_pretty(document)
+            .map_err(|error| format!("Could not serialize current Strut document: {error}"))?;
+        text.push_str(
+            "\nCurrent editable Strut document. Treat the user request as an edit to this document unless they explicitly ask for a new scene. Preserve unaffected layers, states, timelines, bindings, and events. Return the complete updated document, not a patch:\n",
+        );
+        text.push_str(&document_json);
+        text.push('\n');
+    }
+
+    text.push_str("\nUser request:\n");
+    text.push_str(prompt.trim());
+    Ok(text)
 }
 
 fn local_character_prompt(
@@ -1898,6 +1998,42 @@ mod tests {
         let document = parse_generated_document(&text).expect("document should parse");
 
         assert_eq!(document.state_machines[0].name, "OwlMoods");
+    }
+
+    #[test]
+    fn contextual_prompt_carries_chat_history_and_current_document() {
+        let context = GenerationContext {
+            project_name: Some("Mascot Game".to_string()),
+            project_path: Some("D:\\Strut Projects\\Mascot Game".to_string()),
+            active_chat_title: Some("Follow-up edits".to_string()),
+            current_document_summary: Some(
+                "Owl Mascot; 12 editable layers; states: idle, wave".to_string(),
+            ),
+            chat_history: vec![
+                GenerationContextMessage {
+                    role: "user".to_string(),
+                    text: "make a green owl mascot".to_string(),
+                    attachments: Some(vec!["owl-reference.png".to_string()]),
+                },
+                GenerationContextMessage {
+                    role: "assistant".to_string(),
+                    text: "Owl Mascot is ready.".to_string(),
+                    attachments: None,
+                },
+            ],
+            current_document: Some(strut_core::Document::sample_owl_mascot()),
+        };
+
+        let prompt =
+            contextual_generation_prompt("make it cheer when level completes", Some(&context))
+                .expect("context prompt");
+
+        assert!(prompt.contains("Project: Mascot Game"));
+        assert!(prompt.contains("make a green owl mascot"));
+        assert!(prompt.contains("owl-reference.png"));
+        assert!(prompt.contains("Current editable Strut document"));
+        assert!(prompt.contains("Owl Mascot"));
+        assert!(prompt.contains("make it cheer when level completes"));
     }
 
     #[test]

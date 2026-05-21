@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -183,6 +184,113 @@ def run_smoke() -> None:
             expect(page.get_by_role("heading", name="Start a motion project")).to_be_visible()
             page.get_by_role("button", name="Remove project Smoke Mascot").click()
             expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).not_to_be_visible()
+
+            page.evaluate(
+                """
+                window.localStorage.setItem("strut-studio-workspace-v4", JSON.stringify({
+                  projects: [{
+                    id: "project-preview",
+                    name: "Preview Project",
+                    path: "D:\\\\StrutPreview",
+                    chats: [
+                      {
+                        id: "chat-generated",
+                        title: "Generated owl",
+                        projectId: "project-preview",
+                        updated: "1h",
+                        messages: [{ id: 1, role: "assistant", text: "Context Owl is ready." }],
+                        references: [],
+                        activeState: "wave",
+                        document: {
+                          id: "doc-context-owl",
+                          name: "Context Owl",
+                          artboards: [{
+                            id: "board-context",
+                            name: "ContextOwl",
+                            width: 960,
+                            height: 540,
+                            nodes: [{
+                              id: "owl-rig",
+                              name: "OwlRig",
+                              kind: "group",
+                              transform: { translate_x: 0, translate_y: 0, rotate: 0, scale_x: 1, scale_y: 1 },
+                              style: { fill: null, stroke: null, stroke_width: 0, opacity: 1, linecap: null, linejoin: null },
+                              shape: { type: "none" },
+                              children: [
+                                {
+                                  id: "context-body",
+                                  name: "ContextBody",
+                                  kind: "ellipse",
+                                  transform: { translate_x: 0, translate_y: 0, rotate: 0, scale_x: 1, scale_y: 1 },
+                                  style: { fill: "#f6f0df", stroke: "#28241f", stroke_width: 8, opacity: 1, linecap: "round", linejoin: "round" },
+                                  shape: { type: "ellipse", cx: 480, cy: 280, rx: 120, ry: 150 },
+                                  children: []
+                                },
+                                {
+                                  id: "context-face",
+                                  name: "ContextFace",
+                                  kind: "rect",
+                                  transform: { translate_x: 0, translate_y: 0, rotate: 0, scale_x: 1, scale_y: 1 },
+                                  style: { fill: "#29251f", stroke: "#29251f", stroke_width: 4, opacity: 1, linecap: "round", linejoin: "round" },
+                                  shape: { type: "rect", x: 405, y: 210, width: 150, height: 92, rx: 28 },
+                                  children: []
+                                }
+                              ]
+                            }]
+                          }],
+                          timelines: [{
+                            id: "wave",
+                            name: "Wave",
+                            duration_ms: 900,
+                            tracks: [{
+                              target: "owl-rig",
+                              property: "translate_y",
+                              keyframes: [
+                                { time_ms: 0, value: { type: "number", value: 0 }, easing: "ease_in_out" },
+                                { time_ms: 450, value: { type: "number", value: -16 }, easing: "ease_out" },
+                                { time_ms: 900, value: { type: "number", value: 0 }, easing: "ease_in" }
+                              ]
+                            }]
+                          }],
+                          state_machines: [{
+                            id: "context-moods",
+                            name: "ContextMoods",
+                            inputs: [{ name: "complete", kind: "trigger" }],
+                            states: ["idle", "wave", "celebrate"],
+                            transitions: [{ from: "idle", to: "celebrate", on: "complete", timeline: "wave" }]
+                          }],
+                          bindings: [{ name: "complete" }],
+                          events: [{ name: "level_complete" }]
+                        }
+                      },
+                      {
+                        id: "chat-empty",
+                        title: "Empty follow-up",
+                        projectId: "project-preview",
+                        updated: "now",
+                        messages: [],
+                        references: [],
+                        document: null,
+                        activeState: "idle"
+                      }
+                    ]
+                  }],
+                  activeProjectId: "project-preview",
+                  activeChatId: "chat-empty",
+                  themeMode: "system"
+                }));
+                """
+            )
+            page.reload(wait_until="networkidle")
+            page.get_by_role("button", name="Editor", exact=True).click()
+            expect(page.get_by_role("button", name="Empty follow-up now")).to_be_visible()
+            expect(page.get_by_text("Context Owl / ContextMoods")).to_be_visible()
+            expect(page.locator('[data-testid="character-preview"]')).to_be_visible()
+            expect(page.get_by_text("ContextBody")).to_be_visible()
+            page.get_by_role("button", name="Celebrate", exact=True).click()
+            expect(page.get_by_role("button", name="Celebrate", exact=True)).to_have_class(
+                re.compile("active")
+            )
 
             page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
             browser.close()

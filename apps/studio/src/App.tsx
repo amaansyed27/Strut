@@ -153,6 +153,19 @@ type GenerationProvider = {
   };
 };
 
+type GenerationContext = {
+  projectName?: string;
+  projectPath?: string;
+  activeChatTitle?: string;
+  currentDocumentSummary?: string;
+  chatHistory: Array<{
+    role: ChatMessage["role"];
+    text: string;
+    attachments?: string[];
+  }>;
+  currentDocument?: StrutDocument;
+};
+
 type GeneratedCharacter = {
   document: StrutDocument;
   source: string;
@@ -423,6 +436,41 @@ function titleCase(value: string) {
 
 function flattenNodes(nodes: StrutNode[]): StrutNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
+}
+
+function latestPreviewForProject(project: ProjectRecord | null, activeChatId: string | null) {
+  if (!project) {
+    return null;
+  }
+  const activeChat = project.chats.find((chat) => chat.id === activeChatId) ?? null;
+  if (activeChat?.document) {
+    return {
+      activeState: activeChat.activeState,
+      chatId: activeChat.id,
+      document: activeChat.document,
+      inherited: false,
+    };
+  }
+  const previewChat = project.chats.find((chat) => chat.document);
+  if (!previewChat?.document) {
+    return null;
+  }
+  return {
+    activeState: previewChat.activeState,
+    chatId: previewChat.id,
+    document: previewChat.document,
+    inherited: true,
+  };
+}
+
+function documentSummary(document: StrutDocument | null) {
+  if (!document) {
+    return "No current document";
+  }
+  const artboard = document.artboards[0];
+  const layerCount = artboard ? flattenNodes(artboard.nodes).length : 0;
+  const states = document.state_machines[0]?.states.join(", ") || "no states";
+  return `${document.name}; ${layerCount} editable layers; states: ${states}`;
 }
 
 function projectFiles(project: ProjectRecord): ProjectFile[] {
@@ -807,8 +855,9 @@ function App() {
 
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const activeChat = activeProject?.chats.find((chat) => chat.id === activeChatId) ?? null;
-  const currentDocument = activeChat?.document ?? null;
-  const currentActiveState = activeChat?.activeState ?? "wave";
+  const projectPreview = latestPreviewForProject(activeProject, activeChatId);
+  const currentDocument = projectPreview?.document ?? null;
+  const currentActiveState = projectPreview?.activeState ?? "wave";
   const files = activeProject ? projectFiles(activeProject) : [];
   const activeArtboard = currentDocument?.artboards[0] ?? emptyArtboard;
   const activeMachine = currentDocument?.state_machines[0] ?? emptyMachine;
@@ -931,7 +980,42 @@ function App() {
   }
 
   function setCurrentActiveState(state: string) {
-    updateCurrentChat((chat) => ({ ...chat, activeState: state, updated: "now" }));
+    if (!activeProjectId) {
+      return;
+    }
+    const ownerChatId = projectPreview?.chatId ?? activeChatId;
+    if (!ownerChatId) {
+      return;
+    }
+    updateChat(activeProjectId, ownerChatId, (chat) => ({ ...chat, activeState: state, updated: "now" }));
+  }
+
+  function generationContext(): GenerationContext {
+    const activeMessages = activeChat?.messages ?? [];
+    const projectMessages = activeProject?.chats
+      .filter((chat) => chat.id !== activeChatId)
+      .flatMap((chat) => chat.messages.slice(-3).map((message) => ({ chatTitle: chat.title, message }))) ?? [];
+    const chatHistory = [
+      ...activeMessages.slice(-10).map((message) => ({
+        role: message.role,
+        text: message.text,
+        attachments: message.attachments?.map((attachment) => attachment.name),
+      })),
+      ...projectMessages.slice(0, 6).map(({ chatTitle, message }) => ({
+        role: message.role,
+        text: `[${chatTitle}] ${message.text}`,
+        attachments: message.attachments?.map((attachment) => attachment.name),
+      })),
+    ].filter((message) => message.text.trim() || (message.attachments?.length ?? 0) > 0);
+
+    return {
+      projectName: activeProject?.name,
+      projectPath: activeProject?.path,
+      activeChatTitle: activeChat?.title,
+      currentDocumentSummary: documentSummary(currentDocument),
+      chatHistory,
+      currentDocument: currentDocument ?? undefined,
+    };
   }
 
   async function attachReferenceImages(files: FileList | null) {
@@ -1063,7 +1147,7 @@ function App() {
       if (!desktopRuntime) {
         throw new Error("Desktop app required for real generation. Run the Tauri app and connect a local CLI, Ollama, or BYOK provider.");
       }
-      const args = { prompt: generationPrompt, provider: providerPayload(), references };
+      const args = { prompt: generationPrompt, provider: providerPayload(), references, context: generationContext() };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
@@ -1073,7 +1157,7 @@ function App() {
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
       }));
       setActivity(`${result.source}: ${result.message}`);
-      appendMessage("assistant", `${result.document.name} is ready. I created editable layers, states, timelines, bindings, and events.`);
+      appendMessage("assistant", `${result.document.name} is ready. I ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`);
     } catch (error) {
       setActivity(String(error));
       appendMessage("assistant", `Generation stopped: ${String(error)}`);
