@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::net::IpAddr;
@@ -8,7 +9,22 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const CHARACTER_SYSTEM_PROMPT: &str = "You convert design prompts into Strut character specs. Return only JSON with keys variant, name, accent, shell. variant must be one of floating-helper, scanner-bot, celebration-bot, owl-guide. accent and shell must be hex colors.";
+const CHARACTER_DOCUMENT_SYSTEM_PROMPT: &str = r##"You convert design prompts into editable Strut motion documents. Return only JSON in this shape: {"document": <StrutDocument>}.
+
+StrutDocument schema:
+- id: UUID string
+- name: character or scene name
+- artboards: one artboard with id, name, width 960, height 540, and editable nodes
+- nodes: recursive objects with id, name, kind, transform, style, shape, children
+- kind: group, rect, ellipse, path, text, image, or hit_area
+- transform: translate_x, translate_y, rotate, scale_x, scale_y
+- style: fill, stroke, stroke_width, opacity, linecap, linejoin
+- shape variants use {"type":"rect","x":...,"y":...,"width":...,"height":...,"rx":...}, {"type":"ellipse","cx":...,"cy":...,"rx":...,"ry":...}, {"type":"path","d":"SVG path data"}, {"type":"text","x":...,"y":...,"value":"...","size":...}, or {"type":"none"}
+- timelines: include idle_float, wave, blink, scan, and celebrate timelines. Every track target must be a real node id.
+- state_machines: include one machine with states idle, float, wave, blink, scan, celebrate, sleep.
+- bindings and events: arrays, may be empty.
+
+Make the silhouette, named layers, palette, and motion match the request. If the user asks for Pikachu, R2D2, a bird, a loader, or anything else, create that subject's distinct editable parts. Do not return a preset selector such as variant/name/accent/shell."##;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalGenerationKind {
@@ -190,8 +206,7 @@ async fn generate_character(
             let config = provider
                 .byok
                 .ok_or_else(|| "BYOK provider config missing".to_string())?;
-            let spec = generate_spec_with_byok(&prompt, &config, &references).await?;
-            let document = strut_core::Document::generate_character(spec);
+            let document = generate_document_with_byok(&prompt, &config, &references).await?;
             Ok(GeneratedCharacter {
                 source: config.provider_id,
                 message: reference_message("Generated through BYOK provider", &references),
@@ -202,8 +217,8 @@ async fn generate_character(
             let adapter_id = provider
                 .local_adapter_id
                 .ok_or_else(|| "Select a local CLI or Ollama adapter".to_string())?;
-            let spec = generate_spec_with_local_adapter(&adapter_id, &prompt, &references).await?;
-            let document = strut_core::Document::generate_character(spec);
+            let document =
+                generate_document_with_local_adapter(&adapter_id, &prompt, &references).await?;
             Ok(GeneratedCharacter {
                 source: adapter_id,
                 message: reference_message("Generated through local provider", &references),
@@ -287,8 +302,10 @@ fn test_local_adapter(adapter_id: String) -> ProviderOperationResult {
     let result = if definition.generation == LocalGenerationKind::OllamaHttp {
         run_ollama_smoke_test(&command)
     } else {
-        let prompt = format!(
-            "{CHARACTER_SYSTEM_PROMPT}\n\nReply with only this JSON: {{\"variant\":\"floating-helper\",\"name\":\"Smoke Bot\",\"accent\":\"#51bfd0\",\"shell\":\"#f6f1e8\"}}"
+        let prompt = local_character_prompt(
+            "Create a small floating helper named Smoke Bot with a cyan accent.",
+            &[],
+            None,
         );
         run_local_cli_command(
             &definition,
@@ -321,12 +338,13 @@ fn test_local_adapter(adapter_id: String) -> ProviderOperationResult {
 #[tauri::command]
 async fn test_byok_provider(config: ByokProviderConfig) -> Result<ProviderOperationResult, String> {
     ensure_byok_config(&config)?;
-    let smoke_prompt = "Create a small floating helper character named Smoke Bot with a cyan accent. Return the Strut character spec JSON.";
-    match generate_spec_with_byok(smoke_prompt, &config, &[]).await {
+    let smoke_prompt =
+        "Create a small floating helper character named Smoke Bot with a cyan accent.";
+    match generate_document_with_byok(smoke_prompt, &config, &[]).await {
         Ok(_) => Ok(ProviderOperationResult {
             ok: true,
             status: format!("{} ready", provider_label(&config.provider_id)),
-            detail: "provider completed a real structured generation smoke test".to_string(),
+            detail: "provider completed a real Strut document generation smoke test".to_string(),
         }),
         Err(error) => Ok(ProviderOperationResult {
             ok: false,
@@ -642,7 +660,11 @@ fn run_ollama_smoke_test(command: &Path) -> Result<CommandRun, String> {
         &["run".to_string(), "llama3.2".to_string()],
         &[],
         None,
-        "Reply with only this JSON: {\"variant\":\"floating-helper\",\"name\":\"Smoke Bot\",\"accent\":\"#51bfd0\",\"shell\":\"#f6f1e8\"}",
+        &local_character_prompt(
+            "Create a small floating helper named Smoke Bot with a cyan accent.",
+            &[],
+            None,
+        ),
         Duration::from_secs(60),
     )
 }
@@ -747,7 +769,8 @@ fn local_generation_args(
         "gemini-cli" => vec![
             "--output-format".to_string(),
             "stream-json".to_string(),
-            "--yolo".to_string(),
+            "--prompt".to_string(),
+            "Generate exactly the requested JSON from stdin.".to_string(),
         ],
         "claude-code" => vec![
             "-p".to_string(),
@@ -950,7 +973,7 @@ fn local_character_prompt(
     reference_files: Option<&WrittenReferenceFiles>,
 ) -> String {
     let mut text = format!(
-        "{CHARACTER_SYSTEM_PROMPT}\n\nUser request:\n{}",
+        "{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\n\nUser request:\n{}",
         prompt_with_reference_context(prompt, references)
     );
     if let Some(files) = reference_files {
@@ -962,7 +985,9 @@ fn local_character_prompt(
             text.push_str("\nUse those image files as visual references when your runtime supports local file inspection.");
         }
     }
-    text.push_str("\n\nReturn only the JSON object. Do not include markdown.");
+    text.push_str(
+        "\n\nDo not inspect files, run tools, edit the workspace, or explain your answer. Return only the JSON object. Do not include markdown or a legacy variant spec.",
+    );
     text
 }
 
@@ -1027,11 +1052,11 @@ fn reference_message(base: &str, references: &[ReferenceImageInput]) -> String {
     }
 }
 
-async fn generate_spec_with_byok(
+async fn generate_document_with_byok(
     prompt: &str,
     config: &ByokProviderConfig,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::CharacterSpec, String> {
+) -> Result<strut_core::Document, String> {
     ensure_byok_config(config)?;
     let response_text = match config.provider_id.as_str() {
         "anthropic" => anthropic_message(prompt, config, references).await?,
@@ -1039,21 +1064,21 @@ async fn generate_spec_with_byok(
         _ => openai_compatible_chat(prompt, config, references).await?,
     };
 
-    parse_character_spec(&response_text)
+    parse_generated_document(&response_text)
 }
 
-async fn generate_spec_with_local_adapter(
+async fn generate_document_with_local_adapter(
     adapter_id: &str,
     prompt: &str,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::CharacterSpec, String> {
+) -> Result<strut_core::Document, String> {
     let definition = local_adapter_definitions()
         .into_iter()
         .find(|definition| definition.id == adapter_id)
         .ok_or_else(|| format!("{adapter_id} is not registered"))?;
 
     if definition.generation == LocalGenerationKind::OllamaHttp {
-        return generate_spec_with_ollama(prompt, references).await;
+        return generate_document_with_ollama(prompt, references).await;
     }
 
     if definition.generation == LocalGenerationKind::AcpOnly {
@@ -1079,7 +1104,7 @@ async fn generate_spec_with_local_adapter(
         &command,
         reference_dir,
         &prompt,
-        Duration::from_secs(120),
+        Duration::from_secs(240),
     )?;
     let _ = reference_files
         .as_ref()
@@ -1092,15 +1117,15 @@ async fn generate_spec_with_local_adapter(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let assistant_text = cli_assistant_text(&stdout);
-    parse_character_spec(&assistant_text)
-        .or_else(|_| parse_character_spec(&stdout))
-        .or_else(|_| parse_character_spec(&stderr))
+    parse_generated_document(&assistant_text)
+        .or_else(|_| parse_generated_document(&stdout))
+        .or_else(|_| parse_generated_document(&stderr))
 }
 
-async fn generate_spec_with_ollama(
+async fn generate_document_with_ollama(
     prompt: &str,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::CharacterSpec, String> {
+) -> Result<strut_core::Document, String> {
     let client = http_client()?;
     let images = references
         .iter()
@@ -1110,7 +1135,7 @@ async fn generate_spec_with_ollama(
         .post("http://127.0.0.1:11434/api/generate")
         .json(&json!({
             "model": "llama3.2",
-            "prompt": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references)),
+            "prompt": format!("{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references)),
             "images": images,
             "stream": false,
             "format": "json"
@@ -1129,7 +1154,7 @@ async fn generate_spec_with_ollama(
         .get("response")
         .and_then(|value| value.as_str())
         .ok_or_else(|| "Ollama response did not include a response field".to_string())?;
-    parse_character_spec(text)
+    parse_generated_document(text)
 }
 
 async fn openai_compatible_chat(
@@ -1161,7 +1186,7 @@ async fn openai_compatible_chat(
         .json(&json!({
             "model": config.model,
             "messages": [
-                {"role": "system", "content": CHARACTER_SYSTEM_PROMPT},
+                {"role": "system", "content": CHARACTER_DOCUMENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content}
             ],
             "temperature": 0.2,
@@ -1207,8 +1232,8 @@ async fn anthropic_message(
         .header("anthropic-version", "2023-06-01")
         .json(&json!({
             "model": config.model,
-            "max_tokens": 512,
-            "system": CHARACTER_SYSTEM_PROMPT,
+            "max_tokens": 4096,
+            "system": CHARACTER_DOCUMENT_SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": content}]
         }))
         .send()
@@ -1235,7 +1260,7 @@ async fn gemini_generate_content(
     let client = http_client()?;
     let model = config.model.trim().trim_start_matches("models/");
     let mut parts = vec![json!({
-        "text": format!("{CHARACTER_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references))
+        "text": format!("{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references))
     })];
     parts.extend(references.iter().filter_map(|reference| {
         Some(json!({
@@ -1314,6 +1339,357 @@ fn collect_text_fields(value: &Value, out: &mut String) {
         }
         _ => {}
     }
+}
+
+fn parse_generated_document(text: &str) -> Result<strut_core::Document, String> {
+    if let Ok(document) = serde_json::from_str::<strut_core::Document>(text.trim()) {
+        return validate_generated_document(document);
+    }
+
+    if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        if let Ok(document) = document_from_value(&value) {
+            return validate_generated_document(document);
+        }
+    }
+
+    let mut last_error = None;
+    for json_text in extract_json_objects(text).into_iter().rev() {
+        match serde_json::from_str::<Value>(&json_text)
+            .map_err(|error| error.to_string())
+            .and_then(|value| document_from_value(&value))
+            .and_then(validate_generated_document)
+        {
+            Ok(document) => return Ok(document),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    if parse_character_spec(text).is_ok()
+        || extract_json_objects(text)
+            .iter()
+            .any(|json_text| parse_character_spec(json_text).is_ok())
+    {
+        return Err(
+            "provider returned the old preset spec format. Strut now requires a full editable document so different prompts do not collapse into the same character.".to_string(),
+        );
+    }
+
+    Err(last_error.unwrap_or_else(|| "model did not return a valid Strut document".to_string()))
+}
+
+fn document_from_value(value: &Value) -> Result<strut_core::Document, String> {
+    let mut document_value = value
+        .get("document")
+        .cloned()
+        .unwrap_or_else(|| value.clone());
+    normalize_generated_document_value(&mut document_value);
+    serde_json::from_value::<strut_core::Document>(document_value)
+        .map_err(|error| format!("model response was not a Strut document: {error}"))
+}
+
+fn normalize_generated_document_value(value: &mut Value) {
+    let mut id_map = HashMap::new();
+    let mut next_id = 1u128;
+    normalize_generated_ids(value, &mut id_map, &mut next_id);
+    fill_generated_defaults(value);
+}
+
+fn normalize_generated_ids(
+    value: &mut Value,
+    id_map: &mut HashMap<String, String>,
+    next_id: &mut u128,
+) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                normalize_generated_ids(value, id_map, next_id);
+            }
+        }
+        Value::Object(map) => {
+            for key in ["id", "target"] {
+                if key == "id"
+                    && (map.contains_key("timeline") || map.contains_key("timeline_id"))
+                    && !map.contains_key("kind")
+                {
+                    continue;
+                }
+                if let Some(Value::String(raw_id)) = map.get_mut(key) {
+                    if !looks_like_uuid(raw_id) {
+                        let strict_id = id_map.entry(raw_id.clone()).or_insert_with(|| {
+                            let id = format!("00000000-0000-0000-0000-{next_id:012x}");
+                            *next_id += 1;
+                            id
+                        });
+                        *raw_id = strict_id.clone();
+                    }
+                }
+            }
+            for value in map.values_mut() {
+                normalize_generated_ids(value, id_map, next_id);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn fill_generated_defaults(value: &mut Value) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                fill_generated_defaults(value);
+            }
+        }
+        Value::Object(map) => {
+            if map.contains_key("artboards") {
+                map.entry("timelines").or_insert_with(|| json!([]));
+                map.entry("state_machines").or_insert_with(|| json!([]));
+                map.entry("bindings").or_insert_with(|| json!([]));
+                map.entry("events").or_insert_with(|| json!([]));
+            }
+
+            if map.contains_key("tracks") {
+                if let Some(duration) = map.remove("duration") {
+                    map.entry("duration_ms").or_insert(duration);
+                }
+            }
+
+            if map.contains_key("keyframes") {
+                if let Some(property) = map.get_mut("property") {
+                    normalize_track_property(property);
+                }
+            }
+
+            if (map.contains_key("time") || map.contains_key("time_ms"))
+                && map.contains_key("value")
+            {
+                if let Some(time) = map.remove("time") {
+                    map.entry("time_ms").or_insert(time);
+                }
+                if let Some(value) = map.get_mut("value") {
+                    normalize_keyframe_value(value);
+                }
+                if let Some(easing) = map.get_mut("easing") {
+                    normalize_easing(easing);
+                } else {
+                    map.insert("easing".to_string(), json!("ease_in_out"));
+                }
+            }
+
+            if map.contains_key("states") {
+                map.entry("name").or_insert_with(|| json!("GeneratedMoods"));
+                map.entry("inputs").or_insert_with(|| json!([]));
+                map.entry("transitions").or_insert_with(|| json!([]));
+                if let Some(states) = map.get_mut("states") {
+                    normalize_state_list(states);
+                }
+            }
+
+            if map.contains_key("kind") {
+                map.entry("transform")
+                    .or_insert_with(|| json!(default_transform_value()));
+                map.entry("style")
+                    .or_insert_with(|| json!(default_style_value()));
+                map.entry("shape")
+                    .or_insert_with(|| json!({"type": "none"}));
+                map.entry("children").or_insert_with(|| json!([]));
+            }
+
+            if let Some(style) = map.get_mut("style") {
+                fill_style_defaults(style);
+            }
+            if let Some(transform) = map.get_mut("transform") {
+                fill_transform_defaults(transform);
+            }
+
+            for value in map.values_mut() {
+                fill_generated_defaults(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_track_property(value: &mut Value) {
+    let Value::String(property) = value else {
+        return;
+    };
+    *property = match property.as_str() {
+        "translate_x" | "translation_x" | "x" => "translation.x",
+        "translate_y" | "translation_y" | "y" => "translation.y",
+        "rotate" => "rotation",
+        "scale_x" => "scale.x",
+        "scale_y" => "scale.y",
+        other => other,
+    }
+    .to_string();
+}
+
+fn normalize_keyframe_value(value: &mut Value) {
+    match value {
+        Value::Number(_) => {
+            let number = value.clone();
+            *value = json!({"type": "number", "value": number});
+        }
+        Value::String(text) if text.starts_with('#') => {
+            let color = text.clone();
+            *value = json!({"type": "color", "value": color});
+        }
+        Value::String(_) => {
+            let text = value.clone();
+            *value = json!({"type": "text", "value": text});
+        }
+        Value::Object(map) if !map.contains_key("type") => {
+            if map.contains_key("x") && map.contains_key("y") {
+                let point = value.clone();
+                *value = json!({"type": "point", "value": point});
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_easing(value: &mut Value) {
+    let Value::String(easing) = value else {
+        *value = json!("ease_in_out");
+        return;
+    };
+    *easing = match easing.as_str() {
+        "easeIn" | "easeInQuad" | "ease_in_quad" | "ease-in" => "ease_in",
+        "easeOut" | "easeOutQuad" | "ease_out_quad" | "ease-out" => "ease_out",
+        "easeInOut" | "easeInOutQuad" | "ease_in_out_quad" | "ease-in-out" => "ease_in_out",
+        "linear" => "linear",
+        "ease_in" | "ease_out" | "ease_in_out" => easing.as_str(),
+        _ => "ease_in_out",
+    }
+    .to_string();
+}
+
+fn normalize_state_list(value: &mut Value) {
+    let Value::Array(states) = value else {
+        return;
+    };
+    for state in states {
+        if let Value::Object(map) = state {
+            let name = map
+                .get("name")
+                .or_else(|| map.get("id"))
+                .and_then(Value::as_str)
+                .unwrap_or("idle")
+                .to_lowercase()
+                .replace(' ', "_");
+            *state = Value::String(name);
+        }
+    }
+}
+
+fn fill_style_defaults(value: &mut Value) {
+    let Value::Object(map) = value else {
+        *value = json!(default_style_value());
+        return;
+    };
+    normalize_none_string(map.get_mut("fill"));
+    normalize_none_string(map.get_mut("stroke"));
+    map.entry("fill").or_insert(Value::Null);
+    map.entry("stroke").or_insert(Value::Null);
+    map.entry("stroke_width").or_insert(json!(0.0));
+    map.entry("opacity").or_insert(json!(1.0));
+    map.entry("linecap").or_insert(json!("round"));
+    map.entry("linejoin").or_insert(json!("round"));
+}
+
+fn fill_transform_defaults(value: &mut Value) {
+    let Value::Object(map) = value else {
+        *value = json!(default_transform_value());
+        return;
+    };
+    map.entry("translate_x").or_insert(json!(0.0));
+    map.entry("translate_y").or_insert(json!(0.0));
+    map.entry("rotate").or_insert(json!(0.0));
+    map.entry("scale_x").or_insert(json!(1.0));
+    map.entry("scale_y").or_insert(json!(1.0));
+}
+
+fn normalize_none_string(value: Option<&mut Value>) {
+    if let Some(value) = value {
+        if let Value::String(text) = value {
+            if text.eq_ignore_ascii_case("none") || text.eq_ignore_ascii_case("transparent") {
+                *value = Value::Null;
+            }
+        }
+    }
+}
+
+fn default_style_value() -> Value {
+    json!({
+        "fill": null,
+        "stroke": null,
+        "stroke_width": 0.0,
+        "opacity": 1.0,
+        "linecap": "round",
+        "linejoin": "round"
+    })
+}
+
+fn default_transform_value() -> Value {
+    json!({
+        "translate_x": 0.0,
+        "translate_y": 0.0,
+        "rotate": 0.0,
+        "scale_x": 1.0,
+        "scale_y": 1.0
+    })
+}
+
+fn looks_like_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value
+            .chars()
+            .enumerate()
+            .all(|(index, character)| match index {
+                8 | 13 | 18 | 23 => character == '-',
+                _ => character.is_ascii_hexdigit(),
+            })
+}
+
+fn validate_generated_document(
+    document: strut_core::Document,
+) -> Result<strut_core::Document, String> {
+    strut_format::validate_document(&document)
+        .map_err(|error| format!("generated Strut document failed validation: {error}"))?;
+    if document.timelines.is_empty() {
+        return Err("generated Strut document must include timelines".to_string());
+    }
+    if document.state_machines.is_empty() {
+        return Err("generated Strut document must include a state machine".to_string());
+    }
+    if document
+        .state_machines
+        .iter()
+        .all(|machine| !machine.states.iter().any(|state| state == "idle"))
+    {
+        return Err("generated Strut document must include an idle state".to_string());
+    }
+    if count_document_nodes(&document) < 6 {
+        return Err(
+            "generated Strut document must contain at least six editable nodes".to_string(),
+        );
+    }
+    Ok(document)
+}
+
+fn count_document_nodes(document: &strut_core::Document) -> usize {
+    document
+        .artboards
+        .iter()
+        .map(|artboard| count_nodes(&artboard.nodes))
+        .sum()
+}
+
+fn count_nodes(nodes: &[strut_core::Node]) -> usize {
+    nodes
+        .iter()
+        .map(|node| 1 + count_nodes(&node.children))
+        .sum()
 }
 
 fn parse_character_spec(text: &str) -> Result<strut_core::CharacterSpec, String> {
@@ -1421,40 +1797,107 @@ mod tests {
     }
 
     #[test]
-    fn parses_json_spec_from_model_text() {
-        let spec = parse_character_spec(
-            r##"Here is JSON: {"variant":"owl-guide","name":"Owl Mascot","accent":"#78d64b","shell":"#8ee15a"}"##,
+    fn parses_full_document_from_model_text() {
+        let document_json = serde_json::to_string(&strut_core::Document::sample_owl_mascot())
+            .expect("document json");
+        let document =
+            parse_generated_document(&format!("Here is JSON: {{\"document\":{document_json}}}"))
+                .expect("document should parse");
+
+        assert_eq!(document.name, "Owl Mascot");
+        assert_eq!(document.artboards[0].name, "OwlMascot");
+    }
+
+    #[test]
+    fn rejects_legacy_preset_spec_from_model_text() {
+        let error = parse_generated_document(
+            r##"{"variant":"owl-guide","name":"Owl Mascot","accent":"#78d64b","shell":"#8ee15a"}"##,
         )
-        .expect("spec should parse");
+        .expect_err("legacy spec should be rejected");
 
-        assert_eq!(spec.variant, "owl-guide");
-        assert_eq!(spec.name.as_deref(), Some("Owl Mascot"));
+        assert!(error.contains("old preset spec format"));
     }
 
     #[test]
-    fn parses_json_spec_from_streaming_cli_output() {
-        let text = cli_assistant_text(
-            r##"{"type":"assistant","message":{"content":"{\"variant\":\"floating-helper\",\"name\":\"Stream Bot\",\"accent\":\"#51bfd0\",\"shell\":\"#f6f1e8\"}"}}"##,
-        );
-        let spec = parse_character_spec(&text).expect("spec should parse");
+    fn normalizes_model_friendly_ids_and_partial_styles() {
+        let document = parse_generated_document(
+            r##"{
+              "document": {
+                "id": "doc",
+                "name": "Loose Mascot",
+                "artboards": [{
+                  "id": "main-board",
+                  "name": "Loose",
+                  "width": 960,
+                  "height": 540,
+                  "nodes": [{
+                    "id": "rig",
+                    "name": "Rig",
+                    "kind": "group",
+                    "children": [
+                      {"id":"body","name":"Body","kind":"ellipse","style":{"fill":"#78c137"},"shape":{"type":"ellipse","cx":480,"cy":270,"rx":100,"ry":120}},
+                      {"id":"face","name":"Face","kind":"rect","style":{"fill":"none","stroke":"#111"},"shape":{"type":"rect","x":400,"y":220,"width":160,"height":90,"rx":24}},
+                      {"id":"eye-a","name":"EyeA","kind":"ellipse","shape":{"type":"ellipse","cx":440,"cy":250,"rx":10,"ry":10}},
+                      {"id":"eye-b","name":"EyeB","kind":"ellipse","shape":{"type":"ellipse","cx":520,"cy":250,"rx":10,"ry":10}},
+                      {"id":"smile","name":"Smile","kind":"path","shape":{"type":"path","d":"M450 290 C480 315 510 290"}}
+                    ]
+                  }]
+                }],
+                "timelines": [{"id":"wave-line","name":"wave","duration":800,"tracks":[{"target":"rig","property":"translate_y","keyframes":[{"time":0,"value":0,"easing":"easeOutQuad"},{"time":400,"value":8,"easing":"easeInOutQuad"}]}]}],
+                "state_machines": [{"id":"moods","name":"Moods","states":[{"id":"idle","name":"Idle"},{"id":"wave","name":"Wave"}],"transitions":[]}],
+                "bindings": [],
+                "events": []
+              }
+            }"##,
+        )
+        .expect("loose document should normalize");
 
-        assert_eq!(spec.variant, "floating-helper");
-        assert_eq!(spec.name.as_deref(), Some("Stream Bot"));
+        assert_eq!(document.name, "Loose Mascot");
+        assert_eq!(
+            document.timelines[0].tracks[0].target,
+            document.artboards[0].nodes[0].id
+        );
+        assert_eq!(document.timelines[0].duration_ms, 800);
+        assert_eq!(document.timelines[0].tracks[0].property, "translation.y");
+        assert_eq!(document.timelines[0].tracks[0].keyframes[0].time_ms, 0);
+        assert_eq!(
+            document.artboards[0].nodes[0].children[0].style.opacity,
+            1.0
+        );
+        assert_eq!(document.artboards[0].nodes[0].children[1].style.fill, None);
+        assert!(document.state_machines[0]
+            .states
+            .contains(&"wave".to_string()));
     }
 
     #[test]
-    fn parses_json_spec_from_gemini_delta_chunks() {
+    fn parses_full_document_from_streaming_cli_output() {
+        let document_text =
+            serde_json::json!({"document": strut_core::Document::sample_minimal_bot()}).to_string();
         let text = cli_assistant_text(
-            r##"{"type":"message","role":"user","content":"Return only JSON with keys variant, name, accent, shell."}
-{"type":"message","role":"assistant","content":"{\n  \"variant\": \"owl-guide\",\n  \"name\":","delta":true}
-{"type":"message","role":"assistant","content":" \"Duo-style Owl\",\n  \"accent\": \"#58cc02\",\n  \"shell\": \"#","delta":true}
-{"type":"message","role":"assistant","content":"ffffff\"\n}","delta":true}"##,
+            &serde_json::json!({"type":"assistant","message":{"content":document_text}})
+                .to_string(),
         );
-        let spec = parse_character_spec(&text).expect("spec should parse");
+        let document = parse_generated_document(&text).expect("document should parse");
 
-        assert_eq!(spec.variant, "owl-guide");
-        assert_eq!(spec.name.as_deref(), Some("Duo-style Owl"));
-        assert_eq!(spec.accent.as_deref(), Some("#58cc02"));
+        assert_eq!(document.name, "Minimal Bot");
+    }
+
+    #[test]
+    fn parses_full_document_from_gemini_delta_chunks() {
+        let document_text =
+            serde_json::json!({"document": strut_core::Document::sample_owl_mascot()}).to_string();
+        let split_at = document_text.len() / 2;
+        let (first, second) = document_text.split_at(split_at);
+        let text = cli_assistant_text(&format!(
+            "{}\n{}\n{}",
+            serde_json::json!({"type":"message","role":"user","content":"Return a full Strut document."}),
+            serde_json::json!({"type":"message","role":"assistant","content":first,"delta":true}),
+            serde_json::json!({"type":"message","role":"assistant","content":second,"delta":true})
+        ));
+        let document = parse_generated_document(&text).expect("document should parse");
+
+        assert_eq!(document.state_machines[0].name, "OwlMoods");
     }
 
     #[test]
@@ -1491,23 +1934,21 @@ mod tests {
     #[test]
     #[ignore = "requires authenticated Gemini CLI"]
     fn gemini_cli_generates_owl_mascot_end_to_end() {
-        let spec = tauri::async_runtime::block_on(generate_spec_with_local_adapter(
+        let document = tauri::async_runtime::block_on(generate_document_with_local_adapter(
             "gemini-cli",
             "Make a friendly owl style mascot like Duo. Keep it simple and editable, with wave, blink, scan, and celebrate animation states.",
             &[],
         ))
-        .expect("Gemini CLI should return a Strut character spec");
-        assert_eq!(spec.variant, "owl-guide");
-
-        let document = strut_core::Document::generate_character(spec);
+        .expect("Gemini CLI should return a full Strut document");
         let mut layer_names = Vec::new();
         collect_layer_names(&document.artboards[0].nodes, &mut layer_names);
         let states = &document.state_machines[0].states;
 
-        assert_eq!(document.artboards[0].name, "OwlMascot");
-        assert_eq!(document.state_machines[0].name, "OwlMoods");
-        assert!(layer_names.contains(&"OwlBody"));
-        assert!(layer_names.contains(&"Beak"));
+        assert!(document.name.to_lowercase().contains("owl"));
+        assert!(document.artboards[0].nodes.len() >= 3 || layer_names.len() >= 6);
+        assert!(layer_names
+            .iter()
+            .any(|name| name.to_lowercase().contains("owl")));
         for state in ["wave", "blink", "scan", "celebrate"] {
             assert!(states.iter().any(|item| item == state));
         }
