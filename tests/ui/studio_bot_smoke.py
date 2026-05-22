@@ -110,6 +110,9 @@ def run_smoke() -> None:
             expect(activity).to_contain_text("Browser preview project")
             expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Project brief now", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Open in file explorer")).to_be_visible()
+            page.get_by_role("button", name="Open in file explorer").click()
+            expect(activity).to_contain_text("Desktop app required to open project folder")
 
             page.get_by_role("button", name="Search", exact=True).click()
             page.get_by_label("Search projects and chats").fill("smoke")

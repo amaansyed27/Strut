@@ -20,11 +20,11 @@ StrutDocument schema:
 - transform: translate_x, translate_y, rotate, scale_x, scale_y
 - style: fill, stroke, stroke_width, opacity, linecap, linejoin
 - shape variants use {"type":"rect","x":...,"y":...,"width":...,"height":...,"rx":...}, {"type":"ellipse","cx":...,"cy":...,"rx":...,"ry":...}, {"type":"path","d":"SVG path data"}, {"type":"text","x":...,"y":...,"value":"...","size":...}, or {"type":"none"}
-- timelines: include idle_float, wave, blink, scan, and celebrate timelines. Every track target must be a real node id.
+- timelines: include idle_float, wave, blink, scan, and celebrate timelines. Every track target must be a real node id. Keep timelines compact: one or two tracks per timeline and two or three keyframes per track.
 - state_machines: include one machine with states idle, float, wave, blink, scan, celebrate, sleep.
 - bindings and events: arrays, may be empty.
 
-Make the silhouette, named layers, palette, and motion match the request. If the user asks for Pikachu, R2D2, a bird, a loader, or anything else, create that subject's distinct editable parts. Do not return a preset selector such as variant/name/accent/shell."##;
+Make the silhouette, named layers, palette, and motion match the request. If the user asks for Pikachu, R2D2, a bird, a loader, or anything else, create that subject's distinct editable parts. Use 8 to 16 editable nodes unless the user asks for a complex scene. Return compact JSON; do not pretty-print. Do not return a preset selector such as variant/name/accent/shell."##;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalGenerationKind {
@@ -207,6 +207,30 @@ fn create_project(name: String, location: String) -> Result<ProjectInfo, String>
     .map_err(|error| error.to_string())?;
 
     Ok(project_info(project_name, project_path))
+}
+
+#[tauri::command]
+fn open_project_folder(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No project folder is selected".to_string());
+    }
+
+    let folder = PathBuf::from(trimmed);
+    if !folder.exists() {
+        return Err(format!(
+            "Project folder does not exist: {}",
+            folder.display()
+        ));
+    }
+    if !folder.is_dir() {
+        return Err(format!(
+            "Project path is not a folder: {}",
+            folder.display()
+        ));
+    }
+
+    open_folder_in_file_manager(&folder)
 }
 
 #[tauri::command]
@@ -674,6 +698,51 @@ fn command_output_preview(stdout: &[u8], stderr: &[u8]) -> String {
         "command completed without output".to_string()
     } else {
         text.chars().take(220).collect()
+    }
+}
+
+fn response_preview(text: &str) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        "empty response".to_string()
+    } else {
+        compact.chars().take(700).collect()
+    }
+}
+
+fn document_repair_prompt(
+    original_prompt: &str,
+    invalid_response: &str,
+    parse_error: &str,
+) -> String {
+    format!(
+        "{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\n\nThe previous response could not be loaded by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"document\": <StrutDocument>}}. Keep the user's requested subject and animation intent. Use 8 to 12 editable nodes, short readable ids, five compact timelines, and one state machine. Do not explain, do not use markdown, do not return a preset spec, and do not omit timelines or state_machines.",
+        response_preview(invalid_response)
+    )
+}
+
+fn compact_plan_prompt(original_prompt: &str, previous_error: &str) -> String {
+    format!(
+        "Convert this motion design request into a compact Strut scene plan.\nOriginal request: {original_prompt}\nPrevious full-document attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\":{{\"name\":\"Short scene name\",\"parts\":[{{\"name\":\"Body\",\"kind\":\"ellipse\",\"x\":480,\"y\":280,\"width\":160,\"height\":190,\"fill\":\"#58CC02\",\"stroke\":\"#1f1f1f\"}}],\"motion\":\"short phrase\"}}}}\nRules: include 6 to 10 visually distinct parts that match the requested subject, using kind ellipse, rect, path, or text. Use absolute artboard coordinates for x/y/width/height. For path parts include d. Do not explain."
+    )
+}
+
+fn open_folder_in_file_manager(folder: &Path) -> Result<(), String> {
+    let status = if cfg!(target_os = "windows") {
+        Command::new("explorer").arg(folder).spawn()
+    } else if cfg!(target_os = "macos") {
+        Command::new("open").arg(folder).spawn()
+    } else {
+        Command::new("xdg-open").arg(folder).spawn()
+    }
+    .map_err(|error| format!("Could not open project folder: {error}"))?
+    .wait()
+    .map_err(|error| format!("Could not open project folder: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("File explorer exited with status {status}"))
     }
 }
 
@@ -1158,13 +1227,40 @@ async fn generate_document_with_byok(
     references: &[ReferenceImageInput],
 ) -> Result<strut_core::Document, String> {
     ensure_byok_config(config)?;
-    let response_text = match config.provider_id.as_str() {
+    let response_text = byok_generate_text(prompt, config, references).await?;
+
+    match parse_generated_document(&response_text) {
+        Ok(document) => Ok(document),
+        Err(first_error) => {
+            let repair_prompt = document_repair_prompt(prompt, &response_text, &first_error);
+            let repaired_text = byok_generate_text(&repair_prompt, config, &[]).await?;
+            match parse_generated_document(&repaired_text) {
+                Ok(document) => Ok(document),
+                Err(repair_error) => {
+                    let plan_prompt = compact_plan_prompt(prompt, &repair_error);
+                    let plan_text = byok_generate_text(&plan_prompt, config, &[]).await?;
+                    document_from_compact_plan_text(&plan_text).map_err(|plan_error| {
+                        format!(
+                            "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
+                            response_preview(&plan_text)
+                        )
+                    })
+                }
+            }
+        }
+    }
+}
+
+async fn byok_generate_text(
+    prompt: &str,
+    config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
+) -> Result<String, String> {
+    Ok(match config.provider_id.as_str() {
         "anthropic" => anthropic_message(prompt, config, references).await?,
         "gemini" => gemini_generate_content(prompt, config, references).await?,
         _ => openai_compatible_chat(prompt, config, references).await?,
-    };
-
-    parse_generated_document(&response_text)
+    })
 }
 
 async fn generate_document_with_local_adapter(
@@ -1198,12 +1294,12 @@ async fn generate_document_with_local_adapter(
     let reference_dir = reference_files
         .as_ref()
         .map(|files| files.directory.as_path());
-    let prompt = local_character_prompt(prompt, references, reference_files.as_ref());
+    let local_prompt = local_character_prompt(prompt, references, reference_files.as_ref());
     let output = run_local_cli_command(
         &definition,
         &command,
         reference_dir,
-        &prompt,
+        &local_prompt,
         Duration::from_secs(240),
     )?;
     let _ = reference_files
@@ -1214,12 +1310,81 @@ async fn generate_document_with_local_adapter(
         return Err(command_output_preview(&output.stdout, &output.stderr));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let assistant_text = cli_assistant_text(&stdout);
-    parse_generated_document(&assistant_text)
+    match parse_generated_document(&assistant_text)
         .or_else(|_| parse_generated_document(&stdout))
         .or_else(|_| parse_generated_document(&stderr))
+    {
+        Ok(document) => Ok(document),
+        Err(first_error) => {
+            let invalid_response = if assistant_text.trim().is_empty() {
+                format!("{stdout}\n{stderr}")
+            } else {
+                assistant_text
+            };
+            let repair_prompt = local_character_prompt(
+                &document_repair_prompt(prompt, &invalid_response, &first_error),
+                &[],
+                None,
+            );
+            let repair_output = run_local_cli_command(
+                &definition,
+                &command,
+                None,
+                &repair_prompt,
+                Duration::from_secs(300),
+            )?;
+            if !repair_output.ok {
+                return Err(command_output_preview(
+                    &repair_output.stdout,
+                    &repair_output.stderr,
+                ));
+            }
+            let repair_stdout = String::from_utf8_lossy(&repair_output.stdout).to_string();
+            let repair_stderr = String::from_utf8_lossy(&repair_output.stderr).to_string();
+            let repair_text = cli_assistant_text(&repair_stdout);
+            match parse_generated_document(&repair_text)
+                .or_else(|_| parse_generated_document(&repair_stdout))
+                .or_else(|_| parse_generated_document(&repair_stderr))
+            {
+                Ok(document) => Ok(document),
+                Err(repair_error) => {
+                    let plan_prompt = local_character_prompt(
+                        &compact_plan_prompt(prompt, &repair_error),
+                        &[],
+                        None,
+                    );
+                    let plan_output = run_local_cli_command(
+                        &definition,
+                        &command,
+                        None,
+                        &plan_prompt,
+                        Duration::from_secs(180),
+                    )?;
+                    if !plan_output.ok {
+                        return Err(command_output_preview(
+                            &plan_output.stdout,
+                            &plan_output.stderr,
+                        ));
+                    }
+                    let plan_stdout = String::from_utf8_lossy(&plan_output.stdout).to_string();
+                    let plan_stderr = String::from_utf8_lossy(&plan_output.stderr).to_string();
+                    let plan_text = cli_assistant_text(&plan_stdout);
+                    document_from_compact_plan_text(&plan_text)
+                        .or_else(|_| document_from_compact_plan_text(&plan_stdout))
+                        .or_else(|_| document_from_compact_plan_text(&plan_stderr))
+                        .map_err(|plan_error| {
+                            format!(
+                                "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
+                                response_preview(&plan_text)
+                            )
+                        })
+                }
+            }
+        }
+    }
 }
 
 async fn generate_document_with_ollama(
@@ -1254,7 +1419,74 @@ async fn generate_document_with_ollama(
         .get("response")
         .and_then(|value| value.as_str())
         .ok_or_else(|| "Ollama response did not include a response field".to_string())?;
-    parse_generated_document(text)
+    match parse_generated_document(text) {
+        Ok(document) => Ok(document),
+        Err(first_error) => {
+            let repair_prompt = document_repair_prompt(prompt, text, &first_error);
+            let repair_response = client
+                .post("http://127.0.0.1:11434/api/generate")
+                .json(&json!({
+                    "model": "llama3.2",
+                    "prompt": repair_prompt,
+                    "stream": false,
+                    "format": "json"
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            let status = repair_response.status();
+            let body: serde_json::Value = repair_response
+                .json()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !status.is_success() {
+                return Err(http_error_preview(status.as_u16(), &body.to_string()));
+            }
+            let repair_text = body
+                .get("response")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| {
+                    "Ollama repair response did not include a response field".to_string()
+                })?;
+            match parse_generated_document(repair_text) {
+                Ok(document) => Ok(document),
+                Err(repair_error) => {
+                    let plan_response = client
+                        .post("http://127.0.0.1:11434/api/generate")
+                        .json(&json!({
+                            "model": "llama3.2",
+                            "prompt": compact_plan_prompt(prompt, &repair_error),
+                            "stream": false,
+                            "format": "json"
+                        }))
+                        .send()
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    let status = plan_response.status();
+                    let body: serde_json::Value = plan_response
+                        .json()
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if !status.is_success() {
+                        return Err(http_error_preview(status.as_u16(), &body.to_string()));
+                    }
+                    let plan_text = body
+                        .get("response")
+                        .and_then(|value| value.as_str())
+                        .ok_or_else(|| {
+                            "Ollama compact plan response did not include a response field"
+                                .to_string()
+                        })?;
+                    document_from_compact_plan_text(plan_text).map_err(|plan_error| {
+                        format!(
+                            "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
+                            response_preview(plan_text)
+                        )
+                    })
+                }
+            }
+        }
+    }
 }
 
 async fn openai_compatible_chat(
@@ -1332,7 +1564,7 @@ async fn anthropic_message(
         .header("anthropic-version", "2023-06-01")
         .json(&json!({
             "model": config.model,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "system": CHARACTER_DOCUMENT_SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": content}]
         }))
@@ -1719,6 +1951,189 @@ fn normalize_none_string(value: Option<&mut Value>) {
     }
 }
 
+fn document_from_compact_plan_text(text: &str) -> Result<strut_core::Document, String> {
+    if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        if let Ok(document) = document_from_compact_plan_value(&value) {
+            return validate_generated_document(document);
+        }
+    }
+
+    let mut last_error = None;
+    for json_text in extract_json_objects(text).into_iter().rev() {
+        match serde_json::from_str::<Value>(&json_text)
+            .map_err(|error| error.to_string())
+            .and_then(|value| document_from_compact_plan_value(&value))
+            .and_then(validate_generated_document)
+        {
+            Ok(document) => return Ok(document),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "model did not return a valid compact Strut plan".to_string()))
+}
+
+fn document_from_compact_plan_value(value: &Value) -> Result<strut_core::Document, String> {
+    let plan = value.get("plan").unwrap_or(value);
+    let name = plan
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("Generated Scene");
+    let parts = plan
+        .get("parts")
+        .or_else(|| plan.get("nodes"))
+        .or_else(|| plan.get("layers"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| "compact plan must include a parts array".to_string())?;
+
+    if parts.len() < 5 {
+        return Err("compact plan must include at least five visual parts".to_string());
+    }
+
+    let children = parts
+        .iter()
+        .take(16)
+        .enumerate()
+        .map(|(index, part)| compact_part_node(index, part))
+        .collect::<Vec<_>>();
+    let document_value = json!({
+        "id": "compact-document",
+        "name": name,
+        "artboards": [{
+            "id": "main-artboard",
+            "name": "Main",
+            "width": 960,
+            "height": 540,
+            "nodes": [{
+                "id": "root",
+                "name": format!("{name} Rig"),
+                "kind": "group",
+                "transform": default_transform_value(),
+                "style": default_style_value(),
+                "shape": {"type": "none"},
+                "children": children
+            }]
+        }],
+        "timelines": compact_timelines_value(),
+        "state_machines": [{
+            "id": "moods",
+            "name": "GeneratedMoods",
+            "inputs": [{"name": "mood", "kind": "enum"}, {"name": "complete", "kind": "trigger"}],
+            "states": ["idle", "float", "wave", "blink", "scan", "celebrate", "sleep"],
+            "transitions": [
+                {"from": "idle", "to": "float", "on": "mood", "timeline": "idle_float"},
+                {"from": "idle", "to": "wave", "on": "mood", "timeline": "wave"},
+                {"from": "idle", "to": "blink", "on": "mood", "timeline": "blink"},
+                {"from": "idle", "to": "scan", "on": "mood", "timeline": "scan"},
+                {"from": "idle", "to": "celebrate", "on": "complete", "timeline": "celebrate"}
+            ]
+        }],
+        "bindings": [{"name": "mood", "target": "root", "property": "state"}],
+        "events": [{"name": "ready", "description": "Generated from compact Strut plan"}]
+    });
+
+    document_from_value(&document_value)
+}
+
+fn compact_part_node(index: usize, part: &Value) -> Value {
+    let name = part
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("Part{}", index + 1));
+    let kind = part
+        .get("kind")
+        .or_else(|| part.get("shape"))
+        .and_then(Value::as_str)
+        .unwrap_or("ellipse")
+        .to_lowercase();
+    let x = number_field(part, &["x", "cx"], 420.0 + (index as f64 * 18.0));
+    let y = number_field(part, &["y", "cy"], 220.0 + (index as f64 * 14.0));
+    let width = number_field(part, &["width", "w"], 80.0);
+    let height = number_field(part, &["height", "h"], 80.0);
+    let fill = string_field(part, &["fill", "color"]).unwrap_or_else(|| "#f6f0df".to_string());
+    let stroke =
+        string_field(part, &["stroke", "outline"]).unwrap_or_else(|| "#25221d".to_string());
+    let stroke_width = number_field(part, &["stroke_width", "strokeWidth"], 5.0);
+    let shape = match kind.as_str() {
+        "rect" | "rectangle" => json!({
+            "type": "rect",
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "rx": number_field(part, &["rx", "radius"], 18.0)
+        }),
+        "path" => json!({
+            "type": "path",
+            "d": string_field(part, &["d", "path"]).unwrap_or_else(|| {
+                format!("M{x} {y} C{} {} {} {} {} {}", x + width * 0.5, y - height * 0.5, x + width, y + height * 0.5, x, y + height)
+            })
+        }),
+        "text" => json!({
+            "type": "text",
+            "x": x,
+            "y": y,
+            "value": string_field(part, &["value", "text"]).unwrap_or(name.clone()),
+            "size": number_field(part, &["size", "font_size"], 24.0)
+        }),
+        _ => json!({
+            "type": "ellipse",
+            "cx": x,
+            "cy": y,
+            "rx": number_field(part, &["rx"], width / 2.0),
+            "ry": number_field(part, &["ry"], height / 2.0)
+        }),
+    };
+    let node_kind = match kind.as_str() {
+        "rect" | "rectangle" => "rect",
+        "path" => "path",
+        "text" => "text",
+        _ => "ellipse",
+    };
+
+    json!({
+        "id": format!("part-{index}"),
+        "name": name,
+        "kind": node_kind,
+        "transform": default_transform_value(),
+        "style": {
+            "fill": if node_kind == "path" && fill.eq_ignore_ascii_case("none") { Value::Null } else { json!(fill) },
+            "stroke": stroke,
+            "stroke_width": stroke_width,
+            "opacity": number_field(part, &["opacity"], 1.0),
+            "linecap": "round",
+            "linejoin": "round"
+        },
+        "shape": shape,
+        "children": []
+    })
+}
+
+fn compact_timelines_value() -> Value {
+    json!([
+        {"id": "timeline-idle-float", "name": "idle_float", "duration_ms": 1200, "tracks": [{"target": "root", "property": "translate_y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}, {"time_ms": 600, "value": {"type": "number", "value": -18}, "easing": "ease_out"}, {"time_ms": 1200, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}]}]},
+        {"id": "timeline-wave", "name": "wave", "duration_ms": 900, "tracks": [{"target": "root", "property": "rotation", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -3}, "easing": "ease_out"}, {"time_ms": 450, "value": {"type": "number", "value": 6}, "easing": "ease_in_out"}, {"time_ms": 900, "value": {"type": "number", "value": -3}, "easing": "ease_in"}]}]},
+        {"id": "timeline-blink", "name": "blink", "duration_ms": 360, "tracks": [{"target": "root", "property": "scale.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 180, "value": {"type": "number", "value": 0.96}, "easing": "ease_in_out"}, {"time_ms": 360, "value": {"type": "number", "value": 1}, "easing": "ease_out"}]}]},
+        {"id": "timeline-scan", "name": "scan", "duration_ms": 1000, "tracks": [{"target": "root", "property": "translate_x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -10}, "easing": "ease_out"}, {"time_ms": 500, "value": {"type": "number", "value": 10}, "easing": "ease_in_out"}, {"time_ms": 1000, "value": {"type": "number", "value": 0}, "easing": "ease_in"}]}]},
+        {"id": "timeline-celebrate", "name": "celebrate", "duration_ms": 1100, "tracks": [{"target": "root", "property": "scale.x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 500, "value": {"type": "number", "value": 1.14}, "easing": "ease_in_out"}, {"time_ms": 1100, "value": {"type": "number", "value": 1}, "easing": "ease_in"}]}]}
+    ])
+}
+
+fn number_field(value: &Value, keys: &[&str], fallback: f64) -> f64 {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_f64))
+        .unwrap_or(fallback)
+}
+
+fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(str::to_string)
+}
+
 fn default_style_value() -> Value {
     json!({
         "fill": null,
@@ -1856,6 +2271,7 @@ pub fn run() {
             studio_status,
             default_project_location,
             create_project,
+            open_project_folder,
             generate_character,
             local_agent_adapters,
             test_local_adapter,
@@ -2034,6 +2450,60 @@ mod tests {
         assert!(prompt.contains("Current editable Strut document"));
         assert!(prompt.contains("Owl Mascot"));
         assert!(prompt.contains("make it cheer when level completes"));
+    }
+
+    #[test]
+    fn repair_prompt_preserves_request_and_validation_error() {
+        let prompt = document_repair_prompt(
+            "make pikachu style character giving an electric shock",
+            "I made a yellow mascot but forgot the JSON.",
+            "model did not return a valid Strut document",
+        );
+
+        assert!(prompt.contains("make pikachu style character"));
+        assert!(prompt.contains("model did not return a valid Strut document"));
+        assert!(prompt.contains("Previous invalid response"));
+        assert!(prompt.contains("{\"document\": <StrutDocument>}"));
+        assert!(prompt.contains("Do not explain"));
+    }
+
+    #[test]
+    fn compact_plan_compiles_to_valid_document() {
+        let document = document_from_compact_plan_text(
+            r##"{
+              "plan": {
+                "name": "Pika Shock",
+                "motion": "electric cheer",
+                "parts": [
+                  {"name":"Yellow body","kind":"ellipse","x":480,"y":292,"width":170,"height":190,"fill":"#ffd84d","stroke":"#241f1a"},
+                  {"name":"Left ear","kind":"path","d":"M420 190 L388 104 L458 168 Z","fill":"#ffd84d","stroke":"#241f1a"},
+                  {"name":"Right ear","kind":"path","d":"M540 190 L578 104 L508 168 Z","fill":"#ffd84d","stroke":"#241f1a"},
+                  {"name":"Face","kind":"rect","x":418,"y":238,"width":124,"height":72,"fill":"#fff6c7","stroke":"#241f1a"},
+                  {"name":"Eyes","kind":"path","d":"M446 266 q12 -18 24 0 M494 266 q12 -18 24 0","fill":"none","stroke":"#241f1a"},
+                  {"name":"Smile","kind":"path","d":"M456 292 Q480 318 510 292","fill":"none","stroke":"#241f1a"},
+                  {"name":"Spark","kind":"path","d":"M600 236 L632 236 L610 272 L640 272 L590 330 L606 288 L578 288 Z","fill":"#ffe74a","stroke":"#241f1a"}
+                ]
+              }
+            }"##,
+        )
+        .expect("compact plan should compile");
+
+        assert_eq!(document.name, "Pika Shock");
+        assert!(count_document_nodes(&document) >= 6);
+        assert!(document.state_machines[0]
+            .states
+            .contains(&"celebrate".to_string()));
+    }
+
+    #[test]
+    fn open_project_folder_rejects_missing_folder() {
+        let missing =
+            std::env::temp_dir().join(format!("strut-missing-folder-{}", unix_timestamp()));
+
+        let error = open_project_folder(missing.display().to_string())
+            .expect_err("missing folders should not be opened");
+
+        assert!(error.contains("Project folder does not exist"));
     }
 
     #[test]

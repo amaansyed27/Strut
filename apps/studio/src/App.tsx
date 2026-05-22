@@ -5,6 +5,7 @@ import {
   Cpu,
   FileText,
   Folder,
+  FolderOpen,
   FolderPlus,
   Home,
   ImagePlus,
@@ -1122,6 +1123,23 @@ function App() {
     }
   }
 
+  async function openActiveProjectFolder() {
+    if (!activeProject) {
+      setActivity("Select a project first");
+      return;
+    }
+    if (!desktopRuntime) {
+      setActivity("Desktop app required to open project folder");
+      return;
+    }
+    try {
+      await invoke("open_project_folder", { path: activeProject.path });
+      setActivity(`Opened ${activeProject.name}`);
+    } catch (error) {
+      setActivity(String(error));
+    }
+  }
+
   async function runGeneration() {
     const trimmed = prompt.trim();
     if (!trimmed && pendingReferences.length === 0) {
@@ -1294,6 +1312,17 @@ function App() {
             <strong>{activeChat?.title ?? "Home"}</strong>
             <span>{activeProject?.name ?? "No project selected"} / {status?.format_version ?? "browser preview"}</span>
           </div>
+          <button
+            aria-label="Open in file explorer"
+            className="open-folder-button"
+            disabled={!activeProject}
+            title="Open in file explorer"
+            type="button"
+            onClick={() => void openActiveProjectFolder()}
+          >
+            <FolderOpen size={16} />
+            <span>Open</span>
+          </button>
         </header>
 
         {newProjectOpen ? (

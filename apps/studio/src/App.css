@@ -389,6 +389,23 @@ button {
   white-space: nowrap;
 }
 
+.open-folder-button {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--paper-glass);
+}
+
+.open-folder-button:hover:not(:disabled) {
+  background: var(--mode-hover);
+}
+
+.open-folder-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .view-switcher {
   display: flex;
   gap: 3px;
