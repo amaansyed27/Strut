@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronRight,
@@ -435,6 +435,97 @@ function titleCase(value: string) {
     .join(" ");
 }
 
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > cursor) {
+      nodes.push(value.slice(cursor, match.index));
+    }
+
+    const token = match[0];
+    if (token.startsWith("`")) {
+      nodes.push(<code key={`${match.index}-code`}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("**")) {
+      nodes.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2)}</strong>);
+    } else {
+      nodes.push(<em key={`${match.index}-em`}>{token.slice(1, -1)}</em>);
+    }
+    cursor = pattern.lastIndex;
+  }
+
+  if (cursor < value.length) {
+    nodes.push(value.slice(cursor));
+  }
+
+  return nodes;
+}
+
+function MarkdownResponse({ text }: { text: string }) {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="markdown-response">
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+        if (lines.length > 0 && lines.every((line) => line.startsWith("- "))) {
+          return (
+            <ul key={`list-${blockIndex}`}>
+              {lines.map((line, lineIndex) => (
+                <li key={`${blockIndex}-${lineIndex}`}>{renderInlineMarkdown(line.slice(2))}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p key={`paragraph-${blockIndex}`}>
+            {lines.map((line, lineIndex) => (
+              <Fragment key={`${blockIndex}-${lineIndex}`}>
+                {lineIndex > 0 ? <br /> : null}
+                {renderInlineMarkdown(line)}
+              </Fragment>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChatMessageView({ compact = false, message }: { compact?: boolean; message: ChatMessage }) {
+  const roleLabel = message.role === "assistant" ? "Strut" : titleCase(message.role);
+
+  return (
+    <div className={`message ${compact ? "compact-message" : ""} ${message.role}`}>
+      <span className="message-role">{roleLabel}</span>
+      <div className="message-body">
+        {message.role === "user" ? <span className="message-text">{message.text}</span> : <MarkdownResponse text={message.text} />}
+        {message.attachments?.length ? (
+          <span className="message-attachments">
+            {message.attachments.map((attachment) => (
+              <span className="message-attachment" key={attachment.id}>
+                <img src={attachment.dataUrl} alt="" />
+                <em>{attachment.name}</em>
+              </span>
+            ))}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function flattenNodes(nodes: StrutNode[]): StrutNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
 }
@@ -866,7 +957,11 @@ function App() {
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
   const selectedTargetLabel = selectedLayer?.name ?? (currentDocument ? activeArtboard.name : "No selection");
+  const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0] ?? browserLocalAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
+  const activeProviderLabel = providerMode === "local" ? activeLocalAdapter.name : activeByokProvider.name;
+  const activeProviderType = providerMode === "local" ? "Local CLI" : "BYOK";
+  const activeProviderDetail = providerMode === "local" ? activeLocalAdapter.detail : `${providerModel.trim() || activeByokProvider.model} / ${providerEndpoint.trim() || activeByokProvider.endpoint}`;
   const viewModes: ViewModeOption[] = [
     { id: "chat", Icon: MessageSquarePlus, label: "Chat only" },
     { id: "preview", Icon: PanelRight, label: "Chat + preview" },
@@ -1184,10 +1279,13 @@ function App() {
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
       }));
       setActivity(`${result.source}: ${result.message}`);
-      appendMessage("assistant", `${result.document.name} is ready. I ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`);
+      appendMessage(
+        "assistant",
+        `**${result.document.name} is ready.**\n\nProvider: ${activeProviderLabel}\n\nI ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`,
+      );
     } catch (error) {
       setActivity(String(error));
-      appendMessage("assistant", `Generation stopped: ${String(error)}`);
+      appendMessage("assistant", `**Generation stopped**\n\nProvider: ${activeProviderLabel}\n\n${String(error)}`);
     }
   }
 
@@ -1288,7 +1386,7 @@ function App() {
 
         <div className="sidebar-footer">
           <button className="provider-status" data-testid="activity-pill" type="button" onClick={() => setMainPanel("providers")}>
-            <span>{providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+            <span>{activeProviderLabel}</span>
             <em>{activity}</em>
           </button>
           <button type="button" onClick={() => setMainPanel("settings")}>
@@ -1324,7 +1422,7 @@ function App() {
           <div className="workspace-status" aria-label="Project status">
             <span>{viewMode === "editor" ? "AI editor" : titleCase(viewMode)}</span>
             <span>{currentDocument ? `${layers.length} layers` : "No scene"}</span>
-            <span>{providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</span>
+            <span data-testid="selected-provider-chip">Provider: {activeProviderLabel}</span>
           </div>
           <button
             aria-label="Open in file explorer"
@@ -1366,9 +1464,20 @@ function App() {
               <h1>Providers</h1>
               <p>Connect local CLIs, local models, or BYOK APIs. Browser preview cannot run real provider checks.</p>
             </div>
-            <div className="provider-tabs">
+            <div className="provider-summary" data-testid="selected-provider-summary">
+              <span>Selected provider</span>
+              <strong>{activeProviderLabel}</strong>
+              <em>{activeProviderType} / {activeProviderDetail}</em>
+            </div>
+            <div className="provider-tabs" role="group" aria-label="Provider source">
               {["local", "byok"].map((mode) => (
-                <button className={providerMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setProviderMode(mode as ProviderMode)}>
+                <button
+                  aria-pressed={providerMode === mode}
+                  className={providerMode === mode ? "active" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => setProviderMode(mode as ProviderMode)}
+                >
                   {mode === "local" ? "Local CLI" : "BYOK"}
                 </button>
               ))}
@@ -1376,26 +1485,50 @@ function App() {
             {providerMode === "local" ? (
               <div className="provider-list">
                 {localAdapters.map((adapter) => (
-                  <button className={selectedLocalAdapterId === adapter.id ? "active" : ""} key={adapter.id} type="button" onClick={() => setSelectedLocalAdapterId(adapter.id)}>
-                    <span>{adapter.name}</span>
-                    <em>{adapter.detail}</em>
+                  <button
+                    aria-pressed={selectedLocalAdapterId === adapter.id}
+                    className={selectedLocalAdapterId === adapter.id ? "active" : ""}
+                    key={adapter.id}
+                    type="button"
+                    onClick={() => setSelectedLocalAdapterId(adapter.id)}
+                  >
+                    <span>
+                      <strong>{adapter.name}</strong>
+                      <em>{adapter.kind}</em>
+                    </span>
+                    <span>
+                      {selectedLocalAdapterId === adapter.id ? <strong>Selected</strong> : null}
+                      <em>{adapter.detail}</em>
+                    </span>
                   </button>
                 ))}
               </div>
             ) : null}
             {providerMode === "byok" ? (
               <div className="byok-form">
-                <select aria-label="BYOK provider" value={selectedByokProviderId} onChange={(event) => {
-                  const provider = byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
-                  setSelectedByokProviderId(provider.id);
-                  setProviderEndpoint(provider.endpoint);
-                  setProviderModel(provider.model);
-                }}>
-                  {byokProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-                </select>
-                <input aria-label={`${activeByokProvider.name} API key`} placeholder={activeByokProvider.env} type="password" value={apiKey} onChange={(event) => setApiKey(event.currentTarget.value)} />
-                <input aria-label={`${activeByokProvider.name} base URL`} value={providerEndpoint} onChange={(event) => setProviderEndpoint(event.currentTarget.value)} />
-                <input aria-label={`${activeByokProvider.name} model`} value={providerModel} onChange={(event) => setProviderModel(event.currentTarget.value)} />
+                <label>
+                  <span>Provider</span>
+                  <select aria-label="BYOK provider" value={selectedByokProviderId} onChange={(event) => {
+                    const provider = byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
+                    setSelectedByokProviderId(provider.id);
+                    setProviderEndpoint(provider.endpoint);
+                    setProviderModel(provider.model);
+                  }}>
+                    {byokProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>API key</span>
+                  <input aria-label={`${activeByokProvider.name} API key`} placeholder={activeByokProvider.env} type="password" value={apiKey} onChange={(event) => setApiKey(event.currentTarget.value)} />
+                </label>
+                <label>
+                  <span>Base URL</span>
+                  <input aria-label={`${activeByokProvider.name} base URL`} value={providerEndpoint} onChange={(event) => setProviderEndpoint(event.currentTarget.value)} />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input aria-label={`${activeByokProvider.name} model`} value={providerModel} onChange={(event) => setProviderModel(event.currentTarget.value)} />
+                </label>
                 <button type="button" onClick={() => void saveProvider()}>
                   <Save size={16} />
                   Save provider
@@ -1466,7 +1599,8 @@ function App() {
                   </label>
                   <div className="status-line">
                     <span>Current provider</span>
-                    <strong>{providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</strong>
+                    <strong>{activeProviderLabel}</strong>
+                    <span>{activeProviderType}</span>
                     <em>{activity}</em>
                   </div>
                 </div>
@@ -1510,24 +1644,7 @@ function App() {
                     <p>Animate a logo, SVG, loader, product state, storyboard, mascot, or full scene.</p>
                   </div>
                 ) : null}
-                {activeChat.messages.map((message) => (
-                  <p className={`message ${message.role}`} key={message.id}>
-                    <span>{message.role}</span>
-                    <span className="message-body">
-                      {message.text}
-                      {message.attachments?.length ? (
-                        <span className="message-attachments">
-                          {message.attachments.map((attachment) => (
-                            <span className="message-attachment" key={attachment.id}>
-                              <img src={attachment.dataUrl} alt="" />
-                              <em>{attachment.name}</em>
-                            </span>
-                          ))}
-                        </span>
-                      ) : null}
-                    </span>
-                  </p>
-                ))}
+                {activeChat.messages.map((message) => <ChatMessageView key={message.id} message={message} />)}
               </div>
               <div className="composer">
                 {pendingReferences.length ? (
@@ -1566,7 +1683,7 @@ function App() {
                       <ImagePlus size={16} />
                       Reference
                     </button>
-                    <span>{providerMode === "local" ? "Local CLI" : activeByokProvider.name}</span>
+                    <span className="composer-provider">Provider: {activeProviderLabel}</span>
                   </div>
                   <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
                     <Send size={17} />
@@ -1612,22 +1729,6 @@ function App() {
                   </button>
                 </div>
 
-                <div className="rail-transcript">
-                  {activeChat.messages.length ? (
-                    activeChat.messages.map((message) => (
-                      <p className={`message compact-message ${message.role}`} key={message.id}>
-                        <span>{message.role}</span>
-                        <span className="message-body">{message.text}</span>
-                      </p>
-                    ))
-                  ) : (
-                    <div className="rail-empty">
-                      <strong>No edit history yet</strong>
-                      <span>Ask for a motion draft, then refine a layer or state from here.</span>
-                    </div>
-                  )}
-                </div>
-
                 <div className="operation-placeholder" aria-label="Operation preview placeholder">
                   <span>Pending operation</span>
                   <strong>No operation staged</strong>
@@ -1636,6 +1737,17 @@ function App() {
                     <button disabled type="button">Apply operation</button>
                     <button disabled type="button">Reject</button>
                   </div>
+                </div>
+
+                <div className="rail-transcript">
+                  {activeChat.messages.length ? (
+                    activeChat.messages.map((message) => <ChatMessageView compact key={message.id} message={message} />)
+                  ) : (
+                    <div className="rail-empty">
+                      <strong>No edit history yet</strong>
+                      <span>Ask for a motion draft, then refine a layer or state from here.</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="composer compact-composer">
@@ -1668,6 +1780,7 @@ function App() {
                         <ImagePlus size={16} />
                         Reference
                       </button>
+                      <span className="composer-provider">Provider: {activeProviderLabel}</span>
                     </div>
                     <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
                       <Send size={17} />
@@ -1688,36 +1801,40 @@ function App() {
                   />
                 </div>
                 <aside className="editor-inspector" aria-label="Project files and scene layers">
-                  <strong>Project files</strong>
-                  <div className="file-list">
-                    {files.map((file) => (
-                      <button key={file.path} type="button">
-                        <FileText size={14} />
-                        <span>{file.name}</span>
-                        <em>{file.kind}</em>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="panel-title">
-                    <strong>Scene layers</strong>
-                    <em>{activeArtboard.name}</em>
-                  </div>
-                  {partsVisible ? (
-                    <div className="layer-list">
-                      {layers.length ? layers.map((layer) => (
-                        <button
-                          aria-pressed={selectedNodeId === layer.id}
-                          className={selectedNodeId === layer.id ? "active" : ""}
-                          key={layer.id}
-                          type="button"
-                          onClick={() => setSelectedNodeId((current) => (current === layer.id ? null : layer.id))}
-                        >
-                          <span>{layer.name}</span>
-                          <em>{layer.kind}</em>
+                  <div className="context-section">
+                    <strong>Project files</strong>
+                    <div className="file-list">
+                      {files.map((file) => (
+                        <button key={file.path} type="button">
+                          <FileText size={14} />
+                          <span>{file.name}</span>
+                          <em>{file.kind}</em>
                         </button>
-                      )) : <p className="panel-empty">No editable layers yet.</p>}
+                      ))}
                     </div>
-                  ) : <p className="panel-empty">Parts hidden</p>}
+                  </div>
+                  <div className="context-section">
+                    <div className="panel-title">
+                      <strong>Scene layers</strong>
+                      <em>{activeArtboard.name}</em>
+                    </div>
+                    {partsVisible ? (
+                      <div className="layer-list">
+                        {layers.length ? layers.map((layer) => (
+                          <button
+                            aria-pressed={selectedNodeId === layer.id}
+                            className={selectedNodeId === layer.id ? "active" : ""}
+                            key={layer.id}
+                            type="button"
+                            onClick={() => setSelectedNodeId((current) => (current === layer.id ? null : layer.id))}
+                          >
+                            <span>{layer.name}</span>
+                            <em>{layer.kind}</em>
+                          </button>
+                        )) : <p className="panel-empty">No editable layers yet.</p>}
+                      </div>
+                    ) : <p className="panel-empty">Parts hidden</p>}
+                  </div>
                 </aside>
               </div>
             </div>
@@ -1814,8 +1931,8 @@ function PreviewPane({
             <span>Attach a reference or describe a logo, SVG, UI state, mascot, storyboard, or scene.</span>
           </div>
         )}
-        {showSelectionAffordances ? (
-          <div className={document ? "selection-outline" : "selection-outline empty"}>
+        {showSelectionAffordances && document ? (
+          <div className="selection-outline">
             <span>{selectedTargetLabel ?? "No selection"}</span>
           </div>
         ) : null}

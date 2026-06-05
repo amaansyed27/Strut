@@ -383,7 +383,7 @@ textarea:focus-visible {
 .provider-status em,
 .workspace-top span,
 .page-heading p,
-.message span,
+.message-role,
 .project-sheet p,
 .state-label,
 .layer-list em,
@@ -757,6 +757,7 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   align-content: center;
+  gap: 18px;
   overflow: auto;
   padding: 0 min(12vw, 150px);
 }
@@ -793,13 +794,47 @@ textarea:focus-visible {
 }
 
 .message {
+  width: min(100%, 760px);
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
   margin: 0;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
   line-height: 1.5;
+}
+
+.message.user {
+  max-width: min(72%, 560px);
+  grid-template-columns: 1fr;
+  justify-self: end;
+}
+
+.message.user .message-role {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.message.user .message-body {
+  padding: 12px 14px;
+  color: var(--accent-text);
+  border: 1px solid color-mix(in srgb, var(--active-bg) 72%, transparent);
+  border-radius: 8px 8px 2px 8px;
+  background: var(--active-bg);
+  box-shadow: 0 8px 20px rgba(29, 47, 42, 0.12);
+}
+
+.message.assistant,
+.message.system {
+  justify-self: start;
+}
+
+.message-role {
+  padding-top: 2px;
+  text-transform: capitalize;
 }
 
 .message-body {
@@ -807,6 +842,38 @@ textarea:focus-visible {
   gap: 10px;
   color: var(--ink);
   font-size: 15px;
+}
+
+.message-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.markdown-response {
+  display: grid;
+  gap: 8px;
+}
+
+.markdown-response p,
+.markdown-response ul {
+  margin: 0;
+}
+
+.markdown-response ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.markdown-response strong {
+  font-weight: 700;
+}
+
+.markdown-response code {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--field);
 }
 
 .message-attachments {
@@ -998,6 +1065,11 @@ textarea:focus-visible {
   backdrop-filter: blur(18px);
 }
 
+.preview-pane.selection-aware {
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .preview-title {
   display: flex;
   align-items: center;
@@ -1038,10 +1110,12 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   align-items: center;
+  justify-items: center;
+  overflow: hidden;
 }
 
 .preview-empty {
-  min-height: 360px;
+  min-height: 260px;
   display: grid;
   place-items: center;
   align-content: center;
@@ -1068,10 +1142,25 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
+.selection-aware .preview-empty {
+  width: min(100%, 440px);
+  min-height: 170px;
+  padding: 20px;
+}
+
+.selection-aware .preview-empty span {
+  max-width: 340px;
+}
+
 .character-preview {
   width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 16 / 10.5;
   display: block;
+  object-fit: contain;
+  pointer-events: none;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--preview-surface);
@@ -1086,11 +1175,6 @@ textarea:focus-visible {
   box-shadow:
     0 0 0 4px color-mix(in srgb, var(--selection) 16%, transparent),
     0 16px 36px rgba(0, 0, 0, 0.08);
-}
-
-.selection-outline.empty {
-  inset: 18px;
-  border-style: dashed;
 }
 
 .selection-outline span {
@@ -1122,6 +1206,13 @@ textarea:focus-visible {
 .preview-edit-hint span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.selection-aware .preview-edit-hint {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .preview-bg {
@@ -1174,8 +1265,10 @@ textarea:focus-visible {
 }
 
 .state-row {
+  position: relative;
+  z-index: 2;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 7px;
   margin-top: 12px;
 }
@@ -1223,15 +1316,15 @@ textarea:focus-visible {
 .ai-editor-shell {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 370px) minmax(0, 1fr);
 }
 
 .ai-edit-rail {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  gap: 12px;
-  padding: 18px;
+  grid-template-rows: auto auto auto minmax(84px, 1fr) auto;
+  gap: 0;
+  padding: 18px 18px 14px;
   border-right: 1px solid var(--line);
   background: var(--paper-glass);
   overflow: hidden;
@@ -1271,12 +1364,14 @@ textarea:focus-visible {
 }
 
 .selection-card,
-.operation-placeholder,
+.operation-placeholder {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
 .rail-empty {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  padding: 14px 0;
 }
 
 .selection-card button,
@@ -1301,18 +1396,24 @@ textarea:focus-visible {
 .rail-transcript {
   min-height: 0;
   overflow: auto;
+  padding: 12px 0;
   border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
 }
 
 .compact-message {
-  grid-template-columns: 62px minmax(0, 1fr);
+  width: 100%;
+  grid-template-columns: 50px minmax(0, 1fr);
   gap: 10px;
-  padding: 12px 0;
+  padding: 8px 0;
 }
 
 .compact-message .message-body {
   font-size: 13px;
+}
+
+.compact-message.user {
+  max-width: 92%;
+  justify-self: end;
 }
 
 .compact-composer {
@@ -1327,9 +1428,9 @@ textarea:focus-visible {
 .editor-main {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
-  gap: 16px;
-  padding: 20px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -1337,28 +1438,37 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   display: grid;
+  padding: 28px;
+  overflow: hidden;
 }
 
 .preview-workspace .preview-pane {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .parts-panel,
 .editor-inspector {
   min-height: 0;
+  max-height: 178px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
   overflow: auto;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper-glass);
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper-glass) 84%, transparent);
 }
 
 .parts-panel strong,
 .editor-inspector strong {
   display: block;
   margin-bottom: 12px;
+}
+
+.context-section {
+  min-width: 0;
 }
 
 .panel-title {
@@ -1384,12 +1494,11 @@ textarea:focus-visible {
 
 .file-list {
   margin-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
 }
 
 .layer-list button,
-.file-list button,
-.provider-list button {
+.file-list button {
   width: 100%;
   min-height: 38px;
   display: grid;
@@ -1401,6 +1510,50 @@ textarea:focus-visible {
   border-top: 1px solid var(--line);
   padding: 10px 0;
   text-align: left;
+}
+
+.provider-list button {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  gap: 14px;
+  align-items: center;
+  padding: 11px 12px;
+  color: var(--ink);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.provider-list button.active {
+  border-color: var(--selection);
+  background: color-mix(in srgb, var(--selection) 13%, var(--panel-strong));
+  box-shadow: inset 3px 0 0 var(--selection);
+}
+
+.provider-list button span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.provider-list button span:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.provider-list button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-list button span:last-child strong {
+  color: var(--accent-strong);
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 .file-list button {
@@ -1435,9 +1588,44 @@ textarea:focus-visible {
   gap: 18px;
 }
 
+.provider-summary {
+  max-width: 620px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--selection);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--selection) 12%, var(--panel));
+}
+
+.provider-summary span {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.provider-summary strong {
+  font-size: 18px;
+}
+
+.provider-summary em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .provider-tabs {
-  display: flex;
-  gap: 8px;
+  width: fit-content;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
 }
 
 .provider-tabs button,
@@ -1448,6 +1636,12 @@ textarea:focus-visible {
   background: rgba(255, 255, 255, 0.25);
 }
 
+.provider-tabs button.active {
+  color: var(--active-text);
+  background: var(--active-bg);
+  border-color: var(--active-bg);
+}
+
 .provider-list,
 .byok-form,
 .settings-list {
@@ -1455,8 +1649,22 @@ textarea:focus-visible {
   gap: 10px;
 }
 
+.provider-list {
+  max-width: 780px;
+}
+
 .byok-form {
   max-width: 520px;
+}
+
+.byok-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.byok-form label span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .secondary-button {

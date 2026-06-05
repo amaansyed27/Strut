@@ -127,11 +127,14 @@ def run_smoke() -> None:
             gemini_cli = page.get_by_role("button").filter(has_text="Gemini CLI").first
             expect(gemini_cli).to_be_visible()
             gemini_cli.click()
+            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Gemini CLI")
+            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Selected provider")
             page.get_by_role("button", name="Test selected provider").click()
             expect(activity).to_contain_text("Desktop app required for real provider checks")
 
             page.get_by_role("button", name="BYOK").click()
             page.get_by_label("BYOK provider").select_option("openai")
+            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("OpenAI")
             page.get_by_label("OpenAI API key").fill("sk-test-strut")
             page.get_by_label("OpenAI model").fill("gpt-5.2")
             page.get_by_role("button", name="Save provider").click()
@@ -140,8 +143,10 @@ def run_smoke() -> None:
             expect(activity).to_contain_text("Desktop app required for real provider checks")
             page.get_by_role("button", name="Local CLI").click()
             gemini_cli.click()
+            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Gemini CLI")
 
             page.get_by_role("button", name="Chat + preview", exact=True).click()
+            expect(page.get_by_test_id("selected-provider-chip")).to_contain_text("Gemini CLI")
             preview = page.locator('[data-testid="character-preview"]')
             expect(page.get_by_text("No scene yet").first).to_be_visible()
             expect(preview).not_to_be_visible()
@@ -149,7 +154,11 @@ def run_smoke() -> None:
             expect(page.get_by_text("reference-bot.svg")).to_be_visible()
             page.get_by_label("Motion prompt").fill("make an owl like Duo from Duolingo")
             page.get_by_role("button", name="Generate").click()
-            expect(page.get_by_text("Generation stopped: Error: Desktop app required")).to_be_visible()
+            expect(page.locator(".message.user .message-text").filter(has_text="make an owl like Duo")).to_be_visible()
+            expect(page.locator(".message.assistant .markdown-response").filter(has_text="Generation stopped")).to_be_visible()
+            expect(page.get_by_text("Generation stopped").first).to_be_visible()
+            expect(page.get_by_text("Provider: Gemini CLI").first).to_be_visible()
+            expect(page.get_by_text("Error: Desktop app required").first).to_be_visible()
             expect(preview).not_to_be_visible()
             page.screenshot(path=str(output_dir / "studio-real-provider-required.png"), full_page=True)
 
@@ -186,7 +195,8 @@ def run_smoke() -> None:
 
             page.reload(wait_until="networkidle")
             expect(page.get_by_role("button", name="Smoke Mascot", exact=True)).to_be_visible()
-            expect(page.get_by_text("Generation stopped: Error: Desktop app required")).to_be_visible()
+            expect(page.get_by_text("Generation stopped").first).to_be_visible()
+            expect(page.get_by_text("Provider: Gemini CLI").first).to_be_visible()
             expect(page.get_by_text("reference-bot.svg")).to_be_visible()
             expect(page.locator("html")).to_have_attribute("data-theme", "system")
             page.get_by_role("button", name="Chat + preview", exact=True).click()
