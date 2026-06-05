@@ -401,7 +401,7 @@ function loadWorkspaceState(): WorkspaceState {
 function promptTitle(prompt: string) {
   const compact = prompt.replace(/\s+/g, " ").trim();
   if (!compact) {
-    return "New character chat";
+    return "New motion chat";
   }
   return compact.length > 34 ? `${compact.slice(0, 31)}...` : compact;
 }
@@ -806,6 +806,7 @@ function App() {
   const [projectLocation, setProjectLocation] = useState("");
   const [partsVisible, setPartsVisible] = useState(true);
   const [activeTool, setActiveTool] = useState("select");
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("local");
@@ -863,6 +864,8 @@ function App() {
   const activeArtboard = currentDocument?.artboards[0] ?? emptyArtboard;
   const activeMachine = currentDocument?.state_machines[0] ?? emptyMachine;
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
+  const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
+  const selectedTargetLabel = selectedLayer?.name ?? (currentDocument ? activeArtboard.name : "No selection");
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const viewModes: ViewModeOption[] = [
     { id: "chat", Icon: MessageSquarePlus, label: "Chat only" },
@@ -878,6 +881,12 @@ function App() {
       ),
     }))
     .filter((project) => project.chats.length > 0 || project.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  useEffect(() => {
+    if (selectedNodeId && !layers.some((layer) => layer.id === selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+  }, [layers, selectedNodeId]);
 
   function providerPayload(): GenerationProvider {
     if (providerMode === "local") {
@@ -950,7 +959,7 @@ function App() {
       setNewProjectOpen(true);
       return;
     }
-    const chat = createChat(project.id, "New character chat");
+    const chat = createChat(project.id, "New motion chat");
     setProjects((current) =>
       current.map((item) => (item.id === project.id ? { ...item, chats: [chat, ...item.chats] } : item)),
     );
@@ -1151,11 +1160,11 @@ function App() {
       return;
     }
     const references = pendingReferences;
-    const generationPrompt = trimmed || "Use the attached reference image to create an editable animated character.";
+    const generationPrompt = trimmed || "Use the attached reference image to create an editable Strut motion document.";
     appendUserMessage(trimmed || "Use the attached reference image.", references);
     updateChat(activeProjectId, activeChatId, (chat) => ({
       ...chat,
-      title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
+      title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference motion") : chat.title,
       updated: "now",
     }));
     setPendingReferences([]);
@@ -1169,7 +1178,7 @@ function App() {
       const result = await invoke<GeneratedCharacter>("generate_character", args);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
-        title: chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference character") : chat.title,
+        title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference motion") : chat.title,
         updated: "now",
         document: result.document,
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
@@ -1312,6 +1321,11 @@ function App() {
             <strong>{activeChat?.title ?? "Home"}</strong>
             <span>{activeProject?.name ?? "No project selected"} / {status?.format_version ?? "browser preview"}</span>
           </div>
+          <div className="workspace-status" aria-label="Project status">
+            <span>{viewMode === "editor" ? "AI editor" : titleCase(viewMode)}</span>
+            <span>{currentDocument ? `${layers.length} layers` : "No scene"}</span>
+            <span>{providerMode === "local" ? selectedLocalAdapterId : activeByokProvider.name}</span>
+          </div>
           <button
             aria-label="Open in file explorer"
             className="open-folder-button"
@@ -1440,7 +1454,7 @@ function App() {
               <section className="settings-section">
                 <div>
                   <h2>Generation</h2>
-                  <p>Choose the provider Strut should use for new character work.</p>
+                  <p>Choose the provider Strut should use for motion documents.</p>
                 </div>
                 <div className="settings-controls">
                   <label>
@@ -1465,7 +1479,7 @@ function App() {
                 <div className="settings-controls compact">
                   <label className="toggle-row">
                     <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
-                    <span>Show character parts in editor</span>
+                    <span>Show scene layers in editor</span>
                   </label>
                   <label className="toggle-row">
                     <input defaultChecked type="checkbox" />
@@ -1490,10 +1504,12 @@ function App() {
           <section className={viewMode === "preview" ? "chat-layout with-preview" : "chat-layout"}>
             <div className="chat-panel">
               <div className="message-stack">
-                <div className="home-heading">
-                  <h1>What should we build in Strut?</h1>
-                  <p>{activeProject?.name ?? "This project"} is ready for a prompt, mockup, or plan-first sketch.</p>
-                </div>
+                {activeChat.messages.length === 0 ? (
+                  <div className="home-heading">
+                    <h1>What motion should Strut build?</h1>
+                    <p>Animate a logo, SVG, loader, product state, storyboard, mascot, or full scene.</p>
+                  </div>
+                ) : null}
                 {activeChat.messages.map((message) => (
                   <p className={`message ${message.role}`} key={message.id}>
                     <span>{message.role}</span>
@@ -1527,7 +1543,14 @@ function App() {
                     ))}
                   </div>
                 ) : null}
-                <textarea aria-label="Character prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut to make a character, storyboard, or editable animation" />
+                <div className="prompt-examples" aria-label="Prompt examples">
+                  {["Quiet loader", "Soft logo", "Button state", "Calm mascot", "State badge", "Tiny success"].map((example) => (
+                    <button key={example} type="button" onClick={() => setPrompt((current) => current || `Make a ${example.toLowerCase()} as an editable Strut animation`)}>
+                      {example}
+                    </button>
+                  ))}
+                </div>
+                <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene" />
                 <div className="composer-controls">
                   <div className="composer-left">
                     <input
@@ -1558,7 +1581,7 @@ function App() {
         ) : null}
 
         {mainPanel === "chat" && activeChat && viewMode === "editor" ? (
-          <section className="editor-layout">
+          <section className="editor-layout" aria-label="AI editor shell">
             <div className="editor-toolbar">
               {["select", "shape", "path", "bind", "animate"].map((tool) => (
                 <button className={activeTool === tool ? "active" : ""} key={tool} type="button" onClick={() => setActiveTool(tool)}>
@@ -1571,34 +1594,132 @@ function App() {
                 Parts
               </label>
             </div>
-            <div className="editor-main">
-              <div className="parts-panel">
-                <strong>Project files</strong>
-                <div className="file-list">
-                  {files.map((file) => (
-                    <button key={file.path} type="button">
-                      <FileText size={14} />
-                      <span>{file.name}</span>
-                      <em>{file.kind}</em>
+            <div className="ai-editor-shell">
+              <aside className="ai-edit-rail" aria-label="AI edit rail">
+                <div className="rail-heading">
+                  <span>AI edit mode</span>
+                  <strong>{activeChat.title}</strong>
+                  <p>Describe a change, attach reference material, or target the current selection. Operations are preview-only placeholders in Phase 1.</p>
+                </div>
+
+                <div className="selection-card" data-testid="selection-context">
+                  <span>Selected target</span>
+                  <strong>{selectedTargetLabel}</strong>
+                  <p>{currentDocument ? "Future AI edits will use this target as context." : "Generate or open a scene before selecting a target."}</p>
+                  <button disabled type="button">
+                    <WandSparkles size={15} />
+                    Ask AI to edit selection
+                  </button>
+                </div>
+
+                <div className="rail-transcript">
+                  {activeChat.messages.length ? (
+                    activeChat.messages.map((message) => (
+                      <p className={`message compact-message ${message.role}`} key={message.id}>
+                        <span>{message.role}</span>
+                        <span className="message-body">{message.text}</span>
+                      </p>
+                    ))
+                  ) : (
+                    <div className="rail-empty">
+                      <strong>No edit history yet</strong>
+                      <span>Ask for a motion draft, then refine a layer or state from here.</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="operation-placeholder" aria-label="Operation preview placeholder">
+                  <span>Pending operation</span>
+                  <strong>No operation staged</strong>
+                  <p>Phase 1 reserves this area for inspectable AI patches without applying any scene changes.</p>
+                  <div>
+                    <button disabled type="button">Apply operation</button>
+                    <button disabled type="button">Reject</button>
+                  </div>
+                </div>
+
+                <div className="composer compact-composer">
+                  {pendingReferences.length ? (
+                    <div className="reference-tray">
+                      {pendingReferences.map((reference) => (
+                        <div className="reference-chip" key={reference.id}>
+                          <img src={reference.dataUrl} alt="" />
+                          <span>{reference.name}</span>
+                          <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => removePendingReference(reference.id)}>
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder={`Ask Strut to edit ${selectedTargetLabel.toLowerCase()}`} />
+                  <div className="composer-controls">
+                    <div className="composer-left">
+                      <input
+                        ref={fileInputRef}
+                        aria-label="Attach reference images"
+                        className="reference-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                        multiple
+                        onChange={(event) => void attachReferenceImages(event.currentTarget.files)}
+                      />
+                      <button aria-label="Attach reference images" type="button" onClick={() => fileInputRef.current?.click()}>
+                        <ImagePlus size={16} />
+                        Reference
+                      </button>
+                    </div>
+                    <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
+                      <Send size={17} />
                     </button>
-                  ))}
+                  </div>
                 </div>
-                <div className="panel-title">
-                  <strong>Layers</strong>
-                  <em>{activeArtboard.name}</em>
+              </aside>
+
+              <div className="editor-main">
+                <div className="preview-workspace">
+                  <PreviewPane
+                    activeMachine={activeMachine}
+                    activeState={currentActiveState}
+                    document={currentDocument}
+                    selectedTargetLabel={selectedTargetLabel}
+                    setActiveState={setCurrentActiveState}
+                    showSelectionAffordances
+                  />
                 </div>
-                {partsVisible ? (
-                  <div className="layer-list">
-                    {layers.map((layer) => (
-                      <button key={layer.id} type="button">
-                        <span>{layer.name}</span>
-                        <em>{layer.kind}</em>
+                <aside className="editor-inspector" aria-label="Project files and scene layers">
+                  <strong>Project files</strong>
+                  <div className="file-list">
+                    {files.map((file) => (
+                      <button key={file.path} type="button">
+                        <FileText size={14} />
+                        <span>{file.name}</span>
+                        <em>{file.kind}</em>
                       </button>
                     ))}
                   </div>
-                ) : <p>Parts hidden</p>}
+                  <div className="panel-title">
+                    <strong>Scene layers</strong>
+                    <em>{activeArtboard.name}</em>
+                  </div>
+                  {partsVisible ? (
+                    <div className="layer-list">
+                      {layers.length ? layers.map((layer) => (
+                        <button
+                          aria-pressed={selectedNodeId === layer.id}
+                          className={selectedNodeId === layer.id ? "active" : ""}
+                          key={layer.id}
+                          type="button"
+                          onClick={() => setSelectedNodeId((current) => (current === layer.id ? null : layer.id))}
+                        >
+                          <span>{layer.name}</span>
+                          <em>{layer.kind}</em>
+                        </button>
+                      )) : <p className="panel-empty">No editable layers yet.</p>}
+                    </div>
+                  ) : <p className="panel-empty">Parts hidden</p>}
+                </aside>
               </div>
-              <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
             </div>
           </section>
         ) : null}
@@ -1625,7 +1746,7 @@ function HomePanel({
           <img src="/strut-mark.svg" alt="" />
         </div>
         <h1>Start a motion project</h1>
-        <p>Select a folder, open a project chat, or ask Strut to sketch a character direction before building the full animation.</p>
+        <p>Select a folder, open a project chat, or ask Strut to sketch a logo, SVG, UI state, mascot, storyboard, or full animation.</p>
         <div className="empty-actions">
           <button type="button" onClick={onNewProject}>
             <FolderPlus size={16} />
@@ -1645,7 +1766,7 @@ function HomePanel({
         </button>
         <button type="button" onClick={onStartChat} disabled={projects.length === 0}>
           <span>Plan first</span>
-          <em>Start from a prompt and keep the conversation in the sidebar.</em>
+          <em>Start from a prompt, reference, or rough direction before generating motion.</em>
         </button>
         <button type="button" onClick={onOpenProviders}>
           <span>Connect providers</span>
@@ -1660,15 +1781,19 @@ function PreviewPane({
   activeMachine,
   activeState,
   document,
+  selectedTargetLabel,
   setActiveState,
+  showSelectionAffordances = false,
 }: {
   activeMachine: StateMachine;
   activeState: string;
   document: StrutDocument | null;
+  selectedTargetLabel?: string;
   setActiveState: (state: string) => void;
+  showSelectionAffordances?: boolean;
 }) {
   return (
-    <aside className="preview-pane">
+    <aside className={showSelectionAffordances ? "preview-pane selection-aware" : "preview-pane"}>
       <div className="preview-title">
         <div>
           <span>Preview</span>
@@ -1679,25 +1804,38 @@ function PreviewPane({
           Preview
         </button>
       </div>
-      {document ? (
-        <>
+      <div className="preview-stage">
+        {document ? (
           <CharacterPreview document={document} activeState={activeState} />
-          <div className="state-row">
-            {activeMachine.states.map((state) => (
-              <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
-                <Route size={13} />
-                {titleCase(state)}
-              </button>
-            ))}
+        ) : (
+          <div className="preview-empty">
+            <ImagePlus size={26} />
+            <strong>No scene yet</strong>
+            <span>Attach a reference or describe a logo, SVG, UI state, mascot, storyboard, or scene.</span>
           </div>
-        </>
-      ) : (
-        <div className="preview-empty">
-          <ImagePlus size={26} />
-          <strong>No scene yet</strong>
-          <span>Attach a reference image or describe the character in chat.</span>
+        )}
+        {showSelectionAffordances ? (
+          <div className={document ? "selection-outline" : "selection-outline empty"}>
+            <span>{selectedTargetLabel ?? "No selection"}</span>
+          </div>
+        ) : null}
+      </div>
+      {document ? (
+        <div className="state-row">
+          {activeMachine.states.map((state) => (
+            <button className={state === activeState ? "active" : ""} key={state} type="button" onClick={() => setActiveState(state)}>
+              <Route size={13} />
+              {titleCase(state)}
+            </button>
+          ))}
         </div>
-      )}
+      ) : null}
+      {showSelectionAffordances ? (
+        <div className="preview-edit-hint">
+          <strong>{selectedTargetLabel ?? "No selection"}</strong>
+          <span>Selection outline and edit targeting are visual placeholders for Phase 1.</span>
+        </div>
+      ) : null}
     </aside>
   );
 }
