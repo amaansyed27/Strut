@@ -6,7 +6,7 @@
     "Helvetica Neue",
     sans-serif;
   color: #17211f;
-  background: #eff4ec;
+  background: var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -133,6 +133,29 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong);
+  background-clip: padding-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
 }
 
 body {
@@ -1522,9 +1545,13 @@ textarea:focus-visible {
 @media (max-width: 980px) {
   body {
     overflow: auto;
+    overflow-x: hidden;
   }
 
   .strut-shell {
+    width: 100%;
+    max-width: 100vw;
+    height: auto;
     min-height: 100vh;
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
@@ -1532,6 +1559,8 @@ textarea:focus-visible {
   }
 
   .sidebar {
+    width: 100%;
+    max-width: 100vw;
     grid-template-rows: auto auto auto;
     gap: 8px;
     padding: 10px;
@@ -1548,14 +1577,24 @@ textarea:focus-visible {
   }
 
   .workspace {
+    width: 100%;
+    max-width: 100vw;
     min-height: 760px;
     grid-template-rows: auto minmax(0, 1fr);
+    overflow: visible;
   }
 
   .workspace-top {
+    width: 100%;
     flex-wrap: wrap;
     min-height: 72px;
     padding: 10px;
+  }
+
+  .workspace-context,
+  .workspace-status {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .view-switcher {
@@ -1564,16 +1603,53 @@ textarea:focus-visible {
     overflow-x: auto;
   }
 
+  .view-switcher button {
+    flex: 1 0 auto;
+    white-space: nowrap;
+  }
+
+  .editor-toolbar {
+    flex-wrap: wrap;
+    overflow-x: hidden;
+  }
+
+  .editor-toolbar label {
+    margin-left: 0;
+  }
+
   .chat-layout.with-preview,
   .ai-editor-shell,
   .editor-main {
     grid-template-columns: 1fr;
   }
 
+  .editor-layout,
+  .ai-editor-shell,
+  .editor-main,
+  .preview-workspace,
+  .preview-pane,
+  .editor-inspector,
+  .composer {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .editor-layout,
+  .ai-editor-shell,
+  .editor-main,
+  .preview-pane {
+    height: auto;
+    overflow: visible;
+  }
+
   .preview-pane,
   .ai-edit-rail {
     border-left: 0;
     border-right: 0;
+  }
+
+  .preview-empty {
+    min-height: 300px;
   }
 
   .editor-inspector {
