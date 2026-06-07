@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronRight,
@@ -10,6 +10,7 @@ import {
   Home,
   ImagePlus,
   Layers3,
+  Lock,
   MessageSquarePlus,
   Monitor,
   Moon,
@@ -23,9 +24,12 @@ import {
   Settings2,
   Square,
   Sun,
+  Unlock,
   Trash2,
   WandSparkles,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./App.css";
@@ -38,6 +42,7 @@ type StrutNode = {
   id: string;
   name: string;
   kind: string;
+  role?: string;
   transform?: {
     translate_x?: number;
     translate_y?: number;
@@ -197,6 +202,25 @@ type ChatThread = {
   references: ReferenceAttachment[];
   document: StrutDocument | null;
   activeState: string;
+  selectedNodeId?: string | null;
+  layerUi?: Record<string, LayerUiState>;
+  pendingOperation?: OperationPreview | null;
+  operationHistory?: OperationPreview[];
+};
+
+type LayerUiState = {
+  visible: boolean;
+  locked: boolean;
+};
+
+type OperationPreview = {
+  id: string;
+  targetId: string;
+  targetName: string;
+  intent: string;
+  operationType: "style.patch" | "transform.patch" | "timeline.patch";
+  affectedProperties: string[];
+  createdAt: string;
 };
 
 type ProjectRecord = {
@@ -245,6 +269,10 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
     references: [],
     document: null,
     activeState: "wave",
+    selectedNodeId: null,
+    layerUi: {},
+    pendingOperation: null,
+    operationHistory: [],
   };
 }
 
@@ -331,6 +359,63 @@ function normalizeMessages(value: unknown): ChatMessage[] {
   return messages;
 }
 
+function normalizeLayerUi(value: unknown): Record<string, LayerUiState> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, Partial<LayerUiState>>)
+      .filter(([nodeId]) => nodeId.trim().length > 0)
+      .map(([nodeId, state]) => [
+        nodeId,
+        {
+          visible: typeof state.visible === "boolean" ? state.visible : true,
+          locked: typeof state.locked === "boolean" ? state.locked : false,
+        },
+      ]),
+  );
+}
+
+function normalizeOperationPreview(value: unknown): OperationPreview | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<OperationPreview>;
+  if (
+    typeof candidate.id !== "string"
+    || typeof candidate.targetId !== "string"
+    || typeof candidate.targetName !== "string"
+    || typeof candidate.intent !== "string"
+  ) {
+    return null;
+  }
+
+  const operationType =
+    candidate.operationType === "style.patch" || candidate.operationType === "transform.patch" || candidate.operationType === "timeline.patch"
+      ? candidate.operationType
+      : "style.patch";
+
+  return {
+    id: candidate.id,
+    targetId: candidate.targetId,
+    targetName: candidate.targetName,
+    intent: candidate.intent,
+    operationType,
+    affectedProperties: Array.isArray(candidate.affectedProperties)
+      ? candidate.affectedProperties.filter((item): item is string => typeof item === "string")
+      : [],
+    createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : "now",
+  };
+}
+
+function normalizeOperationHistory(value: unknown): OperationPreview[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(normalizeOperationPreview).filter((item): item is OperationPreview => item !== null);
+}
+
 function normalizeProjects(value: unknown): ProjectRecord[] {
   if (!Array.isArray(value)) {
     return initialProjects;
@@ -353,9 +438,13 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
                 updated: typeof chatCandidate.updated === "string" ? chatCandidate.updated : "now",
                 messages: normalizeMessages(chatCandidate.messages),
                 references: normalizeAttachments(chatCandidate.references),
-        document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : null,
-        activeState: typeof chatCandidate.activeState === "string" ? chatCandidate.activeState : "wave",
-      };
+                document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : null,
+                activeState: typeof chatCandidate.activeState === "string" ? chatCandidate.activeState : "wave",
+                selectedNodeId: typeof chatCandidate.selectedNodeId === "string" ? chatCandidate.selectedNodeId : null,
+                layerUi: normalizeLayerUi(chatCandidate.layerUi),
+                pendingOperation: normalizeOperationPreview(chatCandidate.pendingOperation),
+                operationHistory: normalizeOperationHistory(chatCandidate.operationHistory),
+              };
             })
         : [];
 
@@ -530,6 +619,50 @@ function flattenNodes(nodes: StrutNode[]): StrutNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children ?? [])]);
 }
 
+function layerUiFor(layerUi: Record<string, LayerUiState>, nodeId: string): LayerUiState {
+  return layerUi[nodeId] ?? { visible: true, locked: false };
+}
+
+function nodeTimelineMembership(document: StrutDocument | null, nodeId: string) {
+  if (!document) {
+    return [];
+  }
+  return document.timelines.flatMap((timeline) =>
+    (timeline.tracks ?? [])
+      .filter((track) => track.target === nodeId)
+      .map((track) => ({ timeline: timeline.name, property: track.property })),
+  );
+}
+
+function inferOperationType(intent: string): OperationPreview["operationType"] {
+  const value = intent.toLowerCase();
+  if (/(move|position|shift|rotate|scale|bigger|smaller|transform)/.test(value)) {
+    return "transform.patch";
+  }
+  if (/(timing|animate|motion|speed|bounce|wave|loop|timeline)/.test(value)) {
+    return "timeline.patch";
+  }
+  return "style.patch";
+}
+
+function inferAffectedProperties(intent: string, operationType: OperationPreview["operationType"]) {
+  const value = intent.toLowerCase();
+  const properties = new Set<string>();
+  if (/(color|fill)/.test(value)) properties.add("style.fill");
+  if (/stroke|outline/.test(value)) properties.add("style.stroke");
+  if (/opacity|transparent|fade/.test(value)) properties.add("style.opacity");
+  if (/move|position|shift|x|y/.test(value)) properties.add("transform.translate");
+  if (/rotate|tilt/.test(value)) properties.add("transform.rotate");
+  if (/scale|bigger|smaller|size/.test(value)) properties.add("transform.scale");
+  if (/timing|speed|duration/.test(value)) properties.add("timeline.duration");
+  if (/animate|motion|bounce|wave|loop/.test(value)) properties.add("timeline.tracks");
+
+  if (properties.size === 0) {
+    properties.add(operationType === "style.patch" ? "style" : operationType === "transform.patch" ? "transform" : "timeline");
+  }
+  return Array.from(properties);
+}
+
 function latestPreviewForProject(project: ProjectRecord | null, activeChatId: string | null) {
   if (!project) {
     return null;
@@ -574,7 +707,19 @@ function projectFiles(project: ProjectRecord): ProjectFile[] {
   ];
 }
 
-function CharacterPreview({ document, activeState }: { document: StrutDocument; activeState: string }) {
+function CharacterPreview({
+  activeState,
+  document,
+  layerUi,
+  onSelectNode,
+  selectedNodeId,
+}: {
+  activeState: string;
+  document: StrutDocument;
+  layerUi?: Record<string, LayerUiState>;
+  onSelectNode?: (nodeId: string) => void;
+  selectedNodeId?: string | null;
+}) {
   const artboard = document.artboards[0] ?? emptyArtboard;
   const width = artboard.width || 960;
   const height = artboard.height || 540;
@@ -591,39 +736,132 @@ function CharacterPreview({ document, activeState }: { document: StrutDocument; 
       <style>{documentAnimationCss(document, activeState)}</style>
       <rect className="preview-bg" width={width} height={height} rx="18" />
       <g className={`document-scene state-${activeState}`}>
-        {artboard.nodes.map((node) => <StrutNodePreview key={node.id} node={node} />)}
+        {artboard.nodes.map((node) => (
+          <StrutNodePreview
+            key={node.id}
+            layerUi={layerUi ?? {}}
+            node={node}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+          />
+        ))}
       </g>
       <text className="state-label" x={width / 2} y={height - 24} textAnchor="middle">{titleCase(activeState)}</text>
     </svg>
   );
 }
 
-function StrutNodePreview({ node }: { node: StrutNode }) {
+function StrutNodePreview({
+  layerUi,
+  node,
+  onSelectNode,
+  selectedNodeId,
+}: {
+  layerUi: Record<string, LayerUiState>;
+  node: StrutNode;
+  onSelectNode?: (nodeId: string) => void;
+  selectedNodeId?: string | null;
+}) {
+  const ui = layerUiFor(layerUi, node.id);
+  const selected = selectedNodeId === node.id;
+  if (!ui.visible) {
+    return null;
+  }
+
   const common = {
     "data-node-id": node.id,
     "data-node-name": node.name,
-    className: `strut-node node-${cssIdent(node.name)} kind-${cssIdent(node.kind)}`,
+    "data-selected": selected ? "true" : undefined,
+    "data-locked": ui.locked ? "true" : undefined,
+    className: `strut-node selectable-node node-${cssIdent(node.name)} kind-${cssIdent(node.kind)} ${selected ? "selected" : ""} ${ui.locked ? "locked" : ""}`,
     transform: transformAttribute(node.transform),
     style: nodeStyle(node.style),
+    onClick: (event: MouseEvent<SVGGElement>) => {
+      event.stopPropagation();
+      if (!ui.locked) {
+        onSelectNode?.(node.id);
+      }
+    },
   };
-  const children = node.children?.map((child) => <StrutNodePreview key={child.id} node={child} />);
+  const children = node.children?.map((child) => (
+    <StrutNodePreview
+      key={child.id}
+      layerUi={layerUi}
+      node={child}
+      onSelectNode={onSelectNode}
+      selectedNodeId={selectedNodeId}
+    />
+  ));
+  return (
+    <g {...common}>
+      <StrutShape node={node} />
+      {selected ? <SelectionHalo node={node} /> : null}
+      {children}
+    </g>
+  );
+}
+
+function StrutShape({ node }: { node: StrutNode }) {
   const shape = node.shape ?? { type: "none" };
   if (node.kind === "group" || shape.type === "none") {
-    return <g {...common}>{children}</g>;
+    return null;
   }
   if (shape.type === "rect") {
-    return <rect {...common} x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx}>{children}</rect>;
+    return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx} />;
   }
   if (shape.type === "ellipse") {
-    return <ellipse {...common} cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}>{children}</ellipse>;
+    return <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry} />;
   }
   if (shape.type === "path") {
-    return <path {...common} d={shape.d}>{children}</path>;
+    return <path d={shape.d} />;
   }
   if (shape.type === "text") {
-    return <text {...common} x={shape.x} y={shape.y} fontSize={shape.size}>{shape.value}{children}</text>;
+    return <text x={shape.x} y={shape.y} fontSize={shape.size}>{shape.value}</text>;
   }
-  return <g {...common}>{children}</g>;
+  return null;
+}
+
+function SelectionHalo({ node }: { node: StrutNode }) {
+  const shape = node.shape ?? { type: "none" };
+  if (shape.type === "rect") {
+    return <rect className="node-selection-halo" x={shape.x - 6} y={shape.y - 6} width={shape.width + 12} height={shape.height + 12} rx={Math.max(shape.rx, 8)} />;
+  }
+  if (shape.type === "ellipse") {
+    return <ellipse className="node-selection-halo" cx={shape.cx} cy={shape.cy} rx={shape.rx + 7} ry={shape.ry + 7} />;
+  }
+  if (shape.type === "path") {
+    return <path className="node-selection-halo" d={shape.d} />;
+  }
+  if (shape.type === "text") {
+    return <rect className="node-selection-halo" x={shape.x - 8} y={shape.y - shape.size - 7} width={Math.max(shape.value.length * shape.size * 0.58, 24) + 16} height={shape.size + 14} rx={7} />;
+  }
+  const bounds = nodeBounds(node);
+  if (!bounds) {
+    return null;
+  }
+  return <rect className="node-selection-halo group-halo" x={bounds.x - 10} y={bounds.y - 10} width={bounds.width + 20} height={bounds.height + 20} rx={12} />;
+}
+
+function nodeBounds(node: StrutNode): { x: number; y: number; width: number; height: number } | null {
+  const shape = node.shape ?? { type: "none" };
+  if (shape.type === "rect") {
+    return { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
+  }
+  if (shape.type === "ellipse") {
+    return { x: shape.cx - shape.rx, y: shape.cy - shape.ry, width: shape.rx * 2, height: shape.ry * 2 };
+  }
+  if (shape.type === "text") {
+    return { x: shape.x, y: shape.y - shape.size, width: Math.max(shape.value.length * shape.size * 0.58, 24), height: shape.size };
+  }
+  const childBounds = (node.children ?? []).map(nodeBounds).filter((bounds): bounds is NonNullable<ReturnType<typeof nodeBounds>> => Boolean(bounds));
+  if (!childBounds.length) {
+    return null;
+  }
+  const minX = Math.min(...childBounds.map((bounds) => bounds.x));
+  const minY = Math.min(...childBounds.map((bounds) => bounds.y));
+  const maxX = Math.max(...childBounds.map((bounds) => bounds.x + bounds.width));
+  const maxY = Math.max(...childBounds.map((bounds) => bounds.y + bounds.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 function nodeStyle(style: StrutNode["style"]): CSSProperties {
@@ -897,7 +1135,6 @@ function App() {
   const [projectLocation, setProjectLocation] = useState("");
   const [partsVisible, setPartsVisible] = useState(true);
   const [activeTool, setActiveTool] = useState("select");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("local");
@@ -955,8 +1192,13 @@ function App() {
   const activeArtboard = currentDocument?.artboards[0] ?? emptyArtboard;
   const activeMachine = currentDocument?.state_machines[0] ?? emptyMachine;
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
+  const selectedNodeId = activeChat?.selectedNodeId ?? null;
+  const layerUi = activeChat?.layerUi ?? {};
+  const pendingOperation = activeChat?.pendingOperation ?? null;
+  const operationHistory = activeChat?.operationHistory ?? [];
   const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
-  const selectedTargetLabel = selectedLayer?.name ?? (currentDocument ? activeArtboard.name : "No selection");
+  const selectedTargetLabel = selectedLayer?.name ?? "No selection";
+  const selectedTimelineMembership = selectedLayer ? nodeTimelineMembership(currentDocument, selectedLayer.id) : [];
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0] ?? browserLocalAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const activeProviderLabel = providerMode === "local" ? activeLocalAdapter.name : activeByokProvider.name;
@@ -979,9 +1221,67 @@ function App() {
 
   useEffect(() => {
     if (selectedNodeId && !layers.some((layer) => layer.id === selectedNodeId)) {
-      setSelectedNodeId(null);
+      setSelectedNode(null);
     }
   }, [layers, selectedNodeId]);
+
+  function setSelectedNode(nodeId: string | null) {
+    updateCurrentChat((chat) => ({ ...chat, selectedNodeId: nodeId, updated: "now" }));
+  }
+
+  function toggleLayerVisibility(nodeId: string) {
+    updateCurrentChat((chat) => {
+      const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
+      return {
+        ...chat,
+        updated: "now",
+        layerUi: {
+          ...(chat.layerUi ?? {}),
+          [nodeId]: { ...currentState, visible: !currentState.visible },
+        },
+        selectedNodeId: currentState.visible && chat.selectedNodeId === nodeId ? null : chat.selectedNodeId,
+      };
+    });
+  }
+
+  function toggleLayerLock(nodeId: string) {
+    updateCurrentChat((chat) => {
+      const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
+      return {
+        ...chat,
+        updated: "now",
+        layerUi: {
+          ...(chat.layerUi ?? {}),
+          [nodeId]: { ...currentState, locked: !currentState.locked },
+        },
+      };
+    });
+  }
+
+  function stageOperationPreview() {
+    if (!selectedLayer) {
+      setActivity("Select a visible semantic part before staging an edit preview");
+      return;
+    }
+    const intent = prompt.trim() || `Edit ${selectedLayer.name}`;
+    const operationType = inferOperationType(intent);
+    const preview: OperationPreview = {
+      id: `op-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+      targetId: selectedLayer.id,
+      targetName: selectedLayer.name,
+      intent,
+      operationType,
+      affectedProperties: inferAffectedProperties(intent, operationType),
+      createdAt: "now",
+    };
+    updateCurrentChat((chat) => ({
+      ...chat,
+      pendingOperation: preview,
+      operationHistory: [preview, ...(chat.operationHistory ?? [])].slice(0, 8),
+      updated: "now",
+    }));
+    setActivity(`Preview-only operation staged for ${selectedLayer.name}`);
+  }
 
   function providerPayload(): GenerationProvider {
     if (providerMode === "local") {
@@ -1117,7 +1417,9 @@ function App() {
       projectName: activeProject?.name,
       projectPath: activeProject?.path,
       activeChatTitle: activeChat?.title,
-      currentDocumentSummary: documentSummary(currentDocument),
+      currentDocumentSummary: selectedLayer
+        ? `${documentSummary(currentDocument)}; selected part: ${selectedLayer.name} (${selectedLayer.id}, ${selectedLayer.kind})`
+        : documentSummary(currentDocument),
       chatHistory,
       currentDocument: currentDocument ?? undefined,
     };
@@ -1712,82 +2014,23 @@ function App() {
               </label>
             </div>
             <div className="ai-editor-shell">
-              <aside className="ai-edit-rail" aria-label="AI edit rail">
-                <div className="rail-heading">
-                  <span>AI edit mode</span>
-                  <strong>{activeChat.title}</strong>
-                  <p>Describe a change, attach reference material, or target the current selection. Operations are preview-only placeholders in Phase 1.</p>
-                </div>
-
-                <div className="selection-card" data-testid="selection-context">
-                  <span>Selected target</span>
-                  <strong>{selectedTargetLabel}</strong>
-                  <p>{currentDocument ? "Future AI edits will use this target as context." : "Generate or open a scene before selecting a target."}</p>
-                  <button disabled type="button">
-                    <WandSparkles size={15} />
-                    Ask AI to edit selection
-                  </button>
-                </div>
-
-                <div className="operation-placeholder" aria-label="Operation preview placeholder">
-                  <span>Pending operation</span>
-                  <strong>No operation staged</strong>
-                  <p>Phase 1 reserves this area for inspectable AI patches without applying any scene changes.</p>
-                  <div>
-                    <button disabled type="button">Apply operation</button>
-                    <button disabled type="button">Reject</button>
-                  </div>
-                </div>
-
-                <div className="rail-transcript">
-                  {activeChat.messages.length ? (
-                    activeChat.messages.map((message) => <ChatMessageView compact key={message.id} message={message} />)
-                  ) : (
-                    <div className="rail-empty">
-                      <strong>No edit history yet</strong>
-                      <span>Ask for a motion draft, then refine a layer or state from here.</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="composer compact-composer">
-                  {pendingReferences.length ? (
-                    <div className="reference-tray">
-                      {pendingReferences.map((reference) => (
-                        <div className="reference-chip" key={reference.id}>
-                          <img src={reference.dataUrl} alt="" />
-                          <span>{reference.name}</span>
-                          <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => removePendingReference(reference.id)}>
-                            <X size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder={`Ask Strut to edit ${selectedTargetLabel.toLowerCase()}`} />
-                  <div className="composer-controls">
-                    <div className="composer-left">
-                      <input
-                        ref={fileInputRef}
-                        aria-label="Attach reference images"
-                        className="reference-input"
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                        multiple
-                        onChange={(event) => void attachReferenceImages(event.currentTarget.files)}
-                      />
-                      <button aria-label="Attach reference images" type="button" onClick={() => fileInputRef.current?.click()}>
-                        <ImagePlus size={16} />
-                        Reference
-                      </button>
-                      <span className="composer-provider">Provider: {activeProviderLabel}</span>
-                    </div>
-                    <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
-                      <Send size={17} />
-                    </button>
-                  </div>
-                </div>
-              </aside>
+              <AiEditRail
+                activeChat={activeChat}
+                activeProviderLabel={activeProviderLabel}
+                canStageOperation={Boolean(selectedLayer)}
+                fileInputRef={fileInputRef}
+                onAttachReferenceImages={(filesToAttach) => void attachReferenceImages(filesToAttach)}
+                onRemovePendingReference={removePendingReference}
+                onRunGeneration={() => void runGeneration()}
+                onStageOperationPreview={stageOperationPreview}
+                operationHistory={operationHistory}
+                pendingOperation={pendingOperation}
+                pendingReferences={pendingReferences}
+                prompt={prompt}
+                selectedLayer={selectedLayer}
+                selectedTargetLabel={selectedTargetLabel}
+                setPrompt={setPrompt}
+              />
 
               <div className="editor-main">
                 <div className="preview-workspace">
@@ -1795,6 +2038,9 @@ function App() {
                     activeMachine={activeMachine}
                     activeState={currentActiveState}
                     document={currentDocument}
+                    layerUi={layerUi}
+                    onSelectNode={setSelectedNode}
+                    selectedNodeId={selectedNodeId}
                     selectedTargetLabel={selectedTargetLabel}
                     setActiveState={setCurrentActiveState}
                     showSelectionAffordances
@@ -1819,22 +2065,21 @@ function App() {
                       <em>{activeArtboard.name}</em>
                     </div>
                     {partsVisible ? (
-                      <div className="layer-list">
-                        {layers.length ? layers.map((layer) => (
-                          <button
-                            aria-pressed={selectedNodeId === layer.id}
-                            className={selectedNodeId === layer.id ? "active" : ""}
-                            key={layer.id}
-                            type="button"
-                            onClick={() => setSelectedNodeId((current) => (current === layer.id ? null : layer.id))}
-                          >
-                            <span>{layer.name}</span>
-                            <em>{layer.kind}</em>
-                          </button>
-                        )) : <p className="panel-empty">No editable layers yet.</p>}
-                      </div>
+                      <LayerList
+                        layers={layers}
+                        layerUi={layerUi}
+                        onSelect={setSelectedNode}
+                        onToggleLock={toggleLayerLock}
+                        onToggleVisibility={toggleLayerVisibility}
+                        selectedNodeId={selectedNodeId}
+                      />
                     ) : <p className="panel-empty">Parts hidden</p>}
                   </div>
+                  <SelectedPartInspector
+                    layerUi={selectedLayer ? layerUiFor(layerUi, selectedLayer.id) : { visible: false, locked: false }}
+                    selectedLayer={selectedLayer}
+                    timelineMembership={selectedTimelineMembership}
+                  />
                 </aside>
               </div>
             </div>
@@ -1894,10 +2139,301 @@ function HomePanel({
   );
 }
 
+function AiEditRail({
+  activeChat,
+  activeProviderLabel,
+  canStageOperation,
+  fileInputRef,
+  onAttachReferenceImages,
+  onRemovePendingReference,
+  onRunGeneration,
+  onStageOperationPreview,
+  operationHistory,
+  pendingOperation,
+  pendingReferences,
+  prompt,
+  selectedLayer,
+  selectedTargetLabel,
+  setPrompt,
+}: {
+  activeChat: ChatThread;
+  activeProviderLabel: string;
+  canStageOperation: boolean;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  onAttachReferenceImages: (files: FileList | null) => void;
+  onRemovePendingReference: (id: string) => void;
+  onRunGeneration: () => void;
+  onStageOperationPreview: () => void;
+  operationHistory: OperationPreview[];
+  pendingOperation: OperationPreview | null;
+  pendingReferences: ReferenceAttachment[];
+  prompt: string;
+  selectedLayer: StrutNode | null;
+  selectedTargetLabel: string;
+  setPrompt: (value: string) => void;
+}) {
+  return (
+    <aside className="ai-edit-rail" aria-label="AI edit rail">
+      <div className="rail-heading">
+        <span>AI edit mode</span>
+        <strong>{activeChat.title}</strong>
+        <p>Target a semantic part, describe a change, and inspect the proposed operation before any scene mutation exists.</p>
+      </div>
+
+      <div className="selection-card" data-testid="selection-context">
+        <span>Selected target</span>
+        <strong>{selectedTargetLabel}</strong>
+        <p>
+          {selectedLayer
+            ? `AI edit context includes ${selectedLayer.name}, ${selectedLayer.kind}, and its semantic id ${selectedLayer.id}.`
+            : "Select a visible preview part or layer before staging an edit preview."}
+        </p>
+        <button disabled={!canStageOperation} type="button" onClick={onStageOperationPreview}>
+          <WandSparkles size={15} />
+          Ask AI to edit selection
+        </button>
+      </div>
+
+      <div className="operation-placeholder" aria-label="Operation preview placeholder" data-testid="operation-preview">
+        <span>Pending operation</span>
+        {pendingOperation ? (
+          <div className="operation-preview-card">
+            <strong>{pendingOperation.operationType}</strong>
+            <dl>
+              <div>
+                <dt>Target</dt>
+                <dd>{pendingOperation.targetName}</dd>
+              </div>
+              <div>
+                <dt>Target id</dt>
+                <dd>{pendingOperation.targetId}</dd>
+              </div>
+              <div>
+                <dt>Intent</dt>
+                <dd>{pendingOperation.intent}</dd>
+              </div>
+              <div>
+                <dt>Affected</dt>
+                <dd>{pendingOperation.affectedProperties.join(", ")}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : (
+          <>
+            <strong>No operation staged</strong>
+            <p>Phase 2 creates inspectable operation previews only. Apply and reject stay disabled until patch execution is modeled and tested.</p>
+          </>
+        )}
+        <div>
+          <button disabled type="button">Apply operation</button>
+          <button disabled type="button">Reject</button>
+        </div>
+        {operationHistory.length ? (
+          <div className="operation-history">
+            <span>History</span>
+            {operationHistory.slice(0, 3).map((operation) => (
+              <em key={operation.id}>{operation.targetName}: {operation.operationType}</em>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="rail-transcript">
+        {activeChat.messages.length ? (
+          activeChat.messages.map((message) => <ChatMessageView compact key={message.id} message={message} />)
+        ) : (
+          <div className="rail-empty">
+            <strong>No edit history yet</strong>
+            <span>Ask for a motion draft, then refine a layer or state from here.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="composer compact-composer">
+        {pendingReferences.length ? (
+          <div className="reference-tray">
+            {pendingReferences.map((reference) => (
+              <div className="reference-chip" key={reference.id}>
+                <img src={reference.dataUrl} alt="" />
+                <span>{reference.name}</span>
+                <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => onRemovePendingReference(reference.id)}>
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <textarea
+          aria-label="Motion prompt"
+          value={prompt}
+          onChange={(event) => setPrompt(event.currentTarget.value)}
+          placeholder={selectedLayer ? `Ask Strut to edit ${selectedLayer.name}` : "Select a semantic part, then describe the edit"}
+        />
+        <div className="composer-controls">
+          <div className="composer-left">
+            <input
+              ref={fileInputRef}
+              aria-label="Attach reference images"
+              className="reference-input"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+              multiple
+              onChange={(event) => onAttachReferenceImages(event.currentTarget.files)}
+            />
+            <button aria-label="Attach reference images" type="button" onClick={() => fileInputRef.current?.click()}>
+              <ImagePlus size={16} />
+              Reference
+            </button>
+            <span className="composer-provider">Provider: {activeProviderLabel}</span>
+          </div>
+          <button aria-label="Generate" type="button" onClick={onRunGeneration}>
+            <Send size={17} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function LayerList({
+  layers,
+  layerUi,
+  onSelect,
+  onToggleLock,
+  onToggleVisibility,
+  selectedNodeId,
+}: {
+  layers: StrutNode[];
+  layerUi: Record<string, LayerUiState>;
+  onSelect: (nodeId: string | null) => void;
+  onToggleLock: (nodeId: string) => void;
+  onToggleVisibility: (nodeId: string) => void;
+  selectedNodeId: string | null;
+}) {
+  if (!layers.length) {
+    return <p className="panel-empty">No editable layers yet.</p>;
+  }
+
+  return (
+    <div className="layer-list">
+      {layers.map((layer) => {
+        const ui = layerUiFor(layerUi, layer.id);
+        return (
+          <div className={`layer-row ${selectedNodeId === layer.id ? "active" : ""}`} key={layer.id}>
+            <button
+              aria-pressed={selectedNodeId === layer.id}
+              className="layer-select"
+              type="button"
+              onClick={() => onSelect(selectedNodeId === layer.id ? null : layer.id)}
+            >
+              <span>{layer.name}</span>
+              <em>{layer.kind}</em>
+            </button>
+            <button
+              aria-label={`${ui.visible ? "Hide" : "Show"} ${layer.name}`}
+              aria-pressed={ui.visible}
+              className="layer-icon-button"
+              type="button"
+              onClick={() => onToggleVisibility(layer.id)}
+            >
+              {ui.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            <button
+              aria-label={`${ui.locked ? "Unlock" : "Lock"} ${layer.name}`}
+              aria-pressed={ui.locked}
+              className="layer-icon-button"
+              type="button"
+              onClick={() => onToggleLock(layer.id)}
+            >
+              {ui.locked ? <Lock size={14} /> : <Unlock size={14} />}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SelectedPartInspector({
+  layerUi,
+  selectedLayer,
+  timelineMembership,
+}: {
+  layerUi: LayerUiState;
+  selectedLayer: StrutNode | null;
+  timelineMembership: Array<{ timeline: string; property: string }>;
+}) {
+  if (!selectedLayer) {
+    return (
+      <section className="selected-part-inspector" aria-label="Selected part inspector" data-testid="selected-part-inspector">
+        <strong>Selected part</strong>
+        <p className="panel-empty">No part selected. Select a visible preview object or layer to inspect semantic identity, transform, style, and timeline targets.</p>
+      </section>
+    );
+  }
+
+  const transform = selectedLayer.transform ?? {};
+  const style = selectedLayer.style ?? {};
+
+  return (
+    <section className="selected-part-inspector" aria-label="Selected part inspector" data-testid="selected-part-inspector">
+      <div className="panel-title">
+        <strong>Selected part</strong>
+        <em>{selectedLayer.id}</em>
+      </div>
+      <div className="inspector-grid">
+        <InspectorField label="Name" value={selectedLayer.name} />
+        <InspectorField label="Kind" value={selectedLayer.kind} />
+        <InspectorField label="Role" value={selectedLayer.role ?? "Not defined"} />
+        <InspectorField label="Visible" value={layerUi.visible ? "Visible" : "Hidden"} />
+        <InspectorField label="Lock" value={layerUi.locked ? "Locked" : "Unlocked"} />
+        <InspectorField label="Translate X" value={formatNumber(transform.translate_x, 0)} />
+        <InspectorField label="Translate Y" value={formatNumber(transform.translate_y, 0)} />
+        <InspectorField label="Rotate" value={`${formatNumber(transform.rotate, 0)} deg`} />
+        <InspectorField label="Scale X" value={formatNumber(transform.scale_x, 1)} />
+        <InspectorField label="Scale Y" value={formatNumber(transform.scale_y, 1)} />
+        <InspectorField label="Fill" value={style.fill ?? "None"} swatch={style.fill ?? undefined} />
+        <InspectorField label="Stroke" value={style.stroke ?? "None"} swatch={style.stroke ?? undefined} />
+        <InspectorField label="Stroke width" value={formatNumber(style.stroke_width, 0)} />
+        <InspectorField label="Opacity" value={formatNumber(style.opacity, 1)} />
+      </div>
+      <div className="timeline-membership">
+        <span>Timeline membership</span>
+        {timelineMembership.length ? (
+          timelineMembership.map((item) => (
+            <em key={`${item.timeline}-${item.property}`}>{item.timeline} targets {item.property}</em>
+          ))
+        ) : (
+          <em>No timeline tracks target this part.</em>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InspectorField({ label, swatch, value }: { label: string; swatch?: string; value: string }) {
+  return (
+    <div className="inspector-field">
+      <span>{label}</span>
+      <strong>
+        {swatch ? <i aria-hidden="true" style={{ background: swatch }} /> : null}
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function formatNumber(value: number | undefined, fallback: number) {
+  return Number.isFinite(value) ? String(value) : String(fallback);
+}
+
 function PreviewPane({
   activeMachine,
   activeState,
   document,
+  layerUi,
+  onSelectNode,
+  selectedNodeId,
   selectedTargetLabel,
   setActiveState,
   showSelectionAffordances = false,
@@ -1905,6 +2441,9 @@ function PreviewPane({
   activeMachine: StateMachine;
   activeState: string;
   document: StrutDocument | null;
+  layerUi?: Record<string, LayerUiState>;
+  onSelectNode?: (nodeId: string | null) => void;
+  selectedNodeId?: string | null;
   selectedTargetLabel?: string;
   setActiveState: (state: string) => void;
   showSelectionAffordances?: boolean;
@@ -1923,7 +2462,13 @@ function PreviewPane({
       </div>
       <div className="preview-stage">
         {document ? (
-          <CharacterPreview document={document} activeState={activeState} />
+          <CharacterPreview
+            activeState={activeState}
+            document={document}
+            layerUi={layerUi}
+            onSelectNode={onSelectNode ? (nodeId) => onSelectNode(nodeId) : undefined}
+            selectedNodeId={selectedNodeId}
+          />
         ) : (
           <div className="preview-empty">
             <ImagePlus size={26} />
@@ -1931,11 +2476,6 @@ function PreviewPane({
             <span>Attach a reference or describe a logo, SVG, UI state, mascot, storyboard, or scene.</span>
           </div>
         )}
-        {showSelectionAffordances && document ? (
-          <div className="selection-outline">
-            <span>{selectedTargetLabel ?? "No selection"}</span>
-          </div>
-        ) : null}
       </div>
       {document ? (
         <div className="state-row">
@@ -1950,7 +2490,7 @@ function PreviewPane({
       {showSelectionAffordances ? (
         <div className="preview-edit-hint">
           <strong>{selectedTargetLabel ?? "No selection"}</strong>
-          <span>Selection outline and edit targeting are visual placeholders for Phase 1.</span>
+          <span>{selectedNodeId ? "Preview selection is bound to the semantic scene node." : "Select a visible part or layer to target AI edits."}</span>
         </div>
       ) : null}
     </aside>

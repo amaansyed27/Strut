@@ -1166,6 +1166,41 @@ textarea:focus-visible {
   background: var(--preview-surface);
 }
 
+.selection-aware .character-preview {
+  pointer-events: auto;
+}
+
+.selectable-node {
+  cursor: pointer;
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+
+.selectable-node.locked {
+  cursor: not-allowed;
+}
+
+.selectable-node.locked > :not(.node-selection-halo) {
+  opacity: 0.68;
+}
+
+.selectable-node.selected {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--selection) 45%, transparent));
+}
+
+.node-selection-halo {
+  pointer-events: none;
+  fill: none;
+  stroke: var(--selection);
+  stroke-width: 4;
+  stroke-dasharray: 10 6;
+  vector-effect: non-scaling-stroke;
+}
+
+.group-halo {
+  stroke-dasharray: 5 5;
+}
+
+/* Leftover Phase 1 class retained for old screenshots only; Phase 2 uses node-bound halos. */
 .selection-outline {
   position: absolute;
   inset: 18% 20% 20%;
@@ -1387,10 +1422,55 @@ textarea:focus-visible {
   background: var(--field);
 }
 
-.operation-placeholder div {
+.operation-placeholder > div:not(.operation-preview-card):not(.operation-history) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.operation-preview-card {
+  display: grid;
+  gap: 9px;
+}
+
+.operation-preview-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.operation-preview-card div {
+  display: grid;
+  gap: 2px;
+}
+
+.operation-preview-card dt,
+.operation-history span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.operation-preview-card dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.operation-history {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.operation-history em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .rail-transcript {
@@ -1451,9 +1531,9 @@ textarea:focus-visible {
 .parts-panel,
 .editor-inspector {
   min-height: 0;
-  max-height: 178px;
+  max-height: 232px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(280px, 1.25fr);
   gap: 18px;
   overflow: auto;
   padding: 14px 18px;
@@ -1490,6 +1570,7 @@ textarea:focus-visible {
 .file-list,
 .layer-list {
   display: grid;
+  gap: 4px;
 }
 
 .file-list {
@@ -1497,19 +1578,50 @@ textarea:focus-visible {
   margin-bottom: 0;
 }
 
-.layer-list button,
+.layer-row,
 .file-list button {
   width: 100%;
   min-height: 38px;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   color: var(--ink);
   background: transparent;
   border: 0;
   border-top: 1px solid var(--line);
-  padding: 10px 0;
+  padding: 0;
   text-align: left;
+}
+
+.layer-select {
+  min-width: 0;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 0;
+  color: var(--ink);
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.layer-icon-button {
+  width: 30px;
+  min-height: 30px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.layer-icon-button[aria-pressed="true"] {
+  color: var(--accent-strong);
+  border-color: var(--line);
+  background: var(--field);
 }
 
 .provider-list button {
@@ -1568,11 +1680,77 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.layer-list button.active {
-  padding-inline: 10px;
+.layer-row.active {
+  padding-inline: 8px;
   border: 1px solid var(--selection);
   border-radius: 8px;
   background: color-mix(in srgb, var(--selection) 14%, transparent);
+}
+
+.selected-part-inspector {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.inspector-field {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.inspector-field span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inspector-field strong {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inspector-field i {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+}
+
+.timeline-membership {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.timeline-membership span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.timeline-membership em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .panel-empty {
@@ -2124,7 +2302,7 @@ textarea:focus-visible {
   .home-card-grid,
   .empty-actions,
   .theme-options,
-  .operation-placeholder div {
+  .operation-placeholder > div:not(.operation-preview-card):not(.operation-history) {
     grid-template-columns: 1fr;
   }
 
