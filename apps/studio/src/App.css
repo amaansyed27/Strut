@@ -18,7 +18,7 @@
   --muted: #66756f;
   --line: rgba(29, 47, 42, 0.14);
   --line-strong: rgba(29, 47, 42, 0.26);
-  --sidebar: #20322e;
+  --sidebar: #20231f;
   --sidebar-text: #f4faf4;
   --accent: #6fb89f;
   --accent-strong: #2f7464;
@@ -58,7 +58,7 @@
   --muted: #95a4a7;
   --line: rgba(213, 230, 232, 0.13);
   --line-strong: rgba(213, 230, 232, 0.24);
-  --sidebar: #06080c;
+  --sidebar: #070806;
   --sidebar-text: #eef5f4;
   --accent: #163a63;
   --accent-strong: #255e96;
@@ -99,7 +99,7 @@
     --muted: #95a4a7;
     --line: rgba(213, 230, 232, 0.13);
     --line-strong: rgba(213, 230, 232, 0.24);
-    --sidebar: #06080c;
+    --sidebar: #070806;
     --sidebar-text: #eef5f4;
     --accent: #163a63;
     --accent-strong: #255e96;
@@ -1748,6 +1748,253 @@ textarea:focus-visible {
   height: 16px;
   flex: 0 0 auto;
   accent-color: var(--accent);
+}
+
+/* Codex-like readability pass: task app first, canvas second. */
+.workspace {
+  grid-template-rows: 58px minmax(0, 1fr);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--paper-soft) 38%, transparent), transparent 240px),
+    var(--paper);
+  background-size: auto;
+}
+
+.workspace-top {
+  gap: 12px;
+  min-height: 58px;
+  padding: 0 14px 0 18px;
+  background: color-mix(in srgb, var(--topbar) 96%, var(--paper));
+}
+
+.workspace-context {
+  flex: 1;
+  max-width: 360px;
+  padding-left: 10px;
+}
+
+.workspace-context strong {
+  font-size: 14px;
+}
+
+.workspace-context span {
+  font-size: 11px;
+}
+
+.workspace-status {
+  margin-left: auto;
+}
+
+.workspace-status span {
+  min-height: 24px;
+  padding: 0 10px;
+  border-color: color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--field) 72%, transparent);
+}
+
+.open-folder-button {
+  margin-left: 0;
+}
+
+.view-switcher {
+  gap: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--field) 68%, transparent);
+  box-shadow: none;
+}
+
+.view-switcher button {
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.view-switcher button.active::after {
+  left: 10px;
+  right: 10px;
+  bottom: -5px;
+}
+
+.chat-layout {
+  background: var(--paper);
+}
+
+.chat-layout.with-preview {
+  grid-template-columns: minmax(560px, 1fr) minmax(320px, 380px);
+}
+
+.chat-panel {
+  min-width: 0;
+  padding: 0 34px 22px;
+  border-right: 1px solid var(--line);
+}
+
+.message-stack,
+.chat-layout.with-preview .message-stack {
+  width: min(760px, 100%);
+  justify-self: center;
+  align-content: start;
+  padding: 46px 0 28px;
+}
+
+.message-stack:has(.message) {
+  padding-top: 46px;
+}
+
+.message {
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.message-role {
+  color: color-mix(in srgb, var(--muted) 86%, transparent);
+  font-size: 12px;
+}
+
+.message-body {
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.message.system .message-body {
+  color: var(--muted);
+}
+
+.message.assistant .message-body {
+  color: var(--ink);
+}
+
+.message.user {
+  max-width: min(68%, 560px);
+}
+
+.message.user .message-body {
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--active-bg) 64%, transparent);
+  border-radius: 12px 12px 3px 12px;
+  background: color-mix(in srgb, var(--active-bg) 92%, #000);
+  box-shadow: none;
+}
+
+.markdown-response {
+  gap: 10px;
+}
+
+.prompt-examples {
+  display: none;
+}
+
+.composer {
+  max-width: 760px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--field) 86%, var(--paper));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.composer textarea {
+  min-height: 76px;
+  padding: 16px 16px 12px;
+  font-size: 14px;
+}
+
+.composer-controls {
+  padding: 9px 10px;
+}
+
+.composer-left > button,
+.composer-controls .composer-left > button {
+  min-height: 31px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+
+.composer-provider {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.composer-controls button[aria-label="Generate"] {
+  width: 38px;
+  min-height: 38px;
+  border-radius: 999px;
+}
+
+.preview-pane {
+  padding: 28px 28px;
+  background: color-mix(in srgb, var(--preview-shell) 92%, var(--paper));
+  backdrop-filter: none;
+}
+
+.preview-title {
+  margin-bottom: 18px;
+}
+
+.preview-stage {
+  min-height: 0;
+  align-items: center;
+}
+
+.preview-empty {
+  width: min(100%, 380px);
+  min-height: 230px;
+  margin: auto;
+  border-color: color-mix(in srgb, var(--line) 82%, transparent);
+  background:
+    linear-gradient(90deg, transparent 23px, color-mix(in srgb, var(--grid-x) 42%, transparent) 24px),
+    linear-gradient(180deg, transparent 23px, color-mix(in srgb, var(--grid-y) 42%, transparent) 24px),
+    color-mix(in srgb, var(--panel-strong) 78%, transparent);
+}
+
+.preview-empty strong {
+  font-size: 17px;
+}
+
+.preview-empty span {
+  font-size: 13px;
+}
+
+.editor-toolbar {
+  min-height: 52px;
+  padding: 8px 14px;
+}
+
+.editor-toolbar button,
+.editor-toolbar label {
+  min-height: 34px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--field) 72%, transparent);
+}
+
+.ai-editor-shell {
+  grid-template-columns: minmax(310px, 370px) minmax(0, 1fr);
+  background: var(--paper);
+}
+
+.ai-edit-rail {
+  background: color-mix(in srgb, var(--paper-soft) 48%, var(--paper));
+}
+
+.preview-workspace {
+  padding: 24px 34px;
+}
+
+.preview-workspace .preview-pane {
+  padding: 28px 0 0;
+}
+
+.selection-aware .preview-empty {
+  width: min(100%, 520px);
+  min-height: 190px;
+}
+
+.editor-inspector {
+  background: color-mix(in srgb, var(--paper-soft) 45%, transparent);
+}
+
+.project-sheet,
+.provider-page,
+.settings-page {
+  box-shadow: none;
 }
 
 @media (max-width: 980px) {
