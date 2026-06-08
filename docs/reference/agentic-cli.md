@@ -54,6 +54,8 @@ cargo run -p strut-cli -- patch --scene scenes\main.strut --from plan.json --jso
 
 `--dry-run` validates the plan and current scene but never writes. A real patch writes only after Rust validates the replacement document and operation batch payload.
 
+For the Phase 5 subset, patch plans must contain exactly one authoritative `replace_document` operation. The CLI injects `previousDocument` from the current scene, validates `nextDocument`, requires the top-level plan `document` to exactly match `batch.operations[0].nextDocument`, and writes only that validated operation document. Mismatches fail with an actionable error before any scene mutation.
+
 Verify a scene and optional operation batches:
 
 ```powershell
@@ -81,7 +83,7 @@ The exporter writes:
 - `StrutAnimation.tsx`
 - `README.md`
 
-Existing files are not overwritten unless `--force` is passed. `--dry-run` reports the planned files without writing.
+Existing files are not overwritten unless `--force` is passed. The exporter preflights every target path before writing, so an overwrite conflict fails before creating or modifying any export file. `--dry-run` reports the planned files without writing.
 
 ## JSON Contract
 
@@ -105,4 +107,3 @@ The `document` is a Rust-validated Strut document. The `batch` is a pending oper
 ## Handoff Status
 
 Core inspect, plan, patch, verify, render, and export workflows do not require the Studio UI. App handoff remains a documented protocol for a future shell command: open a scene in Studio, apply a pending validated patch, preview render, and return verification status.
-

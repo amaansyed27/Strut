@@ -6,9 +6,22 @@ Branch: `codex/phase-1-ai-editor-shell`
 
 ## Summary
 
-Phase 5 is implemented for the core agentic workflow. Strut now has a Rust-backed `strut` CLI binary in `crates/strut-cli` that can inspect projects and scenes, generate validated operation plans, use sprite-python as a planning backend, patch `.strut` scene packages through Rust validation, verify scenes and operation batches, write deterministic SVG render proofs, and export React integration files.
+Phase 5 is implemented and review-fixed for the core agentic workflow. Strut now has a Rust-backed `strut` CLI binary in `crates/strut-cli` that can inspect projects and scenes, generate validated operation plans, use sprite-python as a planning backend, patch `.strut` scene packages through Rust validation, verify scenes and operation batches, write deterministic SVG render proofs, and export React integration files.
 
 Phase 6 end-to-end gallery hardening was not started.
+
+## Review Fix Pass
+
+This review fix pass addressed two Phase 5 CLI findings without starting Phase 6.
+
+- `strut patch` now derives the document to write from the validated operation batch instead of treating the top-level plan `document` as the write authority.
+- The Phase 5 patch subset now requires exactly one authoritative `replace_document` operation.
+- `patch` injects `previousDocument` from the current scene, validates `nextDocument`, validates the operation batch, requires the top-level plan `document` to exactly match `batch.operations[0].nextDocument`, and writes only that validated operation document.
+- Tampered top-level plan documents now fail with an actionable `plan document mismatch` error before mutation.
+- Invalid replacement documents fail validation before mutation.
+- `export react` now preflights every target file before writing anything.
+- If any target exists and `--force` is not set, export fails before creating `scene.json`, `StrutAnimation.tsx`, `README.md`, or parent directories for missing files.
+- `--dry-run` remains non-mutating, and `--force` overwrites the full expected export set.
 
 ## Initial Dirty Files
 
@@ -40,10 +53,11 @@ These files were pre-existing dirty work and were not reverted or folded into Ph
 - Added `strut export react --scene <scene-file> --out <target-dir>` with safe overwrite behavior, `--dry-run`, and generated integration files.
 - Added binary-level CLI integration test coverage.
 - Added CLI reference and integration guide docs.
+- Added review-fix regression coverage for patch source-of-truth tampering, invalid replacement no-mutation, export conflict atomicity, force overwrite, and dry-run no-mutation.
 
 ## Validation Boundary
 
-The CLI writes only after Rust reads and validates the current `.strut` package, validates the planned replacement `Document` through `strut-format`, validates the pending operation batch shape, and writes a new `.strut` package through `strut_format::write_strut_file`.
+The CLI writes only after Rust reads and validates the current `.strut` package, extracts the single authoritative `replace_document.nextDocument` from the operation batch, validates it through `strut-format`, validates the pending operation batch shape, checks it matches the top-level plan document, and writes a new `.strut` package through `strut_format::write_strut_file`.
 
 Sprite-python output remains a generation-plan envelope plus operation list. It does not bypass Rust validation and does not write scene files directly.
 
@@ -79,8 +93,15 @@ The core CLI workflow does not require the Studio UI. The app handoff protocol i
   - Added sprite-python UI fixture coverage.
 - `b410d7b test(cli): cover agentic cli mode`
   - Added an integration test that runs the built `strut` binary through inspect, plan, dry-run patch, patch, verify, render, and export dry-run.
-- `docs(cli): document agentic strut workflow`
+- `68ba07c docs(cli): document agentic strut workflow`
   - Adds CLI reference docs, integration recipes, and this Phase 5 report.
+- `5e8abd3 chore(report): add phase 5 cli evidence`
+  - Added exported-runtime browser proof evidence and refreshed the Phase 5 report.
+- `7143100 fix(cli): harden patch and export writes`
+  - Made patch use the validated `replace_document.nextDocument` as the write authority.
+  - Rejected top-level document and operation-document mismatches before mutation.
+  - Added atomic React export preflight before any writes.
+  - Added focused regression tests for both review findings.
 
 ## Verification Commands
 
@@ -88,14 +109,17 @@ Focused commands run during implementation:
 
 | Command | Result |
 |---|---|
-| `cargo test -p strut-cli` | PASS, 3 unit tests and 1 integration test. |
-| `$env:PYTHONPATH='src'; python -m pytest tests` from `packages/strut-python` | PASS, 22 tests. |
+| `cargo test -p strut-cli` | PASS, 3 unit tests and 4 integration tests. |
+| `python -m pytest packages/strut-python/tests` | PASS, 22 tests. |
+| From `packages/strut-python`: `$env:PYTHONPATH='src'; python -m strut_python.cli loader --json --out $env:TEMP\strut-loader-plan.json` | PASS. |
+| `cargo fmt --all --check` | PASS. |
 | `target\debug\strut.exe sprite plan "make a calm loader microinteraction" --json --dry-run --explain` | PASS, emitted validated `strut.cli.plan.v1` JSON. |
 | `target\debug\strut.exe patch --scene <temp>\scene.strut --from <temp>\plan.json --dry-run --json` | PASS, no mutation. |
 | `target\debug\strut.exe patch --scene <temp>\scene.strut --from <temp>\plan.json --json` | PASS, wrote validated scene. |
 | `target\debug\strut.exe verify <temp>\scene.strut --json` | PASS. |
 | `target\debug\strut.exe render --scene <temp>\scene.strut --state loading --out <temp>\proof.svg --json --no-open` | PASS, wrote deterministic SVG proof. |
 | `target\debug\strut.exe export react --scene <temp>\scene.strut --out <temp>\react-export --dry-run --json` | PASS. |
+| Review-fix regression tests in `crates/strut-cli/tests/agentic_cli.rs` | PASS, patch tamper/no-mutation and export atomicity covered. |
 
 Final broad verification:
 
@@ -104,6 +128,9 @@ Final broad verification:
 | `cargo test --workspace` | PASS, workspace tests green with 1 ignored authenticated Gemini CLI test and existing Studio dead-code warnings. |
 | `npm --workspace @strut/studio run check` | PASS. |
 | `npm run check` | PASS, with existing Rust dead-code warnings during `cargo check`. |
+| `python tests/ui/studio_bot_smoke.py` | PASS. |
+| `python tests/ui/studio_persistence_smoke.py` | PASS. |
+| `python tests/ui/studio_tauri_persistence_smoke.py` | PASS. |
 | `git diff --check` | PASS. |
 | Playwright exported-runtime demo harness | PASS, rendered exported scene data in Chromium and captured `screenshots/exported-runtime-demo.png`. |
 
