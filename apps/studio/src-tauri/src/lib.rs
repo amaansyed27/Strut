@@ -3649,6 +3649,65 @@ mod tests {
         names.into_iter().map(str::to_string).collect()
     }
 
+    fn sprite_python_fixture(name: &str) -> &'static str {
+        match name {
+            "dice" => include_str!("../../../../packages/strut-python/fixtures/dice.plan.json"),
+            "logo" => include_str!("../../../../packages/strut-python/fixtures/logo.plan.json"),
+            "loader" => include_str!("../../../../packages/strut-python/fixtures/loader.plan.json"),
+            "mascot" => include_str!("../../../../packages/strut-python/fixtures/mascot.plan.json"),
+            _ => panic!("unknown sprite-python fixture"),
+        }
+    }
+
+    #[test]
+    fn sprite_python_fixtures_validate_through_generation_plan_path() {
+        for (fixture, classification, required_layers, forbidden_layers) in [
+            (
+                "dice",
+                "dice",
+                vec!["DieBody", "FrontFace", "Pips"],
+                vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
+            ),
+            (
+                "logo",
+                "logo",
+                vec!["PrimaryMark", "Wordmark", "AccentStroke"],
+                vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
+            ),
+            (
+                "loader",
+                "loader",
+                vec!["Track", "ActiveSegment", "ProgressSweep"],
+                vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
+            ),
+            (
+                "mascot",
+                "mascot",
+                vec!["Body", "Head", "Eyes"],
+                vec![],
+            ),
+        ] {
+            let planned = document_from_generation_plan_text(sprite_python_fixture(fixture))
+                .expect("sprite-python fixture should validate");
+            let names = semantic_layer_names(&planned.document);
+
+            assert_eq!(planned.summary.subject_classification, classification);
+            assert!(planned.operation_count >= 10);
+            for required in required_layers {
+                assert!(
+                    names.iter().any(|name| name == required),
+                    "{fixture} missing expected layer {required}"
+                );
+            }
+            for forbidden in forbidden_layers {
+                assert!(
+                    names.iter().all(|name| name != forbidden),
+                    "{fixture} unexpectedly emitted mascot-only layer {forbidden}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn local_agent_catalog_includes_requested_providers() {
         let adapters = local_agent_adapters();
