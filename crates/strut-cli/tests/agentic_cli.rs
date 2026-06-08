@@ -1,7 +1,7 @@
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn cli() -> PathBuf {
@@ -43,12 +43,43 @@ fn run(args: &[&str], cwd: &Path) -> Value {
     serde_json::from_slice(&output.stdout).expect("json output")
 }
 
+fn run_failure(args: &[&str], cwd: &Path) -> Output {
+    let output = Command::new(cli())
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .expect("run cli");
+    assert!(
+        !output.status.success(),
+        "command unexpectedly succeeded: {}\nstdout:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    output
+}
+
+fn copied_sample_scene(root: &Path, temp: &Path) -> PathBuf {
+    let scene = temp.join("scene.strut");
+    fs::copy(root.join("samples/login-button.strut"), &scene).expect("copy scene");
+    scene
+}
+
+fn plan_json(root: &Path, instruction: &str) -> Value {
+    run(
+        &["plan", instruction, "--json", "--dry-run", "--explain"],
+        root,
+    )
+}
+
+fn write_json(path: &Path, value: &Value) {
+    fs::write(path, serde_json::to_vec_pretty(value).expect("json")).expect("write json");
+}
+
 #[test]
 fn agentic_cli_smoke_path_validates_patch_render_and_export() {
     let root = repo_root();
     let temp = temp_dir();
-    let scene = temp.join("scene.strut");
-    fs::copy(root.join("samples/login-button.strut"), &scene).expect("copy scene");
+    let scene = copied_sample_scene(&root, &temp);
 
     let inspect = run(
         &["inspect", "scene", scene.to_str().unwrap(), "--json"],
@@ -57,24 +88,11 @@ fn agentic_cli_smoke_path_validates_patch_render_and_export() {
     assert_eq!(inspect["validation"]["ok"], true);
     assert_eq!(inspect["summary"]["name"], "Login Button");
 
-    let plan = run(
-        &[
-            "plan",
-            "make a calm dice animation",
-            "--json",
-            "--dry-run",
-            "--explain",
-        ],
-        &root,
-    );
+    let plan = plan_json(&root, "make a calm dice animation");
     assert_eq!(plan["format"], "strut.cli.plan.v1");
     assert_eq!(plan["planSummary"]["subjectClassification"], "dice");
     let plan_path = temp.join("plan.json");
-    fs::write(
-        &plan_path,
-        serde_json::to_vec_pretty(&plan).expect("plan json"),
-    )
-    .expect("write plan");
+    write_json(&plan_path, &plan);
 
     let before = fs::read(&scene).expect("before");
     let dry_patch = run(
@@ -105,6 +123,10 @@ fn agentic_cli_smoke_path_validates_patch_render_and_export() {
     );
     assert_eq!(patch["ok"], true);
     assert_eq!(patch["nextDocument"]["name"], "Rolling Dice Motion");
+    assert_eq!(
+        patch["nextDocument"]["name"],
+        plan["batch"]["operations"][0]["nextDocument"]["name"]
+    );
 
     let verify = run(&["verify", scene.to_str().unwrap(), "--json"], &root);
     assert_eq!(verify["ok"], true);
@@ -145,4 +167,136 @@ fn agentic_cli_smoke_path_validates_patch_render_and_export() {
     );
     assert_eq!(export["dryRun"], true);
     assert_eq!(export["files"].as_array().expect("files").len(), 3);
+}
+
+#[test]
+fn patch_rejects_tampered_top_level_document_without_mutating_scene() {
+    let root = repo_root();
+    let temp = temp_dir();
+    let scene = copied_sample_scene(&root, &temp);
+    let mut plan = plan_json(&root, "make a calm dice animation");
+    plan["document"]["name"] = Value::String("Unrelated Top Level Document".to_string());
+    let plan_path = temp.join("tampered-plan.json");
+    write_json(&plan_path, &plan);
+
+    let before = fs::read(&scene).expect("before");
+    let output = run_failure(
+        &[
+            "patch",
+            "--scene",
+            scene.to_str().unwrap(),
+            "--from",
+            plan_path.to_str().unwrap(),
+            "--json",
+        ],
+        &root,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("plan document mismatch"), "{stderr}");
+    assert_eq!(fs::read(&scene).expect("after failure"), before);
+}
+
+#[test]
+fn patch_rejects_invalid_replacement_document_without_mutating_scene() {
+    let root = repo_root();
+    let temp = temp_dir();
+    let scene = copied_sample_scene(&root, &temp);
+    let mut plan = plan_json(&root, "make a calm dice animation");
+    plan["batch"]["operations"][0]["nextDocument"]["artboards"][0]["width"] = json!(0.0);
+    let plan_path = temp.join("invalid-replacement-plan.json");
+    write_json(&plan_path, &plan);
+
+    let before = fs::read(&scene).expect("before");
+    let output = run_failure(
+        &[
+            "patch",
+            "--scene",
+            scene.to_str().unwrap(),
+            "--from",
+            plan_path.to_str().unwrap(),
+            "--json",
+        ],
+        &root,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nextDocument failed validation")
+            || stderr.contains("artboard")
+            || stderr.contains("dimensions"),
+        "{stderr}"
+    );
+    assert_eq!(fs::read(&scene).expect("after failure"), before);
+}
+
+#[test]
+fn react_export_preflights_conflicts_and_force_overwrites_all_files() {
+    let root = repo_root();
+    let temp = temp_dir();
+    let scene = copied_sample_scene(&root, &temp);
+    let export_dir = temp.join("react-export");
+    fs::create_dir_all(&export_dir).expect("export dir");
+    let component = export_dir.join("StrutAnimation.tsx");
+    fs::write(&component, "old component").expect("conflict");
+
+    let dry_run_dir = temp.join("dry-run-export");
+    let dry_run = run(
+        &[
+            "export",
+            "react",
+            "--scene",
+            scene.to_str().unwrap(),
+            "--out",
+            dry_run_dir.to_str().unwrap(),
+            "--dry-run",
+            "--json",
+        ],
+        &root,
+    );
+    assert_eq!(dry_run["dryRun"], true);
+    assert!(
+        !dry_run_dir.exists(),
+        "dry-run must not create export directory"
+    );
+
+    let output = run_failure(
+        &[
+            "export",
+            "react",
+            "--scene",
+            scene.to_str().unwrap(),
+            "--out",
+            export_dir.to_str().unwrap(),
+            "--json",
+        ],
+        &root,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("refusing to overwrite"), "{stderr}");
+    assert_eq!(
+        fs::read_to_string(&component).expect("component"),
+        "old component"
+    );
+    assert!(!export_dir.join("scene.json").exists());
+    assert!(!export_dir.join("README.md").exists());
+
+    let force = run(
+        &[
+            "export",
+            "react",
+            "--scene",
+            scene.to_str().unwrap(),
+            "--out",
+            export_dir.to_str().unwrap(),
+            "--force",
+            "--json",
+        ],
+        &root,
+    );
+    assert_eq!(force["ok"], true);
+    assert!(export_dir.join("scene.json").exists());
+    assert!(export_dir.join("README.md").exists());
+    assert_ne!(
+        fs::read_to_string(&component).expect("component"),
+        "old component"
+    );
 }

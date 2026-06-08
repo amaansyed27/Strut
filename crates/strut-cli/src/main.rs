@@ -717,21 +717,7 @@ fn patch_command(args: PatchArgs) -> CliResult<()> {
             plan.format
         )));
     }
-    strut_format::validate_document(&plan.document)?;
-    if let Some(operation) =
-        plan.batch.operations.iter_mut().find(|operation| {
-            operation.get("type").and_then(Value::as_str) == Some("replace_document")
-        })
-    {
-        if let Some(map) = operation.as_object_mut() {
-            map.insert(
-                "previousDocument".to_string(),
-                serde_json::to_value(&current)?,
-            );
-        }
-    }
-    plan.batch.previous_document_revision_id = Some(document_revision_id(&current));
-    validate_operation_batch(&plan.batch)?;
+    let next_document = authoritative_replacement_document(&mut plan, &current)?;
 
     let summary = json!({
         "ok": true,
@@ -739,13 +725,13 @@ fn patch_command(args: PatchArgs) -> CliResult<()> {
         "scene": path_string(&args.scene),
         "plan": path_string(&args.from),
         "previousDocument": document_summary(&current),
-        "nextDocument": document_summary(&plan.document),
+        "nextDocument": document_summary(&next_document),
         "batch": batch_summary(&plan.batch),
         "message": if args.dry_run { "validated patch without writing scene" } else { "validated patch and wrote scene" }
     });
 
     if !args.dry_run {
-        write_document(&args.scene, &plan.document)?;
+        write_document(&args.scene, &next_document)?;
     }
     output(args.json, &summary, || {
         if args.dry_run {
@@ -837,15 +823,23 @@ fn export_react_command(args: ExportReactArgs) -> CliResult<()> {
         .map(|(path, _)| path_string(&args.out.join(path)))
         .collect::<Vec<_>>();
     if !args.dry_run {
+        let targets = files
+            .iter()
+            .map(|(relative, content)| (args.out.join(relative), content))
+            .collect::<Vec<_>>();
+        let conflicts = targets
+            .iter()
+            .filter(|(target, _)| target.exists())
+            .map(|(target, _)| path_string(target))
+            .collect::<Vec<_>>();
+        if !args.force && !conflicts.is_empty() {
+            return Err(CliError::Message(format!(
+                "refusing to overwrite existing export file(s): {}; pass --force to replace them",
+                conflicts.join(", ")
+            )));
+        }
         fs::create_dir_all(&args.out)?;
-        for (relative, content) in &files {
-            let target = args.out.join(relative);
-            if target.exists() && !args.force {
-                return Err(CliError::Message(format!(
-                    "refusing to overwrite existing file '{}'; pass --force to replace it",
-                    target.display()
-                )));
-            }
+        for (target, content) in targets {
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -960,6 +954,58 @@ fn path_string(path: &Path) -> String {
 
 fn trim_json_input(raw: &str) -> &str {
     raw.trim_start_matches('\u{feff}').trim_start()
+}
+
+fn authoritative_replacement_document(
+    plan: &mut CliPlanFile,
+    current: &Document,
+) -> CliResult<Document> {
+    strut_format::validate_document(&plan.document)?;
+    if plan.batch.operations.len() != 1 {
+        return Err(CliError::Message(format!(
+            "patch requires exactly one authoritative replace_document operation; found {} operations",
+            plan.batch.operations.len()
+        )));
+    }
+    let operation = plan
+        .batch
+        .operations
+        .get_mut(0)
+        .ok_or_else(|| CliError::Message("patch plan is missing operations".to_string()))?;
+    if operation.get("type").and_then(Value::as_str) != Some("replace_document") {
+        return Err(CliError::Message(
+            "patch requires the single operation to be replace_document".to_string(),
+        ));
+    }
+    let operation_map = operation.as_object_mut().ok_or_else(|| {
+        CliError::Message("replace_document operation must be a JSON object".to_string())
+    })?;
+    operation_map.insert(
+        "previousDocument".to_string(),
+        serde_json::to_value(current)?,
+    );
+    let next_document_value = operation_map.get("nextDocument").ok_or_else(|| {
+        CliError::Message("replace_document operation needs nextDocument".to_string())
+    })?;
+    let next_document: Document =
+        serde_json::from_value(next_document_value.clone()).map_err(|error| {
+            CliError::Message(format!(
+                "replace_document nextDocument is not a valid Strut document: {error}"
+            ))
+        })?;
+    strut_format::validate_document(&next_document).map_err(|error| {
+        CliError::Message(format!(
+            "replace_document nextDocument failed validation: {error}"
+        ))
+    })?;
+    if plan.document != next_document {
+        return Err(CliError::Message(
+            "plan document mismatch: top-level document must exactly match batch.operations[0].nextDocument".to_string(),
+        ));
+    }
+    plan.batch.previous_document_revision_id = Some(document_revision_id(current));
+    validate_operation_batch(&plan.batch)?;
+    Ok(next_document)
 }
 
 fn document_summary(document: &Document) -> DocumentSummary {
