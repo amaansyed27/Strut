@@ -6,7 +6,7 @@ Branch: `codex/phase-1-ai-editor-shell`
 
 ## Summary
 
-Phase 4 is implemented and verified. Strut Studio now treats validated scene/project documents and operation batches as the durable source of truth for the editor workflow. Native Studio projects use canonical files:
+Phase 4 is implemented, review-fixed, and verified. Strut Studio now treats validated scene/project documents and operation batches as the durable source of truth for the editor workflow. Native Studio projects use canonical files:
 
 - `strut.project.json`
 - `scenes/main.strut`
@@ -14,6 +14,16 @@ Phase 4 is implemented and verified. Strut Studio now treats validated scene/pro
 - `ui/studio-state.json`
 
 The React Studio keeps the Phase 1/2 editor shell intact while adding minimal controls for Save, Reopen, Apply, Reject, Undo, Redo, and operation history. Python and AI generated operation envelopes still pass through Rust validation before becoming persisted documents or applied batches. Phase 5 agentic CLI mode was not started.
+
+## Phase 4 Review Fix Pass
+
+This review pass addressed two Phase 4 persistence hardening findings without starting Phase 5 or agentic CLI mode.
+
+- Rust native persistence now validates operation batch payloads against the current Strut document before saving or accepting loaded operation logs.
+- Persisted operation payload validation rejects unsupported operation types, missing `set_property` node ids, unsafe or unsupported property paths, invalid value shapes, empty applied/pending/undone batches, invalid replacement documents, and malformed generated plan operations.
+- Sprite-python/generated operation batches still pass through Rust generation-plan validation, then their raw plan operations are cross-checked against the converted validated document before persistence.
+- Native project load now confines `mainScene` to a safe relative project-root path. Absolute paths, `..` traversal, root/prefix components, and canonicalized paths outside the project root are rejected before reading.
+- Focused Rust tests cover malformed operation payloads, missing targets, unsupported properties/types, empty applied batches, invalid replacement documents, valid sprite-python/generated batches, absolute/traversal `mainScene` paths, valid relative scene paths, and legacy missing-scene fallback.
 
 ## Initial Dirty Files
 
@@ -61,6 +71,8 @@ Native projects now use:
 Schema and native persistence:
 
 - `apps/studio/src-tauri/src/lib.rs`
+  - Review fix: Rust-side operation payload validation against the current document.
+  - Review fix: safe `mainScene` resolution confined to the project root.
 
 Studio UI:
 
@@ -72,6 +84,7 @@ Focused verification:
 - `tests/ui/studio_bot_smoke.py`
 - `tests/ui/studio_persistence_smoke.py`
 - `tests/ui/studio_tauri_persistence_smoke.py`
+  - Review pass also added focused Rust unit tests in `apps/studio/src-tauri/src/lib.rs` for payload validation and path safety.
 
 Report artifacts:
 
@@ -93,6 +106,14 @@ Report artifacts:
   - Updated the general smoke after the operation history label became explicit.
 - `chore(report): add phase 4 persistence evidence`
   - Adds this report, DOCX, and screenshot evidence.
+- `3735ff7 fix(studio): harden phase 4 native persistence`
+  - Added Rust-side persisted operation payload validation against the current document.
+  - Added replacement document validation for `replace_document` operation batches.
+  - Added generated plan operation validation for sprite-python/raw generated batches.
+  - Added safe project-root confinement for manifest `mainScene` paths.
+  - Added focused Rust tests for malformed payloads, missing targets, unsupported properties/types, empty applied batches, invalid replacement documents, valid sprite-python/generated batches, absolute/traversal paths, valid relative paths, and legacy fallback.
+- `chore(report): refresh phase 4 review evidence`
+  - Refreshes this Markdown/DOCX report and screenshot evidence after the review fix pass.
 
 ## Verification Commands
 
@@ -101,7 +122,7 @@ Report artifacts:
 | `python -m pytest packages/strut-python/tests` | PASS, 18 tests. |
 | `$env:PYTHONPATH='src'; python -m strut_python.cli loader --json --out $env:TEMP\strut-loader-plan.json` from `packages/strut-python` | PASS. |
 | `cargo fmt --all --check` | PASS. |
-| `cargo test -p strut-studio` | PASS, 25 passed, 1 ignored authenticated Gemini CLI test. |
+| `cargo test -p strut-studio` | PASS, 32 passed, 1 ignored authenticated Gemini CLI test. |
 | `cargo test --workspace` | PASS, workspace tests green, same 1 ignored authenticated Gemini CLI test. |
 | `npm --workspace @strut/studio run check` | PASS. |
 | `npm run check` | PASS, with existing Rust dead-code warnings during `cargo check`. |
@@ -109,6 +130,13 @@ Report artifacts:
 | `python tests/ui/studio_persistence_smoke.py` | PASS. |
 | `python tests/ui/studio_tauri_persistence_smoke.py` | PASS. |
 | `git diff --check` | PASS. |
+
+Review-pass focused coverage in `cargo test -p strut-studio`:
+
+- Persisted operation payloads reject malformed operations, unsupported operation types, missing `set_property` target ids, unsafe property paths, invalid value shapes, and empty applied batches.
+- Replacement operation batches validate both `nextDocument` and non-null `previousDocument` as full Strut documents.
+- Sprite-python/generated operation batches persist only after Rust generation-plan validation and Rust operation payload validation.
+- Project manifest `mainScene` rejects absolute and traversal paths, accepts valid relative paths, and preserves the legacy missing-scene fallback.
 
 Known warning note: `strut-studio` still emits existing warnings around legacy fallback helpers/fields such as `CHARACTER_DOCUMENT_SYSTEM_PROMPT`, `EditabilityPlan.notes`, `SceneOperation.parent`, and `document_repair_prompt`. These warnings predate Phase 4 behavior and do not fail verification.
 
@@ -125,6 +153,8 @@ Coverage:
 - Undo/redo works after an applied operation.
 - Invalid operation is rejected with a useful message: `Operation targets missing node MissingPart`.
 - Selection, layers, and inspector still work after reload.
+
+Review-pass note: the Playwright browser smoke was rerun after the Rust persistence hardening, and the browser screenshots in this report were refreshed from that run.
 
 Screenshots:
 
@@ -150,6 +180,8 @@ Coverage:
 - Operation history survived restart via the persisted operation batch log.
 - Undo/redo worked in the native app after reload.
 - No native-only clipping or broken layout was observed in captured screenshots.
+
+Review-pass note: the native Tauri/WebView2 smoke was rerun after the Rust persistence hardening, and the Tauri screenshots in this report were refreshed from that run.
 
 Screenshots:
 
@@ -179,6 +211,8 @@ Copied forward from the Phase 3B final state:
 - Operation execution is intentionally narrow in Phase 4: manual UI batches currently apply validated `set_property` operations and generated batches are recorded as validated document replacement batches.
 - Browser mode uses local validation and browser snapshot fallback because it cannot call native Tauri filesystem commands.
 - Native save/load currently requires an active project path; a richer file picker/open-project flow remains future UI work.
+- Rust now checks persisted revision ids are present and use the expected `rev-` marker, but it does not enforce exact equality with a Rust-computed revision because the React UI and Rust backend currently compute different Phase 4 revision shapes. A shared content-hash revision should replace this limitation before stricter multi-writer workflows.
+- Raw sprite-python/generated plan operations use pre-document semantic ids, so Rust validates those generated operation targets against the converted document's node names as well as stable ids. The converted `.strut` document itself remains the authoritative validated scene artifact.
 - Existing Rust dead-code warnings remain from earlier fallback/provider code.
 
 ## Phase 5 Recommendation
