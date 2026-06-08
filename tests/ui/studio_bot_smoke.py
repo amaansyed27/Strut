@@ -350,7 +350,7 @@ def run_smoke() -> None:
             page.get_by_role("button", name="Editor", exact=True).click()
             expect(page.get_by_test_id("selection-context")).to_contain_text("ContextBody")
             expect(page.get_by_test_id("operation-preview")).to_contain_text("ContextBody")
-            expect(page.get_by_test_id("operation-preview")).to_contain_text("History")
+            expect(page.get_by_test_id("operation-preview")).to_contain_text("Operation history")
 
             page.evaluate(
                 """
