@@ -176,6 +176,13 @@ type GeneratedCharacter = {
   document: StrutDocument;
   source: string;
   message: string;
+  planSummary?: {
+    subjectClassification: string;
+    subjectLabel: string;
+    partNames: string[];
+    timelineNames: string[];
+  } | null;
+  operationCount?: number | null;
 };
 
 type ReferenceAttachment = {
@@ -1580,10 +1587,16 @@ function App() {
         document: result.document,
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
       }));
+      const generatedPartSummary = result.planSummary?.partNames.length
+        ? result.planSummary.partNames.slice(0, 6).join(", ")
+        : "validated document layers";
+      const generatedTimelineSummary = result.planSummary?.timelineNames.length
+        ? result.planSummary.timelineNames.join(", ")
+        : result.document.timelines.map((timeline) => timeline.name).join(", ");
       setActivity(`${result.source}: ${result.message}`);
       appendMessage(
         "assistant",
-        `**${result.document.name} is ready.**\n\nProvider: ${activeProviderLabel}\n\nI ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`,
+        `**${result.document.name} is ready.**\n\nProvider: ${activeProviderLabel}\n\nSubject: ${result.planSummary?.subjectLabel ?? "validated Strut document"} (${result.planSummary?.subjectClassification ?? "fallback"})\n\nOperations: ${result.operationCount ?? 0} validated before conversion\n\nParts: ${generatedPartSummary}\n\nTimelines: ${generatedTimelineSummary}\n\nI ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`,
       );
     } catch (error) {
       setActivity(String(error));

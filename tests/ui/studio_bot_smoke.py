@@ -351,6 +351,158 @@ def run_smoke() -> None:
             expect(page.get_by_test_id("operation-preview")).to_contain_text("ContextBody")
             expect(page.get_by_test_id("operation-preview")).to_contain_text("History")
 
+            page.evaluate(
+                """
+                const transform = { translate_x: 0, translate_y: 0, rotate: 0, scale_x: 1, scale_y: 1 };
+                const baseStyle = { fill: "#f6f0df", stroke: "#25221d", stroke_width: 5, opacity: 1, linecap: "round", linejoin: "round" };
+                const node = (id, name, kind, role, shape, style = {}) => ({
+                  id,
+                  name,
+                  kind,
+                  role,
+                  transform,
+                  style: { ...baseStyle, ...style },
+                  shape,
+                  children: []
+                });
+                const documentFor = (id, name, state, target, children) => ({
+                  id: `${id}-document`,
+                  name,
+                  artboards: [{
+                    id: `${id}-artboard`,
+                    name: `${name} Artboard`,
+                    width: 960,
+                    height: 540,
+                    nodes: [{
+                      id: `${id}-rig`,
+                      name: `${name} Rig`,
+                      kind: "group",
+                      role: "scene_rig",
+                      transform,
+                      style: { fill: null, stroke: null, stroke_width: 0, opacity: 1, linecap: "round", linejoin: "round" },
+                      shape: { type: "none" },
+                      children
+                    }]
+                  }],
+                  timelines: [{
+                    id: `${id}-${state}`,
+                    name: state,
+                    duration_ms: 1200,
+                    tracks: [{
+                      target,
+                      property: "translation.y",
+                      keyframes: [
+                        { time_ms: 0, value: { type: "number", value: 0 }, easing: "ease_in_out" },
+                        { time_ms: 600, value: { type: "number", value: -8 }, easing: "ease_out" },
+                        { time_ms: 1200, value: { type: "number", value: 0 }, easing: "ease_in_out" }
+                      ]
+                    }]
+                  }],
+                  state_machines: [{
+                    id: `${id}-machine`,
+                    name: `${name} Motion`,
+                    inputs: [{ name: "state", kind: "enum" }],
+                    states: ["idle", state],
+                    transitions: [{ from: "idle", to: state, on: state, timeline: state }]
+                  }],
+                  bindings: [{ name: `${target}_fill`, target, property: "style.fill" }],
+                  events: [{ name: "generation_plan_validated", description: "Seeded Phase 3 fixture" }]
+                });
+                const dice = documentFor("dice", "Rolling Dice", "settle", "DieBody", [
+                  node("DieBody", "DieBody", "rect", "volume", { type: "rect", x: 378, y: 174, width: 210, height: 210, rx: 24 }, { fill: "#f5f7fb" }),
+                  node("FrontFace", "FrontFace", "rect", "front face", { type: "rect", x: 402, y: 214, width: 168, height: 146, rx: 16 }, { fill: "#ffffff" }),
+                  node("TopFace", "TopFace", "path", "top face", { type: "path", d: "M402 214 L454 168 L618 184 L570 214 Z" }, { fill: "#e6edf7" }),
+                  node("Pips", "Pips", "path", "number marks", { type: "path", d: "M442 252 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 M530 320 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0" }, { fill: null, stroke: "#111827", stroke_width: 4 }),
+                  node("EdgeHighlight", "EdgeHighlight", "path", "edge light", { type: "path", d: "M414 228 L454 188 L604 202" }, { fill: null, stroke: "#b7c7db", stroke_width: 7 }),
+                  node("SettleShadow", "SettleShadow", "ellipse", "grounding shadow", { type: "ellipse", cx: 494, cy: 414, rx: 116, ry: 18 }, { fill: "#1f2937", stroke: null, opacity: 0.22 })
+                ]);
+                const logo = documentFor("logo", "Abstract Logo", "reveal", "PrimaryMark", [
+                  node("PrimaryMark", "PrimaryMark", "path", "main vector mark", { type: "path", d: "M382 180 C450 120 540 146 582 222 C520 206 470 234 432 306 C398 266 370 226 382 180 Z" }, { fill: "#6ee7b7" }),
+                  node("Wordmark", "Wordmark", "text", "brand text", { type: "text", x: 396, y: 384, value: "STRUT", size: 42 }, { fill: "#172033", stroke: null, stroke_width: 0 }),
+                  node("AccentStroke", "AccentStroke", "path", "accent line", { type: "path", d: "M392 326 C452 352 528 348 596 312" }, { fill: null, stroke: "#2563eb", stroke_width: 8 }),
+                  node("RevealMask", "RevealMask", "rect", "reveal mask", { type: "rect", x: 360, y: 154, width: 280, height: 250, rx: 20 }, { fill: "transparent", opacity: 0.08 }),
+                  node("AnchorGrid", "AnchorGrid", "path", "alignment grid", { type: "path", d: "M360 270 L640 270 M500 150 L500 410" }, { fill: null, stroke: "#94a3b8", stroke_width: 2, opacity: 0.38 }),
+                  node("Glow", "Glow", "ellipse", "soft emphasis", { type: "ellipse", cx: 498, cy: 266, rx: 118, ry: 76 }, { fill: "#dbeafe", stroke: null, opacity: 0.28 })
+                ]);
+                const loader = documentFor("loader", "Progress Loader", "loading", "ActiveSegment", [
+                  node("Track", "Track", "ellipse", "background track", { type: "ellipse", cx: 480, cy: 270, rx: 120, ry: 120 }, { fill: "transparent", stroke: "#cbd5e1", stroke_width: 14 }),
+                  node("ActiveSegment", "ActiveSegment", "path", "active arc", { type: "path", d: "M480 150 A120 120 0 0 1 600 270" }, { fill: null, stroke: "#14b8a6", stroke_width: 16 }),
+                  node("PulseDot", "PulseDot", "ellipse", "pulse marker", { type: "ellipse", cx: 600, cy: 270, rx: 14, ry: 14 }, { fill: "#0f766e" }),
+                  node("ProgressSweep", "ProgressSweep", "path", "sweep indicator", { type: "path", d: "M480 270 L600 270" }, { fill: null, stroke: "#99f6e4", stroke_width: 6 }),
+                  node("Glow", "Glow", "ellipse", "soft glow", { type: "ellipse", cx: 480, cy: 270, rx: 144, ry: 144 }, { fill: "#ccfbf1", stroke: null, opacity: 0.25 }),
+                  node("CenterLabel", "CenterLabel", "text", "progress label", { type: "text", x: 454, y: 282, value: "42%", size: 24 }, { fill: "#134e4a", stroke: null, stroke_width: 0 })
+                ]);
+                const mascot = documentFor("mascot", "Helpful Mascot", "wave", "Body", [
+                  node("Body", "Body", "ellipse", "body", { type: "ellipse", cx: 480, cy: 306, rx: 92, ry: 118 }, { fill: "#a7f3d0" }),
+                  node("Head", "Head", "ellipse", "head", { type: "ellipse", cx: 480, cy: 190, rx: 82, ry: 68 }, { fill: "#ecfdf5" }),
+                  node("Eyes", "Eyes", "path", "eyes", { type: "path", d: "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0" }, { fill: null, stroke: "#064e3b", stroke_width: 8 }),
+                  node("Arms", "Arms", "path", "arms", { type: "path", d: "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364" }, { fill: null, stroke: "#047857", stroke_width: 10 }),
+                  node("AccentBadge", "AccentBadge", "ellipse", "accent", { type: "ellipse", cx: 512, cy: 316, rx: 16, ry: 16 }, { fill: "#34d399" }),
+                  node("GroundShadow", "GroundShadow", "ellipse", "shadow", { type: "ellipse", cx: 480, cy: 438, rx: 108, ry: 16 }, { fill: "#064e3b", stroke: null, opacity: 0.2 })
+                ]);
+                const chat = (id, title, document, activeState) => ({
+                  id,
+                  title,
+                  projectId: "project-phase-3",
+                  updated: "now",
+                  messages: [{ id: Date.now() + Math.random(), role: "assistant", text: `${title} generated through validated Phase 3 operations.` }],
+                  references: [],
+                  document,
+                  activeState,
+                  selectedNodeId: null,
+                  layerUi: {},
+                  pendingOperation: null,
+                  operationHistory: []
+                });
+                window.localStorage.setItem("strut-studio-workspace-v4", JSON.stringify({
+                  projects: [{
+                    id: "project-phase-3",
+                    name: "Phase 3 Fixtures",
+                    path: "D:\\\\StrutPhase3",
+                    chats: [
+                      chat("chat-dice", "Rolling dice", dice, "settle"),
+                      chat("chat-logo", "Abstract logo", logo, "reveal"),
+                      chat("chat-loader", "Loader", loader, "loading"),
+                      chat("chat-mascot", "Mascot", mascot, "wave")
+                    ]
+                  }],
+                  activeProjectId: "project-phase-3",
+                  activeChatId: "chat-dice",
+                  themeMode: "system"
+                }));
+                """
+            )
+            page.reload(wait_until="networkidle")
+            page.get_by_role("button", name="Editor", exact=True).click()
+
+            expect(page.get_by_text("Rolling Dice / Rolling Dice Motion")).to_be_visible()
+            expect(page.get_by_role("button", name="DieBody rect")).to_be_visible()
+            expect(page.get_by_role("button", name="Pips path")).to_be_visible()
+            expect(page.get_by_role("button", name="Head ellipse")).not_to_be_visible()
+            page.get_by_role("button", name="DieBody rect").click()
+            expect(page.get_by_test_id("selection-context")).to_contain_text("DieBody")
+            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("volume")
+
+            page.get_by_role("button", name="Abstract logo now").click()
+            expect(page.get_by_text("Abstract Logo / Abstract Logo Motion")).to_be_visible()
+            expect(page.get_by_role("button", name="PrimaryMark path")).to_be_visible()
+            expect(page.get_by_role("button", name="Wordmark text")).to_be_visible()
+            expect(page.get_by_role("button", name="Face ellipse")).not_to_be_visible()
+
+            page.get_by_role("button", name="Loader now").click()
+            expect(page.get_by_text("Progress Loader / Progress Loader Motion")).to_be_visible()
+            expect(page.get_by_role("button", name="ActiveSegment path")).to_be_visible()
+            expect(page.get_by_role("button", name="Track ellipse")).to_be_visible()
+            expect(page.get_by_role("button", name="Body ellipse")).not_to_be_visible()
+            page.get_by_role("button", name="ActiveSegment path").click()
+            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("active arc")
+
+            page.get_by_role("button", name="Mascot now").click()
+            expect(page.get_by_text("Helpful Mascot / Helpful Mascot Motion")).to_be_visible()
+            expect(page.get_by_role("button", name="Body ellipse")).to_be_visible()
+            expect(page.get_by_role("button", name="Head ellipse")).to_be_visible()
+            expect(page.get_by_role("button", name="Eyes path")).to_be_visible()
+
             page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
             browser.close()
     finally:
