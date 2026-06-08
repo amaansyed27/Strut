@@ -64,6 +64,36 @@ fn copied_sample_scene(root: &Path, temp: &Path) -> PathBuf {
     scene
 }
 
+fn sample_project(root: &Path, temp: &Path) -> PathBuf {
+    let scene_dir = temp.join("scenes");
+    let operations_dir = temp.join("operations");
+    let ui_dir = temp.join("ui");
+    fs::create_dir_all(&scene_dir).expect("scene dir");
+    fs::create_dir_all(&operations_dir).expect("operations dir");
+    fs::create_dir_all(&ui_dir).expect("ui dir");
+    fs::copy(
+        root.join("samples/login-button.strut"),
+        scene_dir.join("main.strut"),
+    )
+    .expect("copy scene");
+    fs::write(
+        temp.join("strut.project.json"),
+        serde_json::to_vec_pretty(&json!({
+            "format": "strut.project",
+            "version": "0.1.0",
+            "name": "Phase 6 CLI Gallery Test",
+            "mainScene": "scenes/main.strut",
+            "operationBatches": "operations/operation-batches.json",
+            "studioState": "ui/studio-state.json"
+        }))
+        .expect("manifest json"),
+    )
+    .expect("write manifest");
+    fs::write(operations_dir.join("operation-batches.json"), "[]").expect("write batches");
+    fs::write(ui_dir.join("studio-state.json"), "{}").expect("write state");
+    temp.to_path_buf()
+}
+
 fn plan_json(root: &Path, instruction: &str) -> Value {
     run(
         &["plan", instruction, "--json", "--dry-run", "--explain"],
@@ -71,8 +101,39 @@ fn plan_json(root: &Path, instruction: &str) -> Value {
     )
 }
 
+fn sprite_plan_json(root: &Path, instruction: &str) -> Value {
+    run(
+        &[
+            "sprite",
+            "plan",
+            instruction,
+            "--json",
+            "--dry-run",
+            "--explain",
+        ],
+        root,
+    )
+}
+
 fn write_json(path: &Path, value: &Value) {
     fs::write(path, serde_json::to_vec_pretty(value).expect("json")).expect("write json");
+}
+
+fn part_names(plan: &Value) -> Vec<String> {
+    plan["planSummary"]["partNames"]
+        .as_array()
+        .expect("part names")
+        .iter()
+        .map(|name| name.as_str().expect("part name").to_string())
+        .collect()
+}
+
+fn assert_no_mascot_anatomy(names: &[String]) {
+    let forbidden = ["Body", "Head", "Eyes", "Arms", "Legs", "Face", "Smile"];
+    assert!(
+        names.iter().all(|name| !forbidden.contains(&name.as_str())),
+        "non-mascot names included mascot anatomy: {names:?}"
+    );
 }
 
 #[test]
@@ -167,6 +228,205 @@ fn agentic_cli_smoke_path_validates_patch_render_and_export() {
     );
     assert_eq!(export["dryRun"], true);
     assert_eq!(export["files"].as_array().expect("files").len(), 3);
+}
+
+#[test]
+fn phase6_gallery_runs_full_cli_project_flow_for_all_examples() {
+    let root = repo_root();
+    let cases = [
+        (
+            "dice",
+            "make rolling dice settle softly",
+            "dice",
+            "Rolling Dice Motion",
+            "settle",
+        ),
+        (
+            "logo",
+            "make an abstract logo reveal",
+            "logo",
+            "Abstract Logo Motion",
+            "reveal",
+        ),
+        (
+            "loader",
+            "make a calm progress loader animation",
+            "loader",
+            "Progress Loader Motion",
+            "loading",
+        ),
+        (
+            "mascot",
+            "make a low energy companion mascot idle animation",
+            "mascot",
+            "Helpful Mascot Motion",
+            "idle",
+        ),
+        (
+            "ui",
+            "make a button UI microinteraction",
+            "ui",
+            "Button Microinteraction Motion",
+            "hover",
+        ),
+        (
+            "icon",
+            "make a success icon badge animation",
+            "badge",
+            "Icon Badge Motion",
+            "success",
+        ),
+    ];
+
+    for (slug, instruction, classification, document_name, state) in cases {
+        let temp = temp_dir();
+        let project = sample_project(&root, &temp);
+        let scene = project.join("scenes/main.strut");
+
+        let project_inspect = run(
+            &["inspect", "project", project.to_str().unwrap(), "--json"],
+            &root,
+        );
+        assert_eq!(project_inspect["currentDocument"]["name"], "Login Button");
+        assert_eq!(project_inspect["canonicalFiles"][1]["exists"], true);
+
+        let plan = sprite_plan_json(&root, instruction);
+        assert_eq!(plan["format"], "strut.cli.plan.v1");
+        assert_eq!(plan["dryRun"], true);
+        assert!(plan["backend"]
+            .as_str()
+            .expect("backend")
+            .starts_with("sprite-python"));
+        assert_eq!(plan["planSummary"]["subjectClassification"], classification);
+        assert_eq!(plan["document"]["name"], document_name);
+        assert!(plan["envelope"]["document"].is_null());
+        assert!(
+            plan["envelope"]["operations"]
+                .as_array()
+                .expect("operations")
+                .len()
+                >= 10
+        );
+        assert_eq!(plan["batch"]["operations"][0]["type"], "replace_document");
+        let names = part_names(&plan);
+        assert!(
+            names.len() >= 5,
+            "{slug} should have editable semantic parts"
+        );
+        assert!(plan["planSummary"]["timelineNames"]
+            .as_array()
+            .expect("timelines")
+            .iter()
+            .all(|name| name.as_str().is_some_and(|value| !value.trim().is_empty())));
+        if classification == "mascot" {
+            assert!(names.iter().any(|name| name == "Body"));
+            assert!(plan["envelope"]["plan"]["motionRoles"][0]["purpose"]
+                .as_str()
+                .expect("purpose")
+                .contains("quiet"));
+        } else {
+            assert_no_mascot_anatomy(&names);
+        }
+
+        let plan_path = temp.join(format!("{slug}.plan.json"));
+        write_json(&plan_path, &plan);
+        let before = fs::read(&scene).expect("before");
+        let dry_patch = run(
+            &[
+                "patch",
+                "--scene",
+                scene.to_str().unwrap(),
+                "--from",
+                plan_path.to_str().unwrap(),
+                "--dry-run",
+                "--json",
+            ],
+            &root,
+        );
+        assert_eq!(dry_patch["dryRun"], true);
+        assert_eq!(fs::read(&scene).expect("after dry run"), before);
+
+        let patch = run(
+            &[
+                "patch",
+                "--scene",
+                scene.to_str().unwrap(),
+                "--from",
+                plan_path.to_str().unwrap(),
+                "--json",
+            ],
+            &root,
+        );
+        assert_eq!(patch["nextDocument"]["name"], document_name);
+
+        let scene_inspect = run(
+            &["inspect", "scene", scene.to_str().unwrap(), "--json"],
+            &root,
+        );
+        assert_eq!(scene_inspect["validation"]["ok"], true);
+        assert_eq!(scene_inspect["summary"]["name"], document_name);
+        assert!(scene_inspect["nodes"].as_array().expect("nodes").len() >= names.len());
+        assert!(scene_inspect["semanticRoles"]
+            .as_array()
+            .expect("roles")
+            .iter()
+            .any(|role| role["name"] == names[0]));
+
+        let verify = run(&["verify", scene.to_str().unwrap(), "--json"], &root);
+        assert_eq!(verify["ok"], true);
+        assert_eq!(verify["summary"]["name"], document_name);
+
+        let proof = temp.join(format!("{slug}.proof.svg"));
+        let render = run(
+            &[
+                "render",
+                "--scene",
+                scene.to_str().unwrap(),
+                "--state",
+                state,
+                "--out",
+                proof.to_str().unwrap(),
+                "--json",
+                "--no-open",
+            ],
+            &root,
+        );
+        assert_eq!(render["backend"], "cpu-fallback-svg-proof");
+        assert!(fs::read_to_string(&proof)
+            .expect("proof")
+            .contains(document_name));
+
+        let export_dir = temp.join(format!("{slug}-react-export"));
+        let export = run(
+            &[
+                "export",
+                "react",
+                "--scene",
+                scene.to_str().unwrap(),
+                "--out",
+                export_dir.to_str().unwrap(),
+                "--json",
+            ],
+            &root,
+        );
+        assert_eq!(export["ok"], true);
+        let scene_json = export_dir.join("scene.json");
+        let component = export_dir.join("StrutAnimation.tsx");
+        let readme = export_dir.join("README.md");
+        assert!(scene_json.exists());
+        assert!(component.exists());
+        assert!(readme.exists());
+        let exported_document: Value =
+            serde_json::from_slice(&fs::read(scene_json).expect("scene json"))
+                .expect("exported scene json");
+        assert_eq!(exported_document["name"], document_name);
+        let component_source = fs::read_to_string(component).expect("component");
+        assert!(component_source.contains("export function StrutAnimation"));
+        assert!(component_source.contains("data-strut-node"));
+        assert!(fs::read_to_string(readme)
+            .expect("readme")
+            .contains("<StrutAnimation state=\"idle\" />"));
+    }
 }
 
 #[test]

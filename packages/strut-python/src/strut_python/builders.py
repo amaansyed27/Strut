@@ -117,3 +117,25 @@ def ui_microinteraction() -> Scene:
         notes=["sprite-python UI microinteraction builder"],
     )
 
+
+def icon_badge() -> Scene:
+    sprites = [
+        Ellipse("BadgePlate", "BadgePlate", "badge base", 480, 270, 106, 106, style=style("#eef2ff", "#1e1b4b", 5)),
+        Path("InnerShield", "InnerShield", "inner shield", "M480 188 L552 220 L540 308 C526 350 504 374 480 386 C456 374 434 350 420 308 L408 220 Z", style=style("#c7d2fe", "#312e81", 4)),
+        Path("SparkGlyph", "SparkGlyph", "spark glyph", "M480 222 L494 260 L534 270 L494 280 L480 318 L466 280 L426 270 L466 260 Z", style=style("#fef3c7", "#92400e", 4)),
+        Path("OrbitStroke", "OrbitStroke", "orbit stroke", "M386 286 C430 224 534 214 584 260", style=style(None, "#38bdf8", 7, 0.82)),
+        Ellipse("StatusDot", "StatusDot", "status dot", 566, 206, 18, 18, style=style("#22c55e", "#14532d", 3)),
+        Text("BadgeLabel", "BadgeLabel", "short label", 434, 410, "VERIFIED", 24, style=style("#1e1b4b", None, 0)),
+    ]
+    return Scene(
+        id="sprite-python-icon-badge-plan",
+        name="Icon Badge Motion",
+        subject_classification="badge",
+        subject_label="Icon Badge",
+        sprites=sprites,
+        states=[State("idle"), State("reveal"), State("success")],
+        timelines=[reveal("InnerShield", "badge-reveal"), pulse("StatusDot", "success", "status-pulse")],
+        motion_roles=[{"id": "primary", "purpose": "badge reveal and calm success pulse", "partRefs": ["BadgePlate", "InnerShield", "StatusDot"]}],
+        bindings=[Binding("edit_badge_fill", "BadgePlate", "fill")],
+        notes=["sprite-python icon badge builder; no mascot anatomy"],
+    )

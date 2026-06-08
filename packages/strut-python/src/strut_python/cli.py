@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from .builders import abstract_logo_reveal, loader_progress, mascot_idle, rolling_dice, ui_microinteraction
+from .builders import abstract_logo_reveal, icon_badge, loader_progress, mascot_idle, rolling_dice, ui_microinteraction
 
 
 BUILDERS: dict[str, Callable[[], object]] = {
@@ -14,6 +14,8 @@ BUILDERS: dict[str, Callable[[], object]] = {
     "loader": loader_progress,
     "mascot": mascot_idle,
     "ui": ui_microinteraction,
+    "icon": icon_badge,
+    "badge": icon_badge,
 }
 
 
@@ -41,4 +43,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1185,6 +1185,8 @@ fn instruction_kind(instruction: &str) -> String {
         "loader"
     } else if lower.contains("mascot") || lower.contains("character") {
         "mascot"
+    } else if lower.contains("icon") || lower.contains("badge") {
+        "icon"
     } else if lower.contains("button") || lower.contains("microinteraction") || lower.contains("ui")
     {
         "ui"
@@ -1200,6 +1202,7 @@ fn fixture_envelope(kind: &str) -> CliResult<Value> {
         "loader" => include_str!("../../../packages/strut-python/fixtures/loader.plan.json"),
         "mascot" => include_str!("../../../packages/strut-python/fixtures/mascot.plan.json"),
         "ui" => include_str!("../../../packages/strut-python/fixtures/ui.plan.json"),
+        "icon" | "badge" => include_str!("../../../packages/strut-python/fixtures/icon.plan.json"),
         _ => include_str!("../../../packages/strut-python/fixtures/dice.plan.json"),
     };
     Ok(serde_json::from_str(raw)?)

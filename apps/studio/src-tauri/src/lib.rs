@@ -14,7 +14,7 @@ const GENERATION_PLAN_SYSTEM_PROMPT: &str = r##"You convert design prompts into 
 GenerationPlan schema:
 - id: short stable string
 - name: animation, asset, interaction, object, mascot, logo, loader, or scene name
-- subject: {"classification":"dice|logo|loader|mascot|ui|object|scene|abstract|other","label":"human readable subject"}
+- subject: {"classification":"dice|logo|loader|mascot|ui|badge|icon|object|scene|abstract|other","label":"human readable subject"}
 - parts: 6 to 14 semantic editable parts. Each part has id, name, role, geometry, style, motion_roles, and constraints.
 - geometry: {"kind":"rect","x":...,"y":...,"width":...,"height":...,"rx":...}, {"kind":"ellipse","cx":...,"cy":...,"rx":...,"ry":...}, {"kind":"path","d":"SVG path data"}, or {"kind":"text","x":...,"y":...,"value":"...","size":...}
 - style: fill, stroke, stroke_width, opacity
@@ -33,6 +33,7 @@ Subject rules:
 - Rolling dice parts should look like DieBody, FrontFace, TopFace, Pips, EdgeHighlight, SettleShadow.
 - Abstract logo parts should look like PrimaryMark, Wordmark, AccentStroke, RevealMask, AnchorGrid.
 - Loader parts should look like Track, ActiveSegment, PulseDot, ProgressSweep, Glow.
+- Icon or badge parts should look like BadgePlate, InnerShield, SparkGlyph, OrbitStroke, StatusDot.
 - Mascot anatomy such as Body, Head, Eyes, Arms, Legs, Face, Smile is allowed only when the user clearly requests a mascot or character.
 - Low-energy motion means subtle, calm, breathable motion. It does not imply a face, pet, mascot, body, head, or fixed anatomy.
 
@@ -4655,6 +4656,8 @@ mod tests {
             "logo" => include_str!("../../../../packages/strut-python/fixtures/logo.plan.json"),
             "loader" => include_str!("../../../../packages/strut-python/fixtures/loader.plan.json"),
             "mascot" => include_str!("../../../../packages/strut-python/fixtures/mascot.plan.json"),
+            "ui" => include_str!("../../../../packages/strut-python/fixtures/ui.plan.json"),
+            "icon" => include_str!("../../../../packages/strut-python/fixtures/icon.plan.json"),
             _ => panic!("unknown sprite-python fixture"),
         }
     }
@@ -4681,6 +4684,18 @@ mod tests {
                 vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
             ),
             ("mascot", "mascot", vec!["Body", "Head", "Eyes"], vec![]),
+            (
+                "ui",
+                "ui",
+                vec!["ButtonSurface", "ButtonLabel", "FocusRing"],
+                vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
+            ),
+            (
+                "icon",
+                "badge",
+                vec!["BadgePlate", "InnerShield", "StatusDot"],
+                vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
+            ),
         ] {
             let planned = document_from_generation_plan_text(sprite_python_fixture(fixture))
                 .expect("sprite-python fixture should validate");
