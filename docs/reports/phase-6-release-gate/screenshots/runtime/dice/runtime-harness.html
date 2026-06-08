@@ -1,0 +1,56 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Phase 6 Exported Runtime Smoke</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; font-family: Arial, sans-serif; }
+    main { width: min(920px, 92vw); border: 1px solid #cbd5e1; background: white; padding: 18px; }
+    svg { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const scene = {"id": "00000000-0000-0000-0000-000000000009", "name": "Rolling Dice Motion", "artboards": [{"id": "00000000-0000-0000-0000-00000000000a", "name": "RollingDiceMotion Artboard", "width": 960.0, "height": 540.0, "nodes": [{"id": "00000000-0000-0000-0000-000000000008", "name": "Rolling Dice Motion Rig", "kind": "group", "role": "scene_rig", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": null, "stroke": null, "stroke_width": 0.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "none"}, "children": [{"id": "00000000-0000-0000-0000-000000000001", "name": "DieBody", "kind": "rect", "role": "volume", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#f5f7fb", "stroke": "#111827", "stroke_width": 5.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "rect", "x": 378.0, "y": 174.0, "width": 210.0, "height": 210.0, "rx": 24.0}, "children": []}, {"id": "00000000-0000-0000-0000-000000000002", "name": "FrontFace", "kind": "rect", "role": "front face", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#ffffff", "stroke": "#111827", "stroke_width": 4.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "rect", "x": 402.0, "y": 214.0, "width": 168.0, "height": 146.0, "rx": 16.0}, "children": []}, {"id": "00000000-0000-0000-0000-000000000003", "name": "TopFace", "kind": "path", "role": "top face", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#e6edf7", "stroke": "#111827", "stroke_width": 4.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "path", "d": "M402 214 L454 168 L618 184 L570 214 Z"}, "children": []}, {"id": "00000000-0000-0000-0000-000000000004", "name": "Pips", "kind": "path", "role": "number marks", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#f6f0df", "stroke": "#111827", "stroke_width": 4.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "path", "d": "M442 252 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 M530 320 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0"}, "children": []}, {"id": "00000000-0000-0000-0000-000000000005", "name": "EdgeHighlight", "kind": "path", "role": "edge light", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#f6f0df", "stroke": "#b7c7db", "stroke_width": 7.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "path", "d": "M414 228 L454 188 L604 202"}, "children": []}, {"id": "00000000-0000-0000-0000-000000000006", "name": "SettleShadow", "kind": "ellipse", "role": "grounding shadow", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#1f2937", "stroke": null, "stroke_width": 0.0, "opacity": 0.22, "linecap": "round", "linejoin": "round"}, "shape": {"type": "ellipse", "cx": 494.0, "cy": 414.0, "rx": 116.0, "ry": 18.0}, "children": []}]}]}], "timelines": [{"id": "00000000-0000-0000-0000-000000000007", "name": "settle", "duration_ms": 900, "tracks": [{"target": "00000000-0000-0000-0000-000000000001", "property": "translation.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -18.0}, "easing": "ease_out"}, {"time_ms": 520, "value": {"type": "number", "value": 4.0}, "easing": "ease_in_out"}, {"time_ms": 900, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}]}, {"target": "00000000-0000-0000-0000-000000000001", "property": "rotation", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -9.0}, "easing": "ease_out"}, {"time_ms": 520, "value": {"type": "number", "value": 2.0}, "easing": "ease_in_out"}, {"time_ms": 900, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}]}]}], "state_machines": [{"id": "00000000-0000-0000-0000-00000000000b", "name": "RollingDice Motion", "inputs": [{"name": "state", "kind": "enum"}], "states": ["idle", "settle"], "transitions": [{"from": "idle", "to": "settle", "on": "settle", "timeline": "settle"}]}], "bindings": [{"name": "edit_diebody_fill", "target": "00000000-0000-0000-0000-000000000001", "property": "style.fill"}], "events": [{"name": "sprite_python_plan_emitted", "description": "Rolling Dice authored by sprite-python and awaiting Rust validation"}]};
+    const ns = "http://www.w3.org/2000/svg";
+    const app = document.getElementById("app");
+    const artboard = scene.artboards[0];
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${artboard.width} ${artboard.height}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", scene.name);
+    svg.dataset.strutExportSmoke = "true";
+    function paint(value) { return value ?? "none"; }
+    function appendNode(parent, node) {
+      const shape = node.shape || { type: "none" };
+      const tag = shape.type === "rect" ? "rect" : shape.type === "ellipse" ? "ellipse" : shape.type === "path" ? "path" : shape.type === "text" ? "text" : "g";
+      const el = document.createElementNS(ns, tag);
+      el.dataset.nodeName = node.name;
+      el.dataset.nodeRole = node.role || "";
+      const style = node.style || {};
+      el.setAttribute("fill", paint(style.fill));
+      el.setAttribute("stroke", paint(style.stroke));
+      el.setAttribute("stroke-width", String(style.stroke_width ?? 0));
+      el.setAttribute("opacity", String(style.opacity ?? 1));
+      if (shape.type === "rect") {
+        for (const key of ["x", "y", "width", "height", "rx"]) el.setAttribute(key, String(shape[key]));
+      } else if (shape.type === "ellipse") {
+        for (const key of ["cx", "cy", "rx", "ry"]) el.setAttribute(key, String(shape[key]));
+      } else if (shape.type === "path") {
+        el.setAttribute("d", shape.d);
+      } else if (shape.type === "text") {
+        el.setAttribute("x", String(shape.x));
+        el.setAttribute("y", String(shape.y));
+        el.setAttribute("font-size", String(shape.size));
+        el.textContent = shape.value;
+      }
+      parent.append(el);
+      for (const child of node.children || []) appendNode(el, child);
+    }
+    for (const node of artboard.nodes) appendNode(svg, node);
+    app.append(svg);
+  </script>
+</body>
+</html>

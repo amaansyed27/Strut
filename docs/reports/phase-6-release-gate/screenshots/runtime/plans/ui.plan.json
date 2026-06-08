@@ -1,0 +1,982 @@
+{
+  "format": "strut.cli.plan.v1",
+  "instruction": "make a button UI microinteraction",
+  "backend": "sprite-python",
+  "dryRun": true,
+  "explanation": "Instruction resolved to a deterministic generation-plan envelope, converted to a Strut document, and wrapped in a pending replace_document batch. No files are mutated by plan commands.",
+  "planSummary": {
+    "subjectClassification": "ui",
+    "subjectLabel": "Button Microinteraction",
+    "partNames": [
+      "ButtonSurface",
+      "ButtonLabel",
+      "FocusRing",
+      "CheckMark",
+      "HoverGlow"
+    ],
+    "timelineNames": [
+      "attention_nudge"
+    ]
+  },
+  "envelope": {
+    "operations": [
+      {
+        "children": [
+          "ButtonSurface",
+          "ButtonLabel",
+          "FocusRing",
+          "CheckMark",
+          "HoverGlow"
+        ],
+        "id": "SceneRig",
+        "name": "Button Microinteraction Motion Rig",
+        "type": "group_nodes"
+      },
+      {
+        "geometry": {
+          "height": 72,
+          "kind": "rect",
+          "rx": 12,
+          "width": 220,
+          "x": 370,
+          "y": 254
+        },
+        "id": "ButtonSurface",
+        "kind": "rect",
+        "name": "ButtonSurface",
+        "parent": "SceneRig",
+        "role": "control surface",
+        "style": {
+          "fill": "#e0f2fe",
+          "opacity": 1.0,
+          "stroke": "#0f172a",
+          "strokeWidth": 4
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "kind": "text",
+          "size": 22,
+          "value": "Continue",
+          "x": 426,
+          "y": 297
+        },
+        "id": "ButtonLabel",
+        "kind": "text",
+        "name": "ButtonLabel",
+        "parent": "SceneRig",
+        "role": "label",
+        "style": {
+          "fill": "#0f172a",
+          "opacity": 1.0,
+          "stroke": null,
+          "strokeWidth": 0
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "d": "M364 248 L596 248 L596 332 L364 332 Z",
+          "kind": "path"
+        },
+        "id": "FocusRing",
+        "kind": "path",
+        "name": "FocusRing",
+        "parent": "SceneRig",
+        "role": "focus ring",
+        "style": {
+          "fill": null,
+          "opacity": 0.65,
+          "stroke": "#38bdf8",
+          "strokeWidth": 4
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "d": "M444 294 L470 316 L520 264",
+          "kind": "path"
+        },
+        "id": "CheckMark",
+        "kind": "path",
+        "name": "CheckMark",
+        "parent": "SceneRig",
+        "role": "success mark",
+        "style": {
+          "fill": null,
+          "opacity": 1.0,
+          "stroke": "#16a34a",
+          "strokeWidth": 7
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "cx": 480,
+          "cy": 290,
+          "kind": "ellipse",
+          "rx": 138,
+          "ry": 52
+        },
+        "id": "HoverGlow",
+        "kind": "ellipse",
+        "name": "HoverGlow",
+        "parent": "SceneRig",
+        "role": "hover glow",
+        "style": {
+          "fill": "#bae6fd",
+          "opacity": 0.22,
+          "stroke": null,
+          "strokeWidth": 0
+        },
+        "type": "create_node"
+      },
+      {
+        "state": "idle",
+        "type": "add_state"
+      },
+      {
+        "state": "hover",
+        "type": "add_state"
+      },
+      {
+        "duration_ms": 520,
+        "id": "attention-nudge",
+        "name": "attention_nudge",
+        "state": "hover",
+        "type": "add_timeline"
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "ButtonSurface",
+        "time_ms": 0,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "easing": "ease_out",
+        "property": "translation.x",
+        "target": "ButtonSurface",
+        "time_ms": 170,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 5.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "ButtonSurface",
+        "time_ms": 340,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": -2.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "ButtonSurface",
+        "time_ms": 520,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "name": "edit_button_fill",
+        "property": "fill",
+        "target": "ButtonSurface",
+        "type": "bind_property"
+      },
+      {
+        "description": "Button Microinteraction authored by sprite-python and awaiting Rust validation",
+        "name": "sprite_python_plan_emitted",
+        "type": "emit_event"
+      }
+    ],
+    "plan": {
+      "editability": {
+        "editableParts": [
+          "ButtonSurface",
+          "ButtonLabel",
+          "FocusRing",
+          "CheckMark",
+          "HoverGlow"
+        ],
+        "lockedParts": [],
+        "notes": [
+          "sprite-python UI microinteraction builder"
+        ]
+      },
+      "id": "sprite-python-ui-plan",
+      "motionRoles": [
+        {
+          "id": "primary",
+          "partRefs": [
+            "ButtonSurface",
+            "FocusRing"
+          ],
+          "purpose": "small responsive UI nudge"
+        }
+      ],
+      "name": "Button Microinteraction Motion",
+      "parts": [
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "height": 72,
+            "kind": "rect",
+            "rx": 12,
+            "width": 220,
+            "x": 370,
+            "y": 254
+          },
+          "id": "ButtonSurface",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "ButtonSurface",
+          "role": "control surface",
+          "style": {
+            "fill": "#e0f2fe",
+            "opacity": 1.0,
+            "stroke": "#0f172a",
+            "strokeWidth": 4
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "kind": "text",
+            "size": 22,
+            "value": "Continue",
+            "x": 426,
+            "y": 297
+          },
+          "id": "ButtonLabel",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "ButtonLabel",
+          "role": "label",
+          "style": {
+            "fill": "#0f172a",
+            "opacity": 1.0,
+            "stroke": null,
+            "strokeWidth": 0
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "d": "M364 248 L596 248 L596 332 L364 332 Z",
+            "kind": "path"
+          },
+          "id": "FocusRing",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "FocusRing",
+          "role": "focus ring",
+          "style": {
+            "fill": null,
+            "opacity": 0.65,
+            "stroke": "#38bdf8",
+            "strokeWidth": 4
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "d": "M444 294 L470 316 L520 264",
+            "kind": "path"
+          },
+          "id": "CheckMark",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "CheckMark",
+          "role": "success mark",
+          "style": {
+            "fill": null,
+            "opacity": 1.0,
+            "stroke": "#16a34a",
+            "strokeWidth": 7
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "cx": 480,
+            "cy": 290,
+            "kind": "ellipse",
+            "rx": 138,
+            "ry": 52
+          },
+          "id": "HoverGlow",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "HoverGlow",
+          "role": "hover glow",
+          "style": {
+            "fill": "#bae6fd",
+            "opacity": 0.22,
+            "stroke": null,
+            "strokeWidth": 0
+          }
+        }
+      ],
+      "states": [
+        "idle",
+        "hover"
+      ],
+      "subject": {
+        "classification": "ui",
+        "label": "Button Microinteraction"
+      },
+      "timelines": [
+        {
+          "durationMs": 520,
+          "id": "attention-nudge",
+          "name": "attention_nudge",
+          "state": "hover",
+          "tracks": [
+            {
+              "keyframes": [
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 0,
+                  "value": 0.0
+                },
+                {
+                  "easing": "ease_out",
+                  "timeMs": 170,
+                  "value": 5.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 340,
+                  "value": -2.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 520,
+                  "value": 0.0
+                }
+              ],
+              "property": "translation.x",
+              "target": "ButtonSurface"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "document": {
+    "id": "00000000-0000-0000-0000-000000000008",
+    "name": "Button Microinteraction Motion",
+    "artboards": [
+      {
+        "id": "00000000-0000-0000-0000-000000000009",
+        "name": "ButtonMicrointeractionMotion Artboard",
+        "width": 960.0,
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "name": "Button Microinteraction Motion Rig",
+            "kind": "group",
+            "role": "scene_rig",
+            "transform": {
+              "translate_x": 0.0,
+              "translate_y": 0.0,
+              "rotate": 0.0,
+              "scale_x": 1.0,
+              "scale_y": 1.0
+            },
+            "style": {
+              "fill": null,
+              "stroke": null,
+              "stroke_width": 0.0,
+              "opacity": 1.0,
+              "linecap": "round",
+              "linejoin": "round"
+            },
+            "shape": {
+              "type": "none"
+            },
+            "children": [
+              {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "name": "ButtonSurface",
+                "kind": "rect",
+                "role": "control surface",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#e0f2fe",
+                  "stroke": "#0f172a",
+                  "stroke_width": 4.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "rect",
+                  "x": 370.0,
+                  "y": 254.0,
+                  "width": 220.0,
+                  "height": 72.0,
+                  "rx": 12.0
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000002",
+                "name": "ButtonLabel",
+                "kind": "text",
+                "role": "label",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#0f172a",
+                  "stroke": null,
+                  "stroke_width": 0.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "text",
+                  "x": 426.0,
+                  "y": 297.0,
+                  "value": "Continue",
+                  "size": 22.0
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000003",
+                "name": "FocusRing",
+                "kind": "path",
+                "role": "focus ring",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#f6f0df",
+                  "stroke": "#38bdf8",
+                  "stroke_width": 4.0,
+                  "opacity": 0.65,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "path",
+                  "d": "M364 248 L596 248 L596 332 L364 332 Z"
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000004",
+                "name": "CheckMark",
+                "kind": "path",
+                "role": "success mark",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#f6f0df",
+                  "stroke": "#16a34a",
+                  "stroke_width": 7.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "path",
+                  "d": "M444 294 L470 316 L520 264"
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000005",
+                "name": "HoverGlow",
+                "kind": "ellipse",
+                "role": "hover glow",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#bae6fd",
+                  "stroke": null,
+                  "stroke_width": 0.0,
+                  "opacity": 0.22,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "ellipse",
+                  "cx": 480.0,
+                  "cy": 290.0,
+                  "rx": 138.0,
+                  "ry": 52.0
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "timelines": [
+      {
+        "id": "00000000-0000-0000-0000-000000000006",
+        "name": "attention_nudge",
+        "duration_ms": 520,
+        "tracks": [
+          {
+            "target": "00000000-0000-0000-0000-000000000001",
+            "property": "translation.x",
+            "keyframes": [
+              {
+                "time_ms": 0,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 170,
+                "value": {
+                  "type": "number",
+                  "value": 5.0
+                },
+                "easing": "ease_out"
+              },
+              {
+                "time_ms": 340,
+                "value": {
+                  "type": "number",
+                  "value": -2.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 520,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "state_machines": [
+      {
+        "id": "00000000-0000-0000-0000-00000000000a",
+        "name": "ButtonMicrointeraction Motion",
+        "inputs": [
+          {
+            "name": "state",
+            "kind": "enum"
+          }
+        ],
+        "states": [
+          "idle",
+          "hover"
+        ],
+        "transitions": [
+          {
+            "from": "idle",
+            "to": "hover",
+            "on": "hover",
+            "timeline": "attention_nudge"
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "name": "edit_button_fill",
+        "target": "00000000-0000-0000-0000-000000000001",
+        "property": "style.fill"
+      }
+    ],
+    "events": [
+      {
+        "name": "sprite_python_plan_emitted",
+        "description": "Button Microinteraction authored by sprite-python and awaiting Rust validation"
+      }
+    ]
+  },
+  "batch": {
+    "id": "batch-cli-rev-button-microinteraction-motion-1-6-1",
+    "sourceType": "sprite-python",
+    "status": "pending",
+    "validationResult": {
+      "ok": true,
+      "message": "Rust validated operation plan; patch will revalidate before writing",
+      "validator": "strut-cli-rust",
+      "validatedAt": "deterministic-cli-validation"
+    },
+    "documentRevisionId": "rev-button-microinteraction-motion-1-6-1",
+    "previousDocumentRevisionId": null,
+    "prompt": "make a button UI microinteraction",
+    "sourceMetadata": {
+      "backend": "sprite-python",
+      "rawOperationCount": 15,
+      "subjectClassification": "ui",
+      "subjectLabel": "Button Microinteraction"
+    },
+    "operations": [
+      {
+        "id": "op-replace-document",
+        "nextDocument": {
+          "artboards": [
+            {
+              "height": 540.0,
+              "id": "00000000-0000-0000-0000-000000000009",
+              "name": "ButtonMicrointeractionMotion Artboard",
+              "nodes": [
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000001",
+                      "kind": "rect",
+                      "name": "ButtonSurface",
+                      "role": "control surface",
+                      "shape": {
+                        "height": 72.0,
+                        "rx": 12.0,
+                        "type": "rect",
+                        "width": 220.0,
+                        "x": 370.0,
+                        "y": 254.0
+                      },
+                      "style": {
+                        "fill": "#e0f2fe",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#0f172a",
+                        "stroke_width": 4.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000002",
+                      "kind": "text",
+                      "name": "ButtonLabel",
+                      "role": "label",
+                      "shape": {
+                        "size": 22.0,
+                        "type": "text",
+                        "value": "Continue",
+                        "x": 426.0,
+                        "y": 297.0
+                      },
+                      "style": {
+                        "fill": "#0f172a",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": null,
+                        "stroke_width": 0.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000003",
+                      "kind": "path",
+                      "name": "FocusRing",
+                      "role": "focus ring",
+                      "shape": {
+                        "d": "M364 248 L596 248 L596 332 L364 332 Z",
+                        "type": "path"
+                      },
+                      "style": {
+                        "fill": "#f6f0df",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 0.6499999761581421,
+                        "stroke": "#38bdf8",
+                        "stroke_width": 4.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000004",
+                      "kind": "path",
+                      "name": "CheckMark",
+                      "role": "success mark",
+                      "shape": {
+                        "d": "M444 294 L470 316 L520 264",
+                        "type": "path"
+                      },
+                      "style": {
+                        "fill": "#f6f0df",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#16a34a",
+                        "stroke_width": 7.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000005",
+                      "kind": "ellipse",
+                      "name": "HoverGlow",
+                      "role": "hover glow",
+                      "shape": {
+                        "cx": 480.0,
+                        "cy": 290.0,
+                        "rx": 138.0,
+                        "ry": 52.0,
+                        "type": "ellipse"
+                      },
+                      "style": {
+                        "fill": "#bae6fd",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 0.2199999988079071,
+                        "stroke": null,
+                        "stroke_width": 0.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    }
+                  ],
+                  "id": "00000000-0000-0000-0000-000000000007",
+                  "kind": "group",
+                  "name": "Button Microinteraction Motion Rig",
+                  "role": "scene_rig",
+                  "shape": {
+                    "type": "none"
+                  },
+                  "style": {
+                    "fill": null,
+                    "linecap": "round",
+                    "linejoin": "round",
+                    "opacity": 1.0,
+                    "stroke": null,
+                    "stroke_width": 0.0
+                  },
+                  "transform": {
+                    "rotate": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                    "translate_x": 0.0,
+                    "translate_y": 0.0
+                  }
+                }
+              ],
+              "width": 960.0
+            }
+          ],
+          "bindings": [
+            {
+              "name": "edit_button_fill",
+              "property": "style.fill",
+              "target": "00000000-0000-0000-0000-000000000001"
+            }
+          ],
+          "events": [
+            {
+              "description": "Button Microinteraction authored by sprite-python and awaiting Rust validation",
+              "name": "sprite_python_plan_emitted"
+            }
+          ],
+          "id": "00000000-0000-0000-0000-000000000008",
+          "name": "Button Microinteraction Motion",
+          "state_machines": [
+            {
+              "id": "00000000-0000-0000-0000-00000000000a",
+              "inputs": [
+                {
+                  "kind": "enum",
+                  "name": "state"
+                }
+              ],
+              "name": "ButtonMicrointeraction Motion",
+              "states": [
+                "idle",
+                "hover"
+              ],
+              "transitions": [
+                {
+                  "from": "idle",
+                  "on": "hover",
+                  "timeline": "attention_nudge",
+                  "to": "hover"
+                }
+              ]
+            }
+          ],
+          "timelines": [
+            {
+              "duration_ms": 520,
+              "id": "00000000-0000-0000-0000-000000000006",
+              "name": "attention_nudge",
+              "tracks": [
+                {
+                  "keyframes": [
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 0,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    },
+                    {
+                      "easing": "ease_out",
+                      "time_ms": 170,
+                      "value": {
+                        "type": "number",
+                        "value": 5.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 340,
+                      "value": {
+                        "type": "number",
+                        "value": -2.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 520,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    }
+                  ],
+                  "property": "translation.x",
+                  "target": "00000000-0000-0000-0000-000000000001"
+                }
+              ]
+            }
+          ]
+        },
+        "previousDocument": null,
+        "type": "replace_document"
+      }
+    ],
+    "createdAt": "deterministic-cli-validation",
+    "updatedAt": "deterministic-cli-validation",
+    "appliedAt": null,
+    "rejectedAt": null
+  },
+  "warnings": []
+}

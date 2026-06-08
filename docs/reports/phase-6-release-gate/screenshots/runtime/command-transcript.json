@@ -1,0 +1,74 @@
+[
+  {
+    "slug": "dice",
+    "planSubject": "dice",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\dice.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\dice\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\dice\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\dice\\README.md"
+    ]
+  },
+  {
+    "slug": "logo",
+    "planSubject": "logo",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\logo.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\logo\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\logo\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\logo\\README.md"
+    ]
+  },
+  {
+    "slug": "loader",
+    "planSubject": "loader",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\loader.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\loader\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\loader\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\loader\\README.md"
+    ]
+  },
+  {
+    "slug": "mascot",
+    "planSubject": "mascot",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\mascot.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\mascot\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\mascot\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\mascot\\README.md"
+    ]
+  },
+  {
+    "slug": "ui",
+    "planSubject": "ui",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\ui.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\ui\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\ui\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\ui\\README.md"
+    ]
+  },
+  {
+    "slug": "icon-badge",
+    "planSubject": "badge",
+    "patch": "validated patch and wrote scene",
+    "verify": "scene document is valid",
+    "render": "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\renders\\icon-badge.svg",
+    "exportFiles": [
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\icon-badge\\scene.json",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\icon-badge\\StrutAnimation.tsx",
+      "D:\\TheDawnlightGroup\\DawnlightLabs\\Strut\\docs\\reports\\phase-6-release-gate\\screenshots\\runtime\\exports\\icon-badge\\README.md"
+    ]
+  }
+]

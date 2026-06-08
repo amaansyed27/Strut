@@ -1,0 +1,355 @@
+{
+  "id": "00000000-0000-0000-0000-00000000000a",
+  "name": "Icon Badge Motion",
+  "artboards": [
+    {
+      "id": "00000000-0000-0000-0000-00000000000b",
+      "name": "IconBadgeMotion Artboard",
+      "width": 960.0,
+      "height": 540.0,
+      "nodes": [
+        {
+          "id": "00000000-0000-0000-0000-000000000009",
+          "name": "Icon Badge Motion Rig",
+          "kind": "group",
+          "role": "scene_rig",
+          "transform": {
+            "translate_x": 0.0,
+            "translate_y": 0.0,
+            "rotate": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0
+          },
+          "style": {
+            "fill": null,
+            "stroke": null,
+            "stroke_width": 0.0,
+            "opacity": 1.0,
+            "linecap": "round",
+            "linejoin": "round"
+          },
+          "shape": {
+            "type": "none"
+          },
+          "children": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "name": "BadgePlate",
+              "kind": "ellipse",
+              "role": "badge base",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#eef2ff",
+                "stroke": "#1e1b4b",
+                "stroke_width": 5.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "ellipse",
+                "cx": 480.0,
+                "cy": 270.0,
+                "rx": 106.0,
+                "ry": 106.0
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000002",
+              "name": "InnerShield",
+              "kind": "path",
+              "role": "inner shield",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#c7d2fe",
+                "stroke": "#312e81",
+                "stroke_width": 4.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "path",
+                "d": "M480 188 L552 220 L540 308 C526 350 504 374 480 386 C456 374 434 350 420 308 L408 220 Z"
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000003",
+              "name": "SparkGlyph",
+              "kind": "path",
+              "role": "spark glyph",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#fef3c7",
+                "stroke": "#92400e",
+                "stroke_width": 4.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "path",
+                "d": "M480 222 L494 260 L534 270 L494 280 L480 318 L466 280 L426 270 L466 260 Z"
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000004",
+              "name": "OrbitStroke",
+              "kind": "path",
+              "role": "orbit stroke",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#f6f0df",
+                "stroke": "#38bdf8",
+                "stroke_width": 7.0,
+                "opacity": 0.82,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "path",
+                "d": "M386 286 C430 224 534 214 584 260"
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000005",
+              "name": "StatusDot",
+              "kind": "ellipse",
+              "role": "status dot",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#22c55e",
+                "stroke": "#14532d",
+                "stroke_width": 3.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "ellipse",
+                "cx": 566.0,
+                "cy": 206.0,
+                "rx": 18.0,
+                "ry": 18.0
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000006",
+              "name": "BadgeLabel",
+              "kind": "text",
+              "role": "short label",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#1e1b4b",
+                "stroke": null,
+                "stroke_width": 0.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "text",
+                "x": 434.0,
+                "y": 410.0,
+                "value": "VERIFIED",
+                "size": 24.0
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timelines": [
+    {
+      "id": "00000000-0000-0000-0000-000000000008",
+      "name": "pulse",
+      "duration_ms": 960,
+      "tracks": [
+        {
+          "target": "00000000-0000-0000-0000-000000000005",
+          "property": "scale",
+          "keyframes": [
+            {
+              "time_ms": 0,
+              "value": {
+                "type": "number",
+                "value": 0.92
+              },
+              "easing": "ease_in_out"
+            },
+            {
+              "time_ms": 480,
+              "value": {
+                "type": "number",
+                "value": 1.08
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 960,
+              "value": {
+                "type": "number",
+                "value": 0.92
+              },
+              "easing": "ease_in_out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000007",
+      "name": "reveal",
+      "duration_ms": 1000,
+      "tracks": [
+        {
+          "target": "00000000-0000-0000-0000-000000000002",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time_ms": 0,
+              "value": {
+                "type": "number",
+                "value": 0.15
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 420,
+              "value": {
+                "type": "number",
+                "value": 1.0
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 1000,
+              "value": {
+                "type": "number",
+                "value": 1.0
+              },
+              "easing": "ease_in_out"
+            }
+          ]
+        },
+        {
+          "target": "00000000-0000-0000-0000-000000000002",
+          "property": "translation.y",
+          "keyframes": [
+            {
+              "time_ms": 0,
+              "value": {
+                "type": "number",
+                "value": 18.0
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 640,
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 1000,
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "easing": "ease_in_out"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "id": "00000000-0000-0000-0000-00000000000c",
+      "name": "IconBadge Motion",
+      "inputs": [
+        {
+          "name": "state",
+          "kind": "enum"
+        }
+      ],
+      "states": [
+        "idle",
+        "reveal",
+        "success"
+      ],
+      "transitions": [
+        {
+          "from": "idle",
+          "to": "success",
+          "on": "success",
+          "timeline": "pulse"
+        },
+        {
+          "from": "idle",
+          "to": "reveal",
+          "on": "reveal",
+          "timeline": "reveal"
+        }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "name": "edit_badge_fill",
+      "target": "00000000-0000-0000-0000-000000000001",
+      "property": "style.fill"
+    }
+  ],
+  "events": [
+    {
+      "name": "sprite_python_plan_emitted",
+      "description": "Icon Badge authored by sprite-python and awaiting Rust validation"
+    }
+  ]
+}

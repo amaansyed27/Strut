@@ -1,0 +1,1500 @@
+{
+  "format": "strut.cli.plan.v1",
+  "instruction": "make a low energy companion mascot idle animation",
+  "backend": "sprite-python",
+  "dryRun": true,
+  "explanation": "Instruction resolved to a deterministic generation-plan envelope, converted to a Strut document, and wrapped in a pending replace_document batch. No files are mutated by plan commands.",
+  "planSummary": {
+    "subjectClassification": "mascot",
+    "subjectLabel": "Helpful Mascot",
+    "partNames": [
+      "Body",
+      "Head",
+      "Eyes",
+      "Arms",
+      "AccentBadge",
+      "GroundShadow"
+    ],
+    "timelineNames": [
+      "idle_breathe",
+      "soft_bob",
+      "attention_nudge"
+    ]
+  },
+  "envelope": {
+    "operations": [
+      {
+        "children": [
+          "Body",
+          "Head",
+          "Eyes",
+          "Arms",
+          "AccentBadge",
+          "GroundShadow"
+        ],
+        "id": "SceneRig",
+        "name": "Helpful Mascot Motion Rig",
+        "type": "group_nodes"
+      },
+      {
+        "geometry": {
+          "cx": 480,
+          "cy": 306,
+          "kind": "ellipse",
+          "rx": 92,
+          "ry": 118
+        },
+        "id": "Body",
+        "kind": "ellipse",
+        "name": "Body",
+        "parent": "SceneRig",
+        "role": "body",
+        "style": {
+          "fill": "#a7f3d0",
+          "opacity": 1.0,
+          "stroke": "#064e3b",
+          "strokeWidth": 6
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "cx": 480,
+          "cy": 190,
+          "kind": "ellipse",
+          "rx": 82,
+          "ry": 68
+        },
+        "id": "Head",
+        "kind": "ellipse",
+        "name": "Head",
+        "parent": "SceneRig",
+        "role": "head",
+        "style": {
+          "fill": "#ecfdf5",
+          "opacity": 1.0,
+          "stroke": "#064e3b",
+          "strokeWidth": 6
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "d": "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0",
+          "kind": "path"
+        },
+        "id": "Eyes",
+        "kind": "path",
+        "name": "Eyes",
+        "parent": "SceneRig",
+        "role": "eyes",
+        "style": {
+          "fill": null,
+          "opacity": 1.0,
+          "stroke": "#064e3b",
+          "strokeWidth": 8
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "d": "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364",
+          "kind": "path"
+        },
+        "id": "Arms",
+        "kind": "path",
+        "name": "Arms",
+        "parent": "SceneRig",
+        "role": "arms",
+        "style": {
+          "fill": null,
+          "opacity": 1.0,
+          "stroke": "#047857",
+          "strokeWidth": 10
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "cx": 512,
+          "cy": 316,
+          "kind": "ellipse",
+          "rx": 16,
+          "ry": 16
+        },
+        "id": "AccentBadge",
+        "kind": "ellipse",
+        "name": "AccentBadge",
+        "parent": "SceneRig",
+        "role": "accent",
+        "style": {
+          "fill": "#34d399",
+          "opacity": 1.0,
+          "stroke": "#064e3b",
+          "strokeWidth": 3
+        },
+        "type": "create_node"
+      },
+      {
+        "geometry": {
+          "cx": 480,
+          "cy": 438,
+          "kind": "ellipse",
+          "rx": 108,
+          "ry": 16
+        },
+        "id": "GroundShadow",
+        "kind": "ellipse",
+        "name": "GroundShadow",
+        "parent": "SceneRig",
+        "role": "shadow",
+        "style": {
+          "fill": "#064e3b",
+          "opacity": 0.2,
+          "stroke": null,
+          "strokeWidth": 0
+        },
+        "type": "create_node"
+      },
+      {
+        "state": "idle",
+        "type": "add_state"
+      },
+      {
+        "state": "hover",
+        "type": "add_state"
+      },
+      {
+        "duration_ms": 1400,
+        "id": "idle-breathe",
+        "name": "idle_breathe",
+        "state": "idle",
+        "type": "add_timeline"
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "scale.y",
+        "target": "Body",
+        "time_ms": 0,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": 1.0
+      },
+      {
+        "easing": "ease_out",
+        "property": "scale.y",
+        "target": "Body",
+        "time_ms": 700,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": 1.035
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "scale.y",
+        "target": "Body",
+        "time_ms": 1400,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": 1.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.y",
+        "target": "Body",
+        "time_ms": 0,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "easing": "ease_out",
+        "property": "translation.y",
+        "target": "Body",
+        "time_ms": 700,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": -4.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.y",
+        "target": "Body",
+        "time_ms": 1400,
+        "timeline": "idle-breathe",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "duration_ms": 1200,
+        "id": "soft-bob",
+        "name": "soft_bob",
+        "state": "idle",
+        "type": "add_timeline"
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.y",
+        "target": "Head",
+        "time_ms": 0,
+        "timeline": "soft-bob",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "easing": "ease_out",
+        "property": "translation.y",
+        "target": "Head",
+        "time_ms": 600,
+        "timeline": "soft-bob",
+        "type": "add_keyframe",
+        "value": -8.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.y",
+        "target": "Head",
+        "time_ms": 1200,
+        "timeline": "soft-bob",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "duration_ms": 520,
+        "id": "attention-nudge",
+        "name": "attention_nudge",
+        "state": "hover",
+        "type": "add_timeline"
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "Arms",
+        "time_ms": 0,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "easing": "ease_out",
+        "property": "translation.x",
+        "target": "Arms",
+        "time_ms": 170,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 5.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "Arms",
+        "time_ms": 340,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": -2.0
+      },
+      {
+        "easing": "ease_in_out",
+        "property": "translation.x",
+        "target": "Arms",
+        "time_ms": 520,
+        "timeline": "attention-nudge",
+        "type": "add_keyframe",
+        "value": 0.0
+      },
+      {
+        "name": "edit_body_fill",
+        "property": "fill",
+        "target": "Body",
+        "type": "bind_property"
+      },
+      {
+        "description": "Helpful Mascot authored by sprite-python and awaiting Rust validation",
+        "name": "sprite_python_plan_emitted",
+        "type": "emit_event"
+      }
+    ],
+    "plan": {
+      "editability": {
+        "editableParts": [
+          "Body",
+          "Head",
+          "Eyes",
+          "Arms",
+          "AccentBadge",
+          "GroundShadow"
+        ],
+        "lockedParts": [],
+        "notes": [
+          "sprite-python mascot builder; anatomy is present because subject is mascot"
+        ]
+      },
+      "id": "sprite-python-mascot-plan",
+      "motionRoles": [
+        {
+          "id": "primary",
+          "partRefs": [
+            "Body",
+            "Head",
+            "Eyes"
+          ],
+          "purpose": "quiet mascot idle motion"
+        }
+      ],
+      "name": "Helpful Mascot Motion",
+      "parts": [
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "cx": 480,
+            "cy": 306,
+            "kind": "ellipse",
+            "rx": 92,
+            "ry": 118
+          },
+          "id": "Body",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "Body",
+          "role": "body",
+          "style": {
+            "fill": "#a7f3d0",
+            "opacity": 1.0,
+            "stroke": "#064e3b",
+            "strokeWidth": 6
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "cx": 480,
+            "cy": 190,
+            "kind": "ellipse",
+            "rx": 82,
+            "ry": 68
+          },
+          "id": "Head",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "Head",
+          "role": "head",
+          "style": {
+            "fill": "#ecfdf5",
+            "opacity": 1.0,
+            "stroke": "#064e3b",
+            "strokeWidth": 6
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "d": "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0",
+            "kind": "path"
+          },
+          "id": "Eyes",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "Eyes",
+          "role": "eyes",
+          "style": {
+            "fill": null,
+            "opacity": 1.0,
+            "stroke": "#064e3b",
+            "strokeWidth": 8
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "d": "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364",
+            "kind": "path"
+          },
+          "id": "Arms",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "Arms",
+          "role": "arms",
+          "style": {
+            "fill": null,
+            "opacity": 1.0,
+            "stroke": "#047857",
+            "strokeWidth": 10
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "cx": 512,
+            "cy": 316,
+            "kind": "ellipse",
+            "rx": 16,
+            "ry": 16
+          },
+          "id": "AccentBadge",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "AccentBadge",
+          "role": "accent",
+          "style": {
+            "fill": "#34d399",
+            "opacity": 1.0,
+            "stroke": "#064e3b",
+            "strokeWidth": 3
+          }
+        },
+        {
+          "constraints": {
+            "allowedProperties": [
+              "fill",
+              "translation.x",
+              "translation.y",
+              "rotation",
+              "opacity"
+            ],
+            "editable": true
+          },
+          "geometry": {
+            "cx": 480,
+            "cy": 438,
+            "kind": "ellipse",
+            "rx": 108,
+            "ry": 16
+          },
+          "id": "GroundShadow",
+          "motionRoles": [
+            "primary"
+          ],
+          "name": "GroundShadow",
+          "role": "shadow",
+          "style": {
+            "fill": "#064e3b",
+            "opacity": 0.2,
+            "stroke": null,
+            "strokeWidth": 0
+          }
+        }
+      ],
+      "states": [
+        "idle",
+        "hover"
+      ],
+      "subject": {
+        "classification": "mascot",
+        "label": "Helpful Mascot"
+      },
+      "timelines": [
+        {
+          "durationMs": 1400,
+          "id": "idle-breathe",
+          "name": "idle_breathe",
+          "state": "idle",
+          "tracks": [
+            {
+              "keyframes": [
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 0,
+                  "value": 1.0
+                },
+                {
+                  "easing": "ease_out",
+                  "timeMs": 700,
+                  "value": 1.035
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 1400,
+                  "value": 1.0
+                }
+              ],
+              "property": "scale.y",
+              "target": "Body"
+            },
+            {
+              "keyframes": [
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 0,
+                  "value": 0.0
+                },
+                {
+                  "easing": "ease_out",
+                  "timeMs": 700,
+                  "value": -4.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 1400,
+                  "value": 0.0
+                }
+              ],
+              "property": "translation.y",
+              "target": "Body"
+            }
+          ]
+        },
+        {
+          "durationMs": 1200,
+          "id": "soft-bob",
+          "name": "soft_bob",
+          "state": "idle",
+          "tracks": [
+            {
+              "keyframes": [
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 0,
+                  "value": 0.0
+                },
+                {
+                  "easing": "ease_out",
+                  "timeMs": 600,
+                  "value": -8.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 1200,
+                  "value": 0.0
+                }
+              ],
+              "property": "translation.y",
+              "target": "Head"
+            }
+          ]
+        },
+        {
+          "durationMs": 520,
+          "id": "attention-nudge",
+          "name": "attention_nudge",
+          "state": "hover",
+          "tracks": [
+            {
+              "keyframes": [
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 0,
+                  "value": 0.0
+                },
+                {
+                  "easing": "ease_out",
+                  "timeMs": 170,
+                  "value": 5.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 340,
+                  "value": -2.0
+                },
+                {
+                  "easing": "ease_in_out",
+                  "timeMs": 520,
+                  "value": 0.0
+                }
+              ],
+              "property": "translation.x",
+              "target": "Arms"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "document": {
+    "id": "00000000-0000-0000-0000-00000000000b",
+    "name": "Helpful Mascot Motion",
+    "artboards": [
+      {
+        "id": "00000000-0000-0000-0000-00000000000c",
+        "name": "HelpfulMascotMotion Artboard",
+        "width": 960.0,
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": "00000000-0000-0000-0000-00000000000a",
+            "name": "Helpful Mascot Motion Rig",
+            "kind": "group",
+            "role": "scene_rig",
+            "transform": {
+              "translate_x": 0.0,
+              "translate_y": 0.0,
+              "rotate": 0.0,
+              "scale_x": 1.0,
+              "scale_y": 1.0
+            },
+            "style": {
+              "fill": null,
+              "stroke": null,
+              "stroke_width": 0.0,
+              "opacity": 1.0,
+              "linecap": "round",
+              "linejoin": "round"
+            },
+            "shape": {
+              "type": "none"
+            },
+            "children": [
+              {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "name": "Body",
+                "kind": "ellipse",
+                "role": "body",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#a7f3d0",
+                  "stroke": "#064e3b",
+                  "stroke_width": 6.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "ellipse",
+                  "cx": 480.0,
+                  "cy": 306.0,
+                  "rx": 92.0,
+                  "ry": 118.0
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000002",
+                "name": "Head",
+                "kind": "ellipse",
+                "role": "head",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#ecfdf5",
+                  "stroke": "#064e3b",
+                  "stroke_width": 6.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "ellipse",
+                  "cx": 480.0,
+                  "cy": 190.0,
+                  "rx": 82.0,
+                  "ry": 68.0
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000003",
+                "name": "Eyes",
+                "kind": "path",
+                "role": "eyes",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#f6f0df",
+                  "stroke": "#064e3b",
+                  "stroke_width": 8.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "path",
+                  "d": "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0"
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000004",
+                "name": "Arms",
+                "kind": "path",
+                "role": "arms",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#f6f0df",
+                  "stroke": "#047857",
+                  "stroke_width": 10.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "path",
+                  "d": "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364"
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000005",
+                "name": "AccentBadge",
+                "kind": "ellipse",
+                "role": "accent",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#34d399",
+                  "stroke": "#064e3b",
+                  "stroke_width": 3.0,
+                  "opacity": 1.0,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "ellipse",
+                  "cx": 512.0,
+                  "cy": 316.0,
+                  "rx": 16.0,
+                  "ry": 16.0
+                },
+                "children": []
+              },
+              {
+                "id": "00000000-0000-0000-0000-000000000006",
+                "name": "GroundShadow",
+                "kind": "ellipse",
+                "role": "shadow",
+                "transform": {
+                  "translate_x": 0.0,
+                  "translate_y": 0.0,
+                  "rotate": 0.0,
+                  "scale_x": 1.0,
+                  "scale_y": 1.0
+                },
+                "style": {
+                  "fill": "#064e3b",
+                  "stroke": null,
+                  "stroke_width": 0.0,
+                  "opacity": 0.2,
+                  "linecap": "round",
+                  "linejoin": "round"
+                },
+                "shape": {
+                  "type": "ellipse",
+                  "cx": 480.0,
+                  "cy": 438.0,
+                  "rx": 108.0,
+                  "ry": 16.0
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "timelines": [
+      {
+        "id": "00000000-0000-0000-0000-000000000009",
+        "name": "attention_nudge",
+        "duration_ms": 520,
+        "tracks": [
+          {
+            "target": "00000000-0000-0000-0000-000000000004",
+            "property": "translation.x",
+            "keyframes": [
+              {
+                "time_ms": 0,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 170,
+                "value": {
+                  "type": "number",
+                  "value": 5.0
+                },
+                "easing": "ease_out"
+              },
+              {
+                "time_ms": 340,
+                "value": {
+                  "type": "number",
+                  "value": -2.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 520,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000007",
+        "name": "idle_breathe",
+        "duration_ms": 1400,
+        "tracks": [
+          {
+            "target": "00000000-0000-0000-0000-000000000001",
+            "property": "scale.y",
+            "keyframes": [
+              {
+                "time_ms": 0,
+                "value": {
+                  "type": "number",
+                  "value": 1.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 700,
+                "value": {
+                  "type": "number",
+                  "value": 1.035
+                },
+                "easing": "ease_out"
+              },
+              {
+                "time_ms": 1400,
+                "value": {
+                  "type": "number",
+                  "value": 1.0
+                },
+                "easing": "ease_in_out"
+              }
+            ]
+          },
+          {
+            "target": "00000000-0000-0000-0000-000000000001",
+            "property": "translation.y",
+            "keyframes": [
+              {
+                "time_ms": 0,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 700,
+                "value": {
+                  "type": "number",
+                  "value": -4.0
+                },
+                "easing": "ease_out"
+              },
+              {
+                "time_ms": 1400,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000008",
+        "name": "soft_bob",
+        "duration_ms": 1200,
+        "tracks": [
+          {
+            "target": "00000000-0000-0000-0000-000000000002",
+            "property": "translation.y",
+            "keyframes": [
+              {
+                "time_ms": 0,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              },
+              {
+                "time_ms": 600,
+                "value": {
+                  "type": "number",
+                  "value": -8.0
+                },
+                "easing": "ease_out"
+              },
+              {
+                "time_ms": 1200,
+                "value": {
+                  "type": "number",
+                  "value": 0.0
+                },
+                "easing": "ease_in_out"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "state_machines": [
+      {
+        "id": "00000000-0000-0000-0000-00000000000d",
+        "name": "HelpfulMascot Motion",
+        "inputs": [
+          {
+            "name": "state",
+            "kind": "enum"
+          }
+        ],
+        "states": [
+          "idle",
+          "hover"
+        ],
+        "transitions": [
+          {
+            "from": "idle",
+            "to": "hover",
+            "on": "hover",
+            "timeline": "attention_nudge"
+          },
+          {
+            "from": "idle",
+            "to": "idle",
+            "on": "idle",
+            "timeline": "idle_breathe"
+          },
+          {
+            "from": "idle",
+            "to": "idle",
+            "on": "idle",
+            "timeline": "soft_bob"
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "name": "edit_body_fill",
+        "target": "00000000-0000-0000-0000-000000000001",
+        "property": "style.fill"
+      }
+    ],
+    "events": [
+      {
+        "name": "sprite_python_plan_emitted",
+        "description": "Helpful Mascot authored by sprite-python and awaiting Rust validation"
+      }
+    ]
+  },
+  "batch": {
+    "id": "batch-cli-rev-helpful-mascot-motion-1-7-3",
+    "sourceType": "sprite-python",
+    "status": "pending",
+    "validationResult": {
+      "ok": true,
+      "message": "Rust validated operation plan; patch will revalidate before writing",
+      "validator": "strut-cli-rust",
+      "validatedAt": "deterministic-cli-validation"
+    },
+    "documentRevisionId": "rev-helpful-mascot-motion-1-7-3",
+    "previousDocumentRevisionId": null,
+    "prompt": "make a low energy companion mascot idle animation",
+    "sourceMetadata": {
+      "backend": "sprite-python",
+      "rawOperationCount": 27,
+      "subjectClassification": "mascot",
+      "subjectLabel": "Helpful Mascot"
+    },
+    "operations": [
+      {
+        "id": "op-replace-document",
+        "nextDocument": {
+          "artboards": [
+            {
+              "height": 540.0,
+              "id": "00000000-0000-0000-0000-00000000000c",
+              "name": "HelpfulMascotMotion Artboard",
+              "nodes": [
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000001",
+                      "kind": "ellipse",
+                      "name": "Body",
+                      "role": "body",
+                      "shape": {
+                        "cx": 480.0,
+                        "cy": 306.0,
+                        "rx": 92.0,
+                        "ry": 118.0,
+                        "type": "ellipse"
+                      },
+                      "style": {
+                        "fill": "#a7f3d0",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#064e3b",
+                        "stroke_width": 6.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000002",
+                      "kind": "ellipse",
+                      "name": "Head",
+                      "role": "head",
+                      "shape": {
+                        "cx": 480.0,
+                        "cy": 190.0,
+                        "rx": 82.0,
+                        "ry": 68.0,
+                        "type": "ellipse"
+                      },
+                      "style": {
+                        "fill": "#ecfdf5",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#064e3b",
+                        "stroke_width": 6.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000003",
+                      "kind": "path",
+                      "name": "Eyes",
+                      "role": "eyes",
+                      "shape": {
+                        "d": "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0",
+                        "type": "path"
+                      },
+                      "style": {
+                        "fill": "#f6f0df",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#064e3b",
+                        "stroke_width": 8.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000004",
+                      "kind": "path",
+                      "name": "Arms",
+                      "role": "arms",
+                      "shape": {
+                        "d": "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364",
+                        "type": "path"
+                      },
+                      "style": {
+                        "fill": "#f6f0df",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#047857",
+                        "stroke_width": 10.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000005",
+                      "kind": "ellipse",
+                      "name": "AccentBadge",
+                      "role": "accent",
+                      "shape": {
+                        "cx": 512.0,
+                        "cy": 316.0,
+                        "rx": 16.0,
+                        "ry": 16.0,
+                        "type": "ellipse"
+                      },
+                      "style": {
+                        "fill": "#34d399",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 1.0,
+                        "stroke": "#064e3b",
+                        "stroke_width": 3.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    },
+                    {
+                      "children": [],
+                      "id": "00000000-0000-0000-0000-000000000006",
+                      "kind": "ellipse",
+                      "name": "GroundShadow",
+                      "role": "shadow",
+                      "shape": {
+                        "cx": 480.0,
+                        "cy": 438.0,
+                        "rx": 108.0,
+                        "ry": 16.0,
+                        "type": "ellipse"
+                      },
+                      "style": {
+                        "fill": "#064e3b",
+                        "linecap": "round",
+                        "linejoin": "round",
+                        "opacity": 0.20000000298023224,
+                        "stroke": null,
+                        "stroke_width": 0.0
+                      },
+                      "transform": {
+                        "rotate": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                        "translate_x": 0.0,
+                        "translate_y": 0.0
+                      }
+                    }
+                  ],
+                  "id": "00000000-0000-0000-0000-00000000000a",
+                  "kind": "group",
+                  "name": "Helpful Mascot Motion Rig",
+                  "role": "scene_rig",
+                  "shape": {
+                    "type": "none"
+                  },
+                  "style": {
+                    "fill": null,
+                    "linecap": "round",
+                    "linejoin": "round",
+                    "opacity": 1.0,
+                    "stroke": null,
+                    "stroke_width": 0.0
+                  },
+                  "transform": {
+                    "rotate": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                    "translate_x": 0.0,
+                    "translate_y": 0.0
+                  }
+                }
+              ],
+              "width": 960.0
+            }
+          ],
+          "bindings": [
+            {
+              "name": "edit_body_fill",
+              "property": "style.fill",
+              "target": "00000000-0000-0000-0000-000000000001"
+            }
+          ],
+          "events": [
+            {
+              "description": "Helpful Mascot authored by sprite-python and awaiting Rust validation",
+              "name": "sprite_python_plan_emitted"
+            }
+          ],
+          "id": "00000000-0000-0000-0000-00000000000b",
+          "name": "Helpful Mascot Motion",
+          "state_machines": [
+            {
+              "id": "00000000-0000-0000-0000-00000000000d",
+              "inputs": [
+                {
+                  "kind": "enum",
+                  "name": "state"
+                }
+              ],
+              "name": "HelpfulMascot Motion",
+              "states": [
+                "idle",
+                "hover"
+              ],
+              "transitions": [
+                {
+                  "from": "idle",
+                  "on": "hover",
+                  "timeline": "attention_nudge",
+                  "to": "hover"
+                },
+                {
+                  "from": "idle",
+                  "on": "idle",
+                  "timeline": "idle_breathe",
+                  "to": "idle"
+                },
+                {
+                  "from": "idle",
+                  "on": "idle",
+                  "timeline": "soft_bob",
+                  "to": "idle"
+                }
+              ]
+            }
+          ],
+          "timelines": [
+            {
+              "duration_ms": 520,
+              "id": "00000000-0000-0000-0000-000000000009",
+              "name": "attention_nudge",
+              "tracks": [
+                {
+                  "keyframes": [
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 0,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    },
+                    {
+                      "easing": "ease_out",
+                      "time_ms": 170,
+                      "value": {
+                        "type": "number",
+                        "value": 5.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 340,
+                      "value": {
+                        "type": "number",
+                        "value": -2.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 520,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    }
+                  ],
+                  "property": "translation.x",
+                  "target": "00000000-0000-0000-0000-000000000004"
+                }
+              ]
+            },
+            {
+              "duration_ms": 1400,
+              "id": "00000000-0000-0000-0000-000000000007",
+              "name": "idle_breathe",
+              "tracks": [
+                {
+                  "keyframes": [
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 0,
+                      "value": {
+                        "type": "number",
+                        "value": 1.0
+                      }
+                    },
+                    {
+                      "easing": "ease_out",
+                      "time_ms": 700,
+                      "value": {
+                        "type": "number",
+                        "value": 1.034999966621399
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 1400,
+                      "value": {
+                        "type": "number",
+                        "value": 1.0
+                      }
+                    }
+                  ],
+                  "property": "scale.y",
+                  "target": "00000000-0000-0000-0000-000000000001"
+                },
+                {
+                  "keyframes": [
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 0,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    },
+                    {
+                      "easing": "ease_out",
+                      "time_ms": 700,
+                      "value": {
+                        "type": "number",
+                        "value": -4.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 1400,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    }
+                  ],
+                  "property": "translation.y",
+                  "target": "00000000-0000-0000-0000-000000000001"
+                }
+              ]
+            },
+            {
+              "duration_ms": 1200,
+              "id": "00000000-0000-0000-0000-000000000008",
+              "name": "soft_bob",
+              "tracks": [
+                {
+                  "keyframes": [
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 0,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    },
+                    {
+                      "easing": "ease_out",
+                      "time_ms": 600,
+                      "value": {
+                        "type": "number",
+                        "value": -8.0
+                      }
+                    },
+                    {
+                      "easing": "ease_in_out",
+                      "time_ms": 1200,
+                      "value": {
+                        "type": "number",
+                        "value": 0.0
+                      }
+                    }
+                  ],
+                  "property": "translation.y",
+                  "target": "00000000-0000-0000-0000-000000000002"
+                }
+              ]
+            }
+          ]
+        },
+        "previousDocument": null,
+        "type": "replace_document"
+      }
+    ],
+    "createdAt": "deterministic-cli-validation",
+    "updatedAt": "deterministic-cli-validation",
+    "appliedAt": null,
+    "rejectedAt": null
+  },
+  "warnings": []
+}

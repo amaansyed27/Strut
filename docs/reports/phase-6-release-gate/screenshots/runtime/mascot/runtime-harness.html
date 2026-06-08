@@ -1,0 +1,56 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Phase 6 Exported Runtime Smoke</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; font-family: Arial, sans-serif; }
+    main { width: min(920px, 92vw); border: 1px solid #cbd5e1; background: white; padding: 18px; }
+    svg { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const scene = {"id": "00000000-0000-0000-0000-00000000000b", "name": "Helpful Mascot Motion", "artboards": [{"id": "00000000-0000-0000-0000-00000000000c", "name": "HelpfulMascotMotion Artboard", "width": 960.0, "height": 540.0, "nodes": [{"id": "00000000-0000-0000-0000-00000000000a", "name": "Helpful Mascot Motion Rig", "kind": "group", "role": "scene_rig", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": null, "stroke": null, "stroke_width": 0.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "none"}, "children": [{"id": "00000000-0000-0000-0000-000000000001", "name": "Body", "kind": "ellipse", "role": "body", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#a7f3d0", "stroke": "#064e3b", "stroke_width": 6.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "ellipse", "cx": 480.0, "cy": 306.0, "rx": 92.0, "ry": 118.0}, "children": []}, {"id": "00000000-0000-0000-0000-000000000002", "name": "Head", "kind": "ellipse", "role": "head", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#ecfdf5", "stroke": "#064e3b", "stroke_width": 6.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "ellipse", "cx": 480.0, "cy": 190.0, "rx": 82.0, "ry": 68.0}, "children": []}, {"id": "00000000-0000-0000-0000-000000000003", "name": "Eyes", "kind": "path", "role": "eyes", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#f6f0df", "stroke": "#064e3b", "stroke_width": 8.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "path", "d": "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0"}, "children": []}, {"id": "00000000-0000-0000-0000-000000000004", "name": "Arms", "kind": "path", "role": "arms", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#f6f0df", "stroke": "#047857", "stroke_width": 10.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "path", "d": "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364"}, "children": []}, {"id": "00000000-0000-0000-0000-000000000005", "name": "AccentBadge", "kind": "ellipse", "role": "accent", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#34d399", "stroke": "#064e3b", "stroke_width": 3.0, "opacity": 1.0, "linecap": "round", "linejoin": "round"}, "shape": {"type": "ellipse", "cx": 512.0, "cy": 316.0, "rx": 16.0, "ry": 16.0}, "children": []}, {"id": "00000000-0000-0000-0000-000000000006", "name": "GroundShadow", "kind": "ellipse", "role": "shadow", "transform": {"translate_x": 0.0, "translate_y": 0.0, "rotate": 0.0, "scale_x": 1.0, "scale_y": 1.0}, "style": {"fill": "#064e3b", "stroke": null, "stroke_width": 0.0, "opacity": 0.2, "linecap": "round", "linejoin": "round"}, "shape": {"type": "ellipse", "cx": 480.0, "cy": 438.0, "rx": 108.0, "ry": 16.0}, "children": []}]}]}], "timelines": [{"id": "00000000-0000-0000-0000-000000000009", "name": "attention_nudge", "duration_ms": 520, "tracks": [{"target": "00000000-0000-0000-0000-000000000004", "property": "translation.x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}, {"time_ms": 170, "value": {"type": "number", "value": 5.0}, "easing": "ease_out"}, {"time_ms": 340, "value": {"type": "number", "value": -2.0}, "easing": "ease_in_out"}, {"time_ms": 520, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}]}]}, {"id": "00000000-0000-0000-0000-000000000007", "name": "idle_breathe", "duration_ms": 1400, "tracks": [{"target": "00000000-0000-0000-0000-000000000001", "property": "scale.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1.0}, "easing": "ease_in_out"}, {"time_ms": 700, "value": {"type": "number", "value": 1.035}, "easing": "ease_out"}, {"time_ms": 1400, "value": {"type": "number", "value": 1.0}, "easing": "ease_in_out"}]}, {"target": "00000000-0000-0000-0000-000000000001", "property": "translation.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}, {"time_ms": 700, "value": {"type": "number", "value": -4.0}, "easing": "ease_out"}, {"time_ms": 1400, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}]}]}, {"id": "00000000-0000-0000-0000-000000000008", "name": "soft_bob", "duration_ms": 1200, "tracks": [{"target": "00000000-0000-0000-0000-000000000002", "property": "translation.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}, {"time_ms": 600, "value": {"type": "number", "value": -8.0}, "easing": "ease_out"}, {"time_ms": 1200, "value": {"type": "number", "value": 0.0}, "easing": "ease_in_out"}]}]}], "state_machines": [{"id": "00000000-0000-0000-0000-00000000000d", "name": "HelpfulMascot Motion", "inputs": [{"name": "state", "kind": "enum"}], "states": ["idle", "hover"], "transitions": [{"from": "idle", "to": "hover", "on": "hover", "timeline": "attention_nudge"}, {"from": "idle", "to": "idle", "on": "idle", "timeline": "idle_breathe"}, {"from": "idle", "to": "idle", "on": "idle", "timeline": "soft_bob"}]}], "bindings": [{"name": "edit_body_fill", "target": "00000000-0000-0000-0000-000000000001", "property": "style.fill"}], "events": [{"name": "sprite_python_plan_emitted", "description": "Helpful Mascot authored by sprite-python and awaiting Rust validation"}]};
+    const ns = "http://www.w3.org/2000/svg";
+    const app = document.getElementById("app");
+    const artboard = scene.artboards[0];
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${artboard.width} ${artboard.height}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", scene.name);
+    svg.dataset.strutExportSmoke = "true";
+    function paint(value) { return value ?? "none"; }
+    function appendNode(parent, node) {
+      const shape = node.shape || { type: "none" };
+      const tag = shape.type === "rect" ? "rect" : shape.type === "ellipse" ? "ellipse" : shape.type === "path" ? "path" : shape.type === "text" ? "text" : "g";
+      const el = document.createElementNS(ns, tag);
+      el.dataset.nodeName = node.name;
+      el.dataset.nodeRole = node.role || "";
+      const style = node.style || {};
+      el.setAttribute("fill", paint(style.fill));
+      el.setAttribute("stroke", paint(style.stroke));
+      el.setAttribute("stroke-width", String(style.stroke_width ?? 0));
+      el.setAttribute("opacity", String(style.opacity ?? 1));
+      if (shape.type === "rect") {
+        for (const key of ["x", "y", "width", "height", "rx"]) el.setAttribute(key, String(shape[key]));
+      } else if (shape.type === "ellipse") {
+        for (const key of ["cx", "cy", "rx", "ry"]) el.setAttribute(key, String(shape[key]));
+      } else if (shape.type === "path") {
+        el.setAttribute("d", shape.d);
+      } else if (shape.type === "text") {
+        el.setAttribute("x", String(shape.x));
+        el.setAttribute("y", String(shape.y));
+        el.setAttribute("font-size", String(shape.size));
+        el.textContent = shape.value;
+      }
+      parent.append(el);
+      for (const child of node.children || []) appendNode(el, child);
+    }
+    for (const node of artboard.nodes) appendNode(svg, node);
+    app.append(svg);
+  </script>
+</body>
+</html>

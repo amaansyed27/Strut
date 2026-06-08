@@ -1,0 +1,320 @@
+{
+  "id": "00000000-0000-0000-0000-00000000000a",
+  "name": "Progress Loader Motion",
+  "artboards": [
+    {
+      "id": "00000000-0000-0000-0000-00000000000b",
+      "name": "ProgressLoaderMotion Artboard",
+      "width": 960.0,
+      "height": 540.0,
+      "nodes": [
+        {
+          "id": "00000000-0000-0000-0000-000000000009",
+          "name": "Progress Loader Motion Rig",
+          "kind": "group",
+          "role": "scene_rig",
+          "transform": {
+            "translate_x": 0.0,
+            "translate_y": 0.0,
+            "rotate": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0
+          },
+          "style": {
+            "fill": null,
+            "stroke": null,
+            "stroke_width": 0.0,
+            "opacity": 1.0,
+            "linecap": "round",
+            "linejoin": "round"
+          },
+          "shape": {
+            "type": "none"
+          },
+          "children": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "name": "Track",
+              "kind": "ellipse",
+              "role": "background track",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#f6f0df",
+                "stroke": "#cbd5e1",
+                "stroke_width": 14.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "ellipse",
+                "cx": 480.0,
+                "cy": 270.0,
+                "rx": 120.0,
+                "ry": 120.0
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000002",
+              "name": "ActiveSegment",
+              "kind": "path",
+              "role": "active arc",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#f6f0df",
+                "stroke": "#14b8a6",
+                "stroke_width": 16.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "path",
+                "d": "M480 150 A120 120 0 0 1 600 270"
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000003",
+              "name": "PulseDot",
+              "kind": "ellipse",
+              "role": "pulse marker",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#0f766e",
+                "stroke": "#0f766e",
+                "stroke_width": 2.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "ellipse",
+                "cx": 600.0,
+                "cy": 270.0,
+                "rx": 14.0,
+                "ry": 14.0
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000004",
+              "name": "ProgressSweep",
+              "kind": "path",
+              "role": "sweep indicator",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#f6f0df",
+                "stroke": "#99f6e4",
+                "stroke_width": 6.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "path",
+                "d": "M480 270 L600 270"
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000005",
+              "name": "Glow",
+              "kind": "ellipse",
+              "role": "soft glow",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#ccfbf1",
+                "stroke": null,
+                "stroke_width": 0.0,
+                "opacity": 0.25,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "ellipse",
+                "cx": 480.0,
+                "cy": 270.0,
+                "rx": 144.0,
+                "ry": 144.0
+              },
+              "children": []
+            },
+            {
+              "id": "00000000-0000-0000-0000-000000000006",
+              "name": "CenterLabel",
+              "kind": "text",
+              "role": "progress label",
+              "transform": {
+                "translate_x": 0.0,
+                "translate_y": 0.0,
+                "rotate": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0
+              },
+              "style": {
+                "fill": "#134e4a",
+                "stroke": null,
+                "stroke_width": 0.0,
+                "opacity": 1.0,
+                "linecap": "round",
+                "linejoin": "round"
+              },
+              "shape": {
+                "type": "text",
+                "x": 454.0,
+                "y": 282.0,
+                "value": "42%",
+                "size": 24.0
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timelines": [
+    {
+      "id": "00000000-0000-0000-0000-000000000007",
+      "name": "progress_sweep",
+      "duration_ms": 1200,
+      "tracks": [
+        {
+          "target": "00000000-0000-0000-0000-000000000002",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time_ms": 0,
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "easing": "linear"
+            },
+            {
+              "time_ms": 1200,
+              "value": {
+                "type": "number",
+                "value": 360.0
+              },
+              "easing": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000008",
+      "name": "pulse",
+      "duration_ms": 960,
+      "tracks": [
+        {
+          "target": "00000000-0000-0000-0000-000000000003",
+          "property": "scale",
+          "keyframes": [
+            {
+              "time_ms": 0,
+              "value": {
+                "type": "number",
+                "value": 0.92
+              },
+              "easing": "ease_in_out"
+            },
+            {
+              "time_ms": 480,
+              "value": {
+                "type": "number",
+                "value": 1.08
+              },
+              "easing": "ease_out"
+            },
+            {
+              "time_ms": 960,
+              "value": {
+                "type": "number",
+                "value": 0.92
+              },
+              "easing": "ease_in_out"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "id": "00000000-0000-0000-0000-00000000000c",
+      "name": "ProgressLoader Motion",
+      "inputs": [
+        {
+          "name": "state",
+          "kind": "enum"
+        }
+      ],
+      "states": [
+        "idle",
+        "loading",
+        "pulse"
+      ],
+      "transitions": [
+        {
+          "from": "idle",
+          "to": "loading",
+          "on": "loading",
+          "timeline": "progress_sweep"
+        },
+        {
+          "from": "idle",
+          "to": "pulse",
+          "on": "pulse",
+          "timeline": "pulse"
+        }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "name": "edit_active_segment_stroke",
+      "target": "00000000-0000-0000-0000-000000000002",
+      "property": "style.stroke"
+    }
+  ],
+  "events": [
+    {
+      "name": "sprite_python_plan_emitted",
+      "description": "Progress Loader authored by sprite-python and awaiting Rust validation"
+    }
+  ]
+}
