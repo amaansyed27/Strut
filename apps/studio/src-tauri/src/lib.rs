@@ -1251,6 +1251,55 @@ impl OperationValidationContext {
     }
 }
 
+struct GeneratedOperationRefs {
+    node_refs: HashSet<String>,
+    timeline_refs: HashSet<String>,
+}
+
+impl GeneratedOperationRefs {
+    fn from_operations(operations: &[Value]) -> Self {
+        let mut node_refs = HashSet::new();
+        let mut timeline_refs = HashSet::new();
+        for operation in operations {
+            match operation.get("type").and_then(Value::as_str) {
+                Some("create_node") => {
+                    if let Some(id) = operation
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.trim().is_empty())
+                    {
+                        node_refs.insert(id.to_string());
+                    }
+                }
+                Some("add_timeline") => {
+                    for field in ["id", "name"] {
+                        if let Some(value) = operation
+                            .get(field)
+                            .and_then(Value::as_str)
+                            .filter(|value| !value.trim().is_empty())
+                        {
+                            timeline_refs.insert(value.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Self {
+            node_refs,
+            timeline_refs,
+        }
+    }
+
+    fn has_node_ref(&self, value: &str) -> bool {
+        self.node_refs.contains(value)
+    }
+
+    fn has_timeline_ref(&self, value: &str) -> bool {
+        self.timeline_refs.contains(value)
+    }
+}
+
 fn collect_operation_node_refs(
     nodes: &[strut_core::Node],
     node_ids: &mut HashSet<String>,
@@ -1347,16 +1396,10 @@ fn validate_operation_payloads(
     batch: &OperationBatchRecord,
     context: &OperationValidationContext,
 ) -> Result<(), String> {
-    let generated_ids = batch
-        .operations
-        .iter()
-        .filter_map(|operation| operation.get("id").and_then(Value::as_str))
-        .filter(|id| !id.trim().is_empty())
-        .map(str::to_string)
-        .collect::<HashSet<_>>();
+    let generated_refs = GeneratedOperationRefs::from_operations(&batch.operations);
 
     for operation in &batch.operations {
-        validate_operation_payload(batch, operation, context, &generated_ids)?;
+        validate_operation_payload(batch, operation, context, &generated_refs)?;
     }
     Ok(())
 }
@@ -1365,7 +1408,7 @@ fn validate_operation_payload(
     batch: &OperationBatchRecord,
     operation: &Value,
     context: &OperationValidationContext,
-    generated_ids: &HashSet<String>,
+    generated_refs: &GeneratedOperationRefs,
 ) -> Result<(), String> {
     let operation_type = operation
         .get("type")
@@ -1381,12 +1424,14 @@ fn validate_operation_payload(
         "set_property" => validate_set_property_operation(batch, operation, context),
         "replace_document" => validate_replace_document_operation(batch, operation),
         "create_node" => validate_create_node_operation(batch, operation),
-        "group_nodes" => validate_group_nodes_operation(batch, operation, context, generated_ids),
+        "group_nodes" => validate_group_nodes_operation(batch, operation, context, generated_refs),
         "add_state" => validate_add_state_operation(batch, operation, context),
         "add_timeline" => validate_add_timeline_operation(batch, operation, context),
-        "add_keyframe" => validate_add_keyframe_operation(batch, operation, context, generated_ids),
+        "add_keyframe" => {
+            validate_add_keyframe_operation(batch, operation, context, generated_refs)
+        }
         "bind_property" => {
-            validate_bind_property_operation(batch, operation, context, generated_ids)
+            validate_bind_property_operation(batch, operation, context, generated_refs)
         }
         "emit_event" => validate_emit_event_operation(batch, operation, context),
         other => Err(format!(
@@ -1535,7 +1580,7 @@ fn validate_group_nodes_operation(
     batch: &OperationBatchRecord,
     operation: &Value,
     context: &OperationValidationContext,
-    generated_ids: &HashSet<String>,
+    generated_refs: &GeneratedOperationRefs,
 ) -> Result<(), String> {
     required_string_field(batch, operation, "id")?;
     required_string_field(batch, operation, "name")?;
@@ -1556,7 +1601,7 @@ fn validate_group_nodes_operation(
                 batch.id
             ));
         };
-        if !context.has_node_ref(child) && !generated_ids.contains(child) {
+        if !context.has_node_ref(child) && !generated_refs.has_node_ref(child) {
             return Err(format!(
                 "operation batch '{}' group_nodes references unknown child '{}'",
                 batch.id, child
@@ -1586,13 +1631,8 @@ fn validate_add_timeline_operation(
     operation: &Value,
     context: &OperationValidationContext,
 ) -> Result<(), String> {
-    let name = required_string_field(batch, operation, "name")?;
-    if !context.timeline_refs.contains(name) {
-        return Err(format!(
-            "operation batch '{}' add_timeline references unknown timeline '{}'",
-            batch.id, name
-        ));
-    }
+    required_string_field(batch, operation, "id")?;
+    required_string_field(batch, operation, "name")?;
     let duration = operation
         .get("duration_ms")
         .and_then(Value::as_u64)
@@ -1624,17 +1664,17 @@ fn validate_add_keyframe_operation(
     batch: &OperationBatchRecord,
     operation: &Value,
     context: &OperationValidationContext,
-    generated_ids: &HashSet<String>,
+    generated_refs: &GeneratedOperationRefs,
 ) -> Result<(), String> {
     let timeline = required_string_field(batch, operation, "timeline")?;
-    if !context.timeline_refs.contains(timeline) && !generated_ids.contains(timeline) {
+    if !context.timeline_refs.contains(timeline) && !generated_refs.has_timeline_ref(timeline) {
         return Err(format!(
             "operation batch '{}' add_keyframe references unknown timeline '{}'",
             batch.id, timeline
         ));
     }
     let target = required_string_field(batch, operation, "target")?;
-    if !context.has_node_ref(target) && !generated_ids.contains(target) {
+    if !context.has_node_ref(target) && !generated_refs.has_node_ref(target) {
         return Err(format!(
             "operation batch '{}' add_keyframe targets unknown node '{}'",
             batch.id, target
@@ -1668,11 +1708,11 @@ fn validate_bind_property_operation(
     batch: &OperationBatchRecord,
     operation: &Value,
     context: &OperationValidationContext,
-    generated_ids: &HashSet<String>,
+    generated_refs: &GeneratedOperationRefs,
 ) -> Result<(), String> {
     required_string_field(batch, operation, "name")?;
     let target = required_string_field(batch, operation, "target")?;
-    if !context.has_node_ref(target) && !generated_ids.contains(target) {
+    if !context.has_node_ref(target) && !generated_refs.has_node_ref(target) {
         return Err(format!(
             "operation batch '{}' bind_property targets unknown node '{}'",
             batch.id, target
@@ -4718,6 +4758,61 @@ mod tests {
         }
     }
 
+    fn generated_reference_test_batch(
+        document: &strut_core::Document,
+        operations: Vec<Value>,
+    ) -> OperationBatchRecord {
+        let mut batch = valid_test_batch(document);
+        batch.id = "batch-generated-refs".to_string();
+        batch.source_type = "sprite-python".to_string();
+        batch.prompt = Some("generated reference validation".to_string());
+        batch.source_metadata = Some(json!({"test": "generated-refs"}));
+        batch.operations = operations;
+        batch
+    }
+
+    fn generated_rect_node(id: &str) -> Value {
+        json!({
+            "id": id,
+            "type": "create_node",
+            "name": id,
+            "kind": "rect",
+            "geometry": {"kind": "rect", "x": 10, "y": 10, "width": 24, "height": 24, "rx": 4},
+            "style": {"fill": "#ffffff", "stroke": "#111827", "strokeWidth": 2, "opacity": 1}
+        })
+    }
+
+    fn generated_timeline(id: &str, name: &str) -> Value {
+        json!({
+            "id": id,
+            "type": "add_timeline",
+            "name": name,
+            "state": "hover",
+            "duration_ms": 180
+        })
+    }
+
+    fn generated_keyframe(timeline: &str, target: &str) -> Value {
+        json!({
+            "id": "op-generated-keyframe",
+            "type": "add_keyframe",
+            "timeline": timeline,
+            "target": target,
+            "property": "translation.y",
+            "time_ms": 0,
+            "value": 0
+        })
+    }
+
+    fn unrelated_operation_id(id: &str) -> Value {
+        json!({
+            "id": id,
+            "type": "emit_event",
+            "name": "submit",
+            "description": "unrelated operation id must not become a node or timeline ref"
+        })
+    }
+
     #[test]
     fn project_snapshot_saves_loads_validated_scene_and_operation_batches() {
         let root = temp_project_root("snapshot");
@@ -4788,6 +4883,98 @@ mod tests {
         let error = validate_operation_batches(&[empty_applied], &document)
             .expect_err("empty applied batch rejects");
         assert!(error.contains("no meaningful operations"));
+    }
+
+    #[test]
+    fn generated_references_reject_unrelated_operation_ids() {
+        let document = strut_core::Document::sample_login_button();
+        let existing_node = document.artboards[0].nodes[0].id.to_string();
+
+        let add_keyframe_target = generated_reference_test_batch(
+            &document,
+            vec![
+                unrelated_operation_id("FakeGeneratedNode"),
+                generated_timeline("GeneratedTimeline", "generated-timeline"),
+                generated_keyframe("GeneratedTimeline", "FakeGeneratedNode"),
+            ],
+        );
+        let error = validate_operation_batches(&[add_keyframe_target], &document)
+            .expect_err("unrelated operation id must not become a keyframe target");
+        assert!(error.contains("targets unknown node 'FakeGeneratedNode'"));
+
+        let add_keyframe_timeline = generated_reference_test_batch(
+            &document,
+            vec![
+                unrelated_operation_id("FakeGeneratedTimeline"),
+                generated_keyframe("FakeGeneratedTimeline", &existing_node),
+            ],
+        );
+        let error = validate_operation_batches(&[add_keyframe_timeline], &document)
+            .expect_err("unrelated operation id must not become a keyframe timeline");
+        assert!(error.contains("unknown timeline 'FakeGeneratedTimeline'"));
+
+        let bind_property_target = generated_reference_test_batch(
+            &document,
+            vec![
+                unrelated_operation_id("FakeGeneratedNode"),
+                json!({
+                    "id": "op-bind-fake",
+                    "type": "bind_property",
+                    "name": "fake_binding",
+                    "target": "FakeGeneratedNode",
+                    "property": "fill"
+                }),
+            ],
+        );
+        let error = validate_operation_batches(&[bind_property_target], &document)
+            .expect_err("unrelated operation id must not become a bind target");
+        assert!(error.contains("targets unknown node 'FakeGeneratedNode'"));
+
+        let group_nodes_child = generated_reference_test_batch(
+            &document,
+            vec![
+                unrelated_operation_id("FakeGeneratedNode"),
+                json!({
+                    "id": "op-group-fake",
+                    "type": "group_nodes",
+                    "name": "Fake Group",
+                    "children": ["FakeGeneratedNode"]
+                }),
+            ],
+        );
+        let error = validate_operation_batches(&[group_nodes_child], &document)
+            .expect_err("unrelated operation id must not become a group child");
+        assert!(error.contains("unknown child 'FakeGeneratedNode'"));
+    }
+
+    #[test]
+    fn generated_references_accept_create_node_and_add_timeline_refs() {
+        let document = strut_core::Document::sample_login_button();
+        let batch = generated_reference_test_batch(
+            &document,
+            vec![
+                generated_rect_node("GeneratedNode"),
+                generated_timeline("GeneratedTimeline", "Generated Timeline"),
+                json!({
+                    "id": "op-group-generated",
+                    "type": "group_nodes",
+                    "name": "Generated Group",
+                    "children": ["GeneratedNode"]
+                }),
+                generated_keyframe("GeneratedTimeline", "GeneratedNode"),
+                generated_keyframe("Generated Timeline", "GeneratedNode"),
+                json!({
+                    "id": "op-bind-generated",
+                    "type": "bind_property",
+                    "name": "generated_fill",
+                    "target": "GeneratedNode",
+                    "property": "fill"
+                }),
+            ],
+        );
+
+        validate_operation_batches(&[batch], &document)
+            .expect("create_node ids and add_timeline ids/names are valid generated refs");
     }
 
     #[test]
