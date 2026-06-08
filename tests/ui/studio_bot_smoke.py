@@ -172,7 +172,8 @@ def run_smoke() -> None:
             expect(page.get_by_role("button", name="Reject")).to_be_disabled()
             expect(page.get_by_label("Project files and scene layers")).to_be_visible()
             expect(page.get_by_text("Scene layers")).to_be_visible()
-            expect(page.get_by_text("starter.strut.json")).to_be_visible()
+            expect(page.get_by_text("main.strut")).to_be_visible()
+            expect(page.get_by_text("operation-batches.json")).to_be_visible()
             expect(page.get_by_text("No scene yet").first).to_be_visible()
             expect(page.get_by_text("No editable layers yet.")).to_be_visible()
 
@@ -338,8 +339,8 @@ def run_smoke() -> None:
             expect(page.get_by_test_id("operation-preview")).to_contain_text("ContextBody")
             expect(page.get_by_test_id("operation-preview")).to_contain_text("transform.patch")
             expect(page.get_by_test_id("operation-preview")).to_contain_text("style.fill")
-            expect(page.get_by_role("button", name="Apply operation")).to_be_disabled()
-            expect(page.get_by_role("button", name="Reject")).to_be_disabled()
+            expect(page.get_by_role("button", name="Apply operation")).to_be_enabled()
+            expect(page.get_by_role("button", name="Reject")).to_be_enabled()
             page.get_by_role("button", name="Celebrate", exact=True).click()
             expect(page.get_by_role("button", name="Celebrate", exact=True)).to_have_class(
                 re.compile("active")
