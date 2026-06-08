@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -539,8 +539,8 @@ fn save_project_snapshot(
 ) -> Result<ProjectSnapshot, String> {
     let root = ensure_project_root(&project_path)?;
     let project_name = sanitize_project_name(&project_name)?;
-    validate_operation_batches(&operation_batches)?;
     strut_format::validate_document(&document).map_err(|error| error.to_string())?;
+    validate_operation_batches(&operation_batches, &document)?;
 
     fs::create_dir_all(root.join("scenes")).map_err(|error| error.to_string())?;
     fs::create_dir_all(root.join("operations")).map_err(|error| error.to_string())?;
@@ -609,7 +609,7 @@ fn load_project_snapshot(project_path: String) -> Result<ProjectSnapshot, String
         .to_string();
     let document = read_project_document(&root, &main_scene)?;
     let operation_batches = read_operation_batches(&root)?;
-    validate_operation_batches(&operation_batches)?;
+    validate_operation_batches(&operation_batches, &document)?;
     let selection = read_selection_state(&root)?;
 
     Ok(ProjectSnapshot {
@@ -1092,8 +1092,58 @@ fn ensure_project_root(path: &str) -> Result<PathBuf, String> {
     Ok(root)
 }
 
+fn safe_project_file_path(
+    root: &Path,
+    relative_path: &str,
+    label: &str,
+) -> Result<PathBuf, String> {
+    let trimmed = relative_path.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} path is required"));
+    }
+
+    let candidate = Path::new(trimmed);
+    if candidate.is_absolute() {
+        return Err(format!("{label} path must be relative to the project root"));
+    }
+
+    for component in candidate.components() {
+        if matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
+            return Err(format!(
+                "{label} path must stay inside the project root: {trimmed}"
+            ));
+        }
+    }
+
+    let resolved = root.join(candidate);
+    if resolved.exists() {
+        let canonical_root = root.canonicalize().map_err(|error| {
+            format!(
+                "Could not canonicalize project root {}: {error}",
+                root.display()
+            )
+        })?;
+        let canonical_resolved = resolved.canonicalize().map_err(|error| {
+            format!(
+                "Could not canonicalize {label} path {}: {error}",
+                resolved.display()
+            )
+        })?;
+        if !canonical_resolved.starts_with(&canonical_root) {
+            return Err(format!(
+                "{label} path must stay inside the project root: {trimmed}"
+            ));
+        }
+    }
+
+    Ok(resolved)
+}
+
 fn read_project_document(root: &Path, main_scene: &str) -> Result<strut_core::Document, String> {
-    let scene_path = root.join(main_scene);
+    let scene_path = safe_project_file_path(root, main_scene, "mainScene")?;
     if scene_path.exists()
         && scene_path
             .extension()
@@ -1150,7 +1200,76 @@ fn read_selection_state(root: &Path) -> Result<Option<PersistedSelectionState>, 
         .map_err(|error| error.to_string())
 }
 
-fn validate_operation_batches(batches: &[OperationBatchRecord]) -> Result<(), String> {
+struct OperationValidationContext {
+    node_ids: HashSet<String>,
+    node_refs: HashSet<String>,
+    timeline_refs: HashSet<String>,
+    states: HashSet<String>,
+    events: HashSet<String>,
+}
+
+impl OperationValidationContext {
+    fn from_document(document: &strut_core::Document) -> Self {
+        let mut node_ids = HashSet::new();
+        let mut node_refs = HashSet::new();
+        for artboard in &document.artboards {
+            collect_operation_node_refs(&artboard.nodes, &mut node_ids, &mut node_refs);
+        }
+
+        let mut timeline_refs = HashSet::new();
+        for timeline in &document.timelines {
+            timeline_refs.insert(timeline.id.to_string());
+            timeline_refs.insert(timeline.name.clone());
+        }
+
+        let states = document
+            .state_machines
+            .iter()
+            .flat_map(|machine| machine.states.iter().cloned())
+            .collect();
+        let events = document
+            .events
+            .iter()
+            .map(|event| event.name.clone())
+            .collect();
+
+        Self {
+            node_ids,
+            node_refs,
+            timeline_refs,
+            states,
+            events,
+        }
+    }
+
+    fn has_node_id(&self, value: &str) -> bool {
+        self.node_ids.contains(value)
+    }
+
+    fn has_node_ref(&self, value: &str) -> bool {
+        self.node_refs.contains(value)
+    }
+}
+
+fn collect_operation_node_refs(
+    nodes: &[strut_core::Node],
+    node_ids: &mut HashSet<String>,
+    node_refs: &mut HashSet<String>,
+) {
+    for node in nodes {
+        let id = node.id.to_string();
+        node_ids.insert(id.clone());
+        node_refs.insert(id);
+        node_refs.insert(node.name.clone());
+        collect_operation_node_refs(&node.children, node_ids, node_refs);
+    }
+}
+
+fn validate_operation_batches(
+    batches: &[OperationBatchRecord],
+    document: &strut_core::Document,
+) -> Result<(), String> {
+    let context = OperationValidationContext::from_document(document);
     let mut ids = HashSet::new();
     for batch in batches {
         if batch.id.trim().is_empty() {
@@ -1192,8 +1311,453 @@ fn validate_operation_batches(batches: &[OperationBatchRecord]) -> Result<(), St
                 batch.id
             ));
         }
+        if matches!(batch.status.as_str(), "pending" | "applied" | "undone")
+            && batch.operations.is_empty()
+        {
+            return Err(format!(
+                "operation batch '{}' has no meaningful operations",
+                batch.id
+            ));
+        }
+        validate_operation_batch_revision(batch)?;
+        validate_operation_payloads(batch, &context)?;
     }
     Ok(())
+}
+
+fn validate_operation_batch_revision(batch: &OperationBatchRecord) -> Result<(), String> {
+    if !batch.document_revision_id.starts_with("rev-") {
+        return Err(format!(
+            "operation batch '{}' has unsupported document revision id '{}'",
+            batch.id, batch.document_revision_id
+        ));
+    }
+    if let Some(previous) = &batch.previous_document_revision_id {
+        if previous.trim().is_empty() {
+            return Err(format!(
+                "operation batch '{}' has an empty previous document revision id",
+                batch.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_operation_payloads(
+    batch: &OperationBatchRecord,
+    context: &OperationValidationContext,
+) -> Result<(), String> {
+    let generated_ids = batch
+        .operations
+        .iter()
+        .filter_map(|operation| operation.get("id").and_then(Value::as_str))
+        .filter(|id| !id.trim().is_empty())
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+
+    for operation in &batch.operations {
+        validate_operation_payload(batch, operation, context, &generated_ids)?;
+    }
+    Ok(())
+}
+
+fn validate_operation_payload(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+    generated_ids: &HashSet<String>,
+) -> Result<(), String> {
+    let operation_type = operation
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "operation batch '{}' contains a malformed operation",
+                batch.id
+            )
+        })?;
+
+    match operation_type {
+        "set_property" => validate_set_property_operation(batch, operation, context),
+        "replace_document" => validate_replace_document_operation(batch, operation),
+        "create_node" => validate_create_node_operation(batch, operation),
+        "group_nodes" => validate_group_nodes_operation(batch, operation, context, generated_ids),
+        "add_state" => validate_add_state_operation(batch, operation, context),
+        "add_timeline" => validate_add_timeline_operation(batch, operation, context),
+        "add_keyframe" => validate_add_keyframe_operation(batch, operation, context, generated_ids),
+        "bind_property" => {
+            validate_bind_property_operation(batch, operation, context, generated_ids)
+        }
+        "emit_event" => validate_emit_event_operation(batch, operation, context),
+        other => Err(format!(
+            "operation batch '{}' contains unsupported operation type '{}'",
+            batch.id, other
+        )),
+    }
+}
+
+fn validate_set_property_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+) -> Result<(), String> {
+    let target_id = required_string_field(batch, operation, "targetId")?;
+    if !context.has_node_id(target_id) {
+        return Err(format!(
+            "operation batch '{}' targets unknown node id '{}'",
+            batch.id, target_id
+        ));
+    }
+
+    let property = required_string_field(batch, operation, "property")?;
+    let value = operation.get("value").ok_or_else(|| {
+        format!(
+            "operation batch '{}' set_property operation needs a value",
+            batch.id
+        )
+    })?;
+    validate_set_property_value(batch, property, value)?;
+    if let Some(previous_value) = operation.get("previousValue") {
+        validate_set_property_value(batch, property, previous_value)?;
+    }
+    Ok(())
+}
+
+fn validate_set_property_value(
+    batch: &OperationBatchRecord,
+    property: &str,
+    value: &Value,
+) -> Result<(), String> {
+    match property {
+        "style.fill" | "style.stroke" => {
+            if value.is_null() || value.as_str().is_some() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "operation batch '{}' has invalid value for property '{}'",
+                    batch.id, property
+                ))
+            }
+        }
+        "style.opacity" => validate_finite_number_range(batch, property, value, 0.0, 1.0),
+        "style.stroke_width" => validate_finite_number_range(batch, property, value, 0.0, f64::MAX),
+        "transform.translate_x" | "transform.translate_y" | "transform.rotate" => {
+            validate_finite_number(batch, property, value)
+        }
+        "transform.scale_x" | "transform.scale_y" => {
+            validate_finite_number_range(batch, property, value, f64::MIN_POSITIVE, f64::MAX)
+        }
+        _ => Err(format!(
+            "operation batch '{}' uses unsupported set_property path '{}'",
+            batch.id, property
+        )),
+    }
+}
+
+fn validate_replace_document_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+) -> Result<(), String> {
+    let next_document = operation.get("nextDocument").ok_or_else(|| {
+        format!(
+            "operation batch '{}' replace_document operation needs nextDocument",
+            batch.id
+        )
+    })?;
+    validate_document_value(batch, next_document, "nextDocument")?;
+
+    if let Some(previous_document) = operation.get("previousDocument") {
+        if !previous_document.is_null() {
+            validate_document_value(batch, previous_document, "previousDocument")?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_document_value(
+    batch: &OperationBatchRecord,
+    value: &Value,
+    field: &str,
+) -> Result<(), String> {
+    let document =
+        serde_json::from_value::<strut_core::Document>(value.clone()).map_err(|error| {
+            format!(
+                "operation batch '{}' has invalid replacement document in {field}: {error}",
+                batch.id
+            )
+        })?;
+    strut_format::validate_document(&document).map_err(|error| {
+        format!(
+            "operation batch '{}' replacement document in {field} failed validation: {error}",
+            batch.id
+        )
+    })
+}
+
+fn validate_create_node_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+) -> Result<(), String> {
+    let id = required_string_field(batch, operation, "id")?;
+    let name = required_string_field(batch, operation, "name")?;
+    let kind = required_string_field(batch, operation, "kind")?;
+    if id.trim().is_empty() || name.trim().is_empty() {
+        return Err(format!(
+            "operation batch '{}' create_node operation needs stable id and name",
+            batch.id
+        ));
+    }
+    if !matches!(
+        kind,
+        "group" | "rect" | "rectangle" | "ellipse" | "path" | "text"
+    ) {
+        return Err(format!(
+            "operation batch '{}' create_node operation has unsupported kind '{}'",
+            batch.id, kind
+        ));
+    }
+    let geometry = operation.get("geometry").ok_or_else(|| {
+        format!(
+            "operation batch '{}' create_node operation needs geometry",
+            batch.id
+        )
+    })?;
+    let geometry = serde_json::from_value::<PlanGeometry>(geometry.clone()).map_err(|error| {
+        format!(
+            "operation batch '{}' create_node operation has malformed geometry: {error}",
+            batch.id
+        )
+    })?;
+    validate_plan_geometry(id, &geometry)
+}
+
+fn validate_group_nodes_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+    generated_ids: &HashSet<String>,
+) -> Result<(), String> {
+    required_string_field(batch, operation, "id")?;
+    required_string_field(batch, operation, "name")?;
+    let children = operation
+        .get("children")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("operation batch '{}' group_nodes needs children", batch.id))?;
+    if children.is_empty() {
+        return Err(format!(
+            "operation batch '{}' group_nodes has no children",
+            batch.id
+        ));
+    }
+    for child in children {
+        let Some(child) = child.as_str() else {
+            return Err(format!(
+                "operation batch '{}' group_nodes contains a malformed child id",
+                batch.id
+            ));
+        };
+        if !context.has_node_ref(child) && !generated_ids.contains(child) {
+            return Err(format!(
+                "operation batch '{}' group_nodes references unknown child '{}'",
+                batch.id, child
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_add_state_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+) -> Result<(), String> {
+    let state = required_string_field(batch, operation, "state")?;
+    if !context.states.contains(state) {
+        return Err(format!(
+            "operation batch '{}' add_state references unknown state '{}'",
+            batch.id, state
+        ));
+    }
+    Ok(())
+}
+
+fn validate_add_timeline_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+) -> Result<(), String> {
+    let name = required_string_field(batch, operation, "name")?;
+    if !context.timeline_refs.contains(name) {
+        return Err(format!(
+            "operation batch '{}' add_timeline references unknown timeline '{}'",
+            batch.id, name
+        ));
+    }
+    let duration = operation
+        .get("duration_ms")
+        .and_then(Value::as_u64)
+        .or_else(|| operation.get("durationMs").and_then(Value::as_u64))
+        .ok_or_else(|| {
+            format!(
+                "operation batch '{}' add_timeline needs a positive duration",
+                batch.id
+            )
+        })?;
+    if duration == 0 {
+        return Err(format!(
+            "operation batch '{}' add_timeline needs a positive duration",
+            batch.id
+        ));
+    }
+    if let Some(state) = operation.get("state").and_then(Value::as_str) {
+        if !context.states.contains(state) {
+            return Err(format!(
+                "operation batch '{}' add_timeline references unknown state '{}'",
+                batch.id, state
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_add_keyframe_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+    generated_ids: &HashSet<String>,
+) -> Result<(), String> {
+    let timeline = required_string_field(batch, operation, "timeline")?;
+    if !context.timeline_refs.contains(timeline) && !generated_ids.contains(timeline) {
+        return Err(format!(
+            "operation batch '{}' add_keyframe references unknown timeline '{}'",
+            batch.id, timeline
+        ));
+    }
+    let target = required_string_field(batch, operation, "target")?;
+    if !context.has_node_ref(target) && !generated_ids.contains(target) {
+        return Err(format!(
+            "operation batch '{}' add_keyframe targets unknown node '{}'",
+            batch.id, target
+        ));
+    }
+    let property = required_string_field(batch, operation, "property")?;
+    if !allowed_timeline_property(property) {
+        return Err(format!(
+            "operation batch '{}' add_keyframe uses unsupported property '{}'",
+            batch.id, property
+        ));
+    }
+    if operation.get("time_ms").and_then(Value::as_u64).is_none()
+        && operation.get("timeMs").and_then(Value::as_u64).is_none()
+    {
+        return Err(format!(
+            "operation batch '{}' add_keyframe needs time_ms",
+            batch.id
+        ));
+    }
+    let value = operation.get("value").ok_or_else(|| {
+        format!(
+            "operation batch '{}' add_keyframe needs a numeric value",
+            batch.id
+        )
+    })?;
+    validate_finite_number(batch, property, value)
+}
+
+fn validate_bind_property_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+    generated_ids: &HashSet<String>,
+) -> Result<(), String> {
+    required_string_field(batch, operation, "name")?;
+    let target = required_string_field(batch, operation, "target")?;
+    if !context.has_node_ref(target) && !generated_ids.contains(target) {
+        return Err(format!(
+            "operation batch '{}' bind_property targets unknown node '{}'",
+            batch.id, target
+        ));
+    }
+    let property = required_string_field(batch, operation, "property")?;
+    if !allowed_edit_property(property) {
+        return Err(format!(
+            "operation batch '{}' bind_property uses unsupported property '{}'",
+            batch.id, property
+        ));
+    }
+    Ok(())
+}
+
+fn validate_emit_event_operation(
+    batch: &OperationBatchRecord,
+    operation: &Value,
+    context: &OperationValidationContext,
+) -> Result<(), String> {
+    let name = required_string_field(batch, operation, "name")?;
+    if !context.events.contains(name) {
+        return Err(format!(
+            "operation batch '{}' emit_event references unknown event '{}'",
+            batch.id, name
+        ));
+    }
+    Ok(())
+}
+
+fn required_string_field<'a>(
+    batch: &OperationBatchRecord,
+    operation: &'a Value,
+    field: &str,
+) -> Result<&'a str, String> {
+    operation
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "operation batch '{}' operation needs string field '{}'",
+                batch.id, field
+            )
+        })
+}
+
+fn validate_finite_number(
+    batch: &OperationBatchRecord,
+    property: &str,
+    value: &Value,
+) -> Result<(), String> {
+    let Some(number) = value.as_f64() else {
+        return Err(format!(
+            "operation batch '{}' has non-numeric value for property '{}'",
+            batch.id, property
+        ));
+    };
+    if number.is_finite() {
+        Ok(())
+    } else {
+        Err(format!(
+            "operation batch '{}' has non-finite value for property '{}'",
+            batch.id, property
+        ))
+    }
+}
+
+fn validate_finite_number_range(
+    batch: &OperationBatchRecord,
+    property: &str,
+    value: &Value,
+    minimum: f64,
+    maximum: f64,
+) -> Result<(), String> {
+    validate_finite_number(batch, property, value)?;
+    let number = value.as_f64().unwrap_or_default();
+    if number >= minimum && number <= maximum {
+        Ok(())
+    } else {
+        Err(format!(
+            "operation batch '{}' has out-of-range value for property '{}'",
+            batch.id, property
+        ))
+    }
 }
 
 fn validation_result(result: Result<(), String>) -> OperationValidationResult {
@@ -4103,6 +4667,28 @@ mod tests {
         std::env::temp_dir().join(format!("strut-{name}-{}", unix_timestamp()))
     }
 
+    fn write_project_manifest(root: &Path, name: &str, main_scene: &str) {
+        fs::write(
+            root.join(PROJECT_MANIFEST_FILE),
+            serde_json::to_string_pretty(&json!({
+                "name": name,
+                "mainScene": main_scene
+            }))
+            .expect("manifest json"),
+        )
+        .expect("manifest write");
+    }
+
+    fn write_project_scene(root: &Path, scene: &str, document: &strut_core::Document) {
+        let scene_path = root.join(scene);
+        fs::create_dir_all(scene_path.parent().expect("scene parent")).expect("scene dir");
+        strut_format::write_strut_file(
+            scene_path,
+            &strut_format::StrutPackage::current(document.clone()),
+        )
+        .expect("scene write");
+    }
+
     fn valid_test_batch(document: &strut_core::Document) -> OperationBatchRecord {
         OperationBatchRecord {
             id: "batch-manual-fill".to_string(),
@@ -4171,6 +4757,101 @@ mod tests {
     }
 
     #[test]
+    fn operation_payload_validation_rejects_malformed_targets_properties_and_empty_batches() {
+        let document = strut_core::Document::sample_login_button();
+        let mut unsupported_type = valid_test_batch(&document);
+        unsupported_type.operations = vec![json!({"id": "op-delete", "type": "delete_node"})];
+        let error = validate_operation_batches(&[unsupported_type], &document)
+            .expect_err("unsupported operation type rejects");
+        assert!(error.contains("unsupported operation type"));
+
+        let mut missing_target = valid_test_batch(&document);
+        missing_target.operations[0]["targetId"] = json!("00000000-0000-0000-0000-000000009999");
+        let error = validate_operation_batches(&[missing_target], &document)
+            .expect_err("missing target rejects");
+        assert!(error.contains("unknown node id"));
+
+        let mut unsupported_property = valid_test_batch(&document);
+        unsupported_property.operations[0]["property"] = json!("style.__proto__");
+        let error = validate_operation_batches(&[unsupported_property], &document)
+            .expect_err("unsafe property rejects");
+        assert!(error.contains("unsupported set_property path"));
+
+        let mut invalid_value = valid_test_batch(&document);
+        invalid_value.operations[0]["value"] = json!({"unexpected": "object"});
+        let error = validate_operation_batches(&[invalid_value], &document)
+            .expect_err("invalid property value rejects");
+        assert!(error.contains("invalid value"));
+
+        let mut empty_applied = valid_test_batch(&document);
+        empty_applied.operations = Vec::new();
+        let error = validate_operation_batches(&[empty_applied], &document)
+            .expect_err("empty applied batch rejects");
+        assert!(error.contains("no meaningful operations"));
+    }
+
+    #[test]
+    fn replacement_operation_documents_are_validated_before_persistence() {
+        let document = strut_core::Document::sample_login_button();
+        let mut invalid_document = document.clone();
+        invalid_document.artboards.clear();
+
+        let mut invalid_replacement = valid_test_batch(&document);
+        invalid_replacement.operations = vec![json!({
+            "id": "op-replace-invalid",
+            "type": "replace_document",
+            "previousDocument": document,
+            "nextDocument": invalid_document
+        })];
+        let error = validate_operation_batches(&[invalid_replacement], &document)
+            .expect_err("invalid replacement document rejects");
+        assert!(error.contains("replacement document"));
+        assert!(error.contains("artboard"));
+
+        let mut valid_replacement = valid_test_batch(&strut_core::Document::sample_login_button());
+        let previous_document = strut_core::Document::sample_login_button();
+        let next_document = strut_core::Document::sample_minimal_bot();
+        valid_replacement.operations = vec![json!({
+            "id": "op-replace-valid",
+            "type": "replace_document",
+            "previousDocument": previous_document,
+            "nextDocument": next_document
+        })];
+        validate_operation_batches(
+            &[valid_replacement],
+            &strut_core::Document::sample_minimal_bot(),
+        )
+        .expect("valid replacement document accepts");
+    }
+
+    #[test]
+    fn sprite_python_generated_operations_persist_after_rust_payload_validation() {
+        let root = temp_project_root("sprite-generated-persist");
+        let validated = validate_generation_plan_batch(
+            sprite_python_fixture("dice").to_string(),
+            "sprite-python".to_string(),
+            Some("rolling dice".to_string()),
+        )
+        .expect("sprite-python fixture validates");
+
+        save_project_snapshot(
+            root.display().to_string(),
+            "Sprite Persist".to_string(),
+            validated.document.clone(),
+            vec![validated.batch.clone()],
+            None,
+        )
+        .expect("validated sprite-python operations persist");
+
+        let loaded = load_project_snapshot(root.display().to_string())
+            .expect("persisted sprite-python project loads");
+        assert_eq!(loaded.operation_batches, vec![validated.batch]);
+        assert_eq!(loaded.document.name, "Rolling Dice Motion");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn invalid_documents_and_batches_are_rejected_before_persistence() {
         let root = temp_project_root("invalid");
         let mut document = strut_core::Document::sample_login_button();
@@ -4179,16 +4860,27 @@ mod tests {
         assert!(!validation.ok);
         assert!(validation.message.contains("artboard"));
 
-        let mut batch = valid_test_batch(&strut_core::Document::sample_login_button());
-        batch.source_type = "python".to_string();
         let error = save_project_snapshot(
             root.display().to_string(),
             "Invalid Project".to_string(),
             document,
+            Vec::new(),
+            None,
+        )
+        .expect_err("bad document should reject");
+        assert!(error.contains("artboard"));
+
+        let valid_document = strut_core::Document::sample_login_button();
+        let mut batch = valid_test_batch(&valid_document);
+        batch.source_type = "python".to_string();
+        let error = save_project_snapshot(
+            root.display().to_string(),
+            "Invalid Project".to_string(),
+            valid_document,
             vec![batch],
             None,
         )
-        .expect_err("bad document and batch should reject");
+        .expect_err("bad batch should reject");
         assert!(error.contains("unsupported source type"));
     }
 
@@ -4216,6 +4908,67 @@ mod tests {
             load_project_snapshot(root.display().to_string()).expect("legacy project loads");
         assert_eq!(loaded.document.name, "Login Button");
         assert!(loaded.operation_batches.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_manifest_rejects_absolute_main_scene_paths() {
+        let root = temp_project_root("absolute-main-scene");
+        fs::create_dir_all(&root).expect("root dir");
+        let absolute_scene = root.join("outside.strut");
+        write_project_manifest(&root, "Bad Manifest", &absolute_scene.display().to_string());
+
+        let error =
+            load_project_snapshot(root.display().to_string()).expect_err("absolute path rejects");
+        assert!(error.contains("mainScene path must be relative"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_manifest_rejects_traversal_main_scene_paths() {
+        let root = temp_project_root("traversal-main-scene");
+        fs::create_dir_all(&root).expect("root dir");
+        write_project_manifest(&root, "Bad Manifest", "../outside.strut");
+
+        let error =
+            load_project_snapshot(root.display().to_string()).expect_err("traversal path rejects");
+        assert!(error.contains("mainScene path must stay inside"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_manifest_accepts_valid_relative_main_scene_paths() {
+        let root = temp_project_root("relative-main-scene");
+        let document = strut_core::Document::sample_login_button();
+        write_project_scene(&root, "scenes/custom.strut", &document);
+        write_project_manifest(&root, "Custom Scene", "scenes/custom.strut");
+
+        let loaded =
+            load_project_snapshot(root.display().to_string()).expect("relative scene loads");
+        assert_eq!(loaded.document.name, "Login Button");
+        assert_eq!(loaded.main_scene, "scenes/custom.strut");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_manifest_scene_still_falls_back_to_legacy_scene() {
+        let root = temp_project_root("missing-main-scene-fallback");
+        fs::create_dir_all(root.join("scenes")).expect("scenes dir");
+        let document = strut_core::Document::sample_login_button();
+        fs::write(
+            root.join(LEGACY_STARTER_SCENE_FILE),
+            serde_json::to_string_pretty(&document).expect("document json"),
+        )
+        .expect("legacy scene");
+        write_project_manifest(&root, "Legacy Fallback", "scenes/missing.strut");
+
+        let loaded =
+            load_project_snapshot(root.display().to_string()).expect("legacy fallback loads");
+        assert_eq!(loaded.document.name, "Login Button");
 
         let _ = fs::remove_dir_all(root);
     }
