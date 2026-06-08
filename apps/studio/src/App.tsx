@@ -30,6 +30,10 @@ import {
   X,
   Eye,
   EyeOff,
+  Check,
+  History,
+  RotateCcw,
+  RotateCw,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./App.css";
@@ -198,6 +202,7 @@ type ChatMessage = {
   role: "assistant" | "user" | "system";
   text: string;
   attachments?: ReferenceAttachment[];
+  operationBatchId?: string;
 };
 
 type ChatThread = {
@@ -211,8 +216,11 @@ type ChatThread = {
   activeState: string;
   selectedNodeId?: string | null;
   layerUi?: Record<string, LayerUiState>;
-  pendingOperation?: OperationPreview | null;
-  operationHistory?: OperationPreview[];
+  pendingOperation?: OperationBatch | null;
+  operationHistory?: OperationBatch[];
+  operationBatches?: OperationBatch[];
+  undoStack?: string[];
+  redoStack?: string[];
 };
 
 type LayerUiState = {
@@ -228,6 +236,61 @@ type OperationPreview = {
   operationType: "style.patch" | "transform.patch" | "timeline.patch";
   affectedProperties: string[];
   createdAt: string;
+};
+
+type OperationSourceType = "ai" | "sprite-python" | "manual" | "cli";
+type OperationBatchStatus = "pending" | "applied" | "rejected" | "undone";
+
+type OperationValidationResult = {
+  ok: boolean;
+  message: string;
+  validator: string;
+  validatedAt: string;
+};
+
+type SetPropertyOperation = {
+  id: string;
+  type: "set_property";
+  targetId: string;
+  targetName: string;
+  property: string;
+  previousValue: unknown;
+  value: unknown;
+};
+
+type ReplaceDocumentOperation = {
+  id: string;
+  type: "replace_document";
+  previousDocument: StrutDocument | null;
+  nextDocument: StrutDocument;
+};
+
+type OperationRecord = SetPropertyOperation | ReplaceDocumentOperation;
+
+type OperationBatch = OperationPreview & {
+  sourceType: OperationSourceType;
+  status: OperationBatchStatus;
+  validationResult: OperationValidationResult;
+  documentRevisionId: string;
+  previousDocumentRevisionId?: string | null;
+  prompt?: string;
+  sourceMetadata?: Record<string, unknown>;
+  operations: OperationRecord[];
+  updatedAt: string;
+  appliedAt?: string | null;
+  rejectedAt?: string | null;
+};
+
+type ProjectSnapshot = {
+  project: ProjectInfo;
+  document: StrutDocument;
+  operationBatches: OperationBatch[];
+  selection?: {
+    activeState: string;
+    selectedNodeId?: string | null;
+    layerUi: Record<string, LayerUiState>;
+  } | null;
+  mainScene: string;
 };
 
 type ProjectRecord = {
@@ -265,6 +328,7 @@ const emptyMachine: StateMachine = {
 };
 
 const STORAGE_KEY = "strut-studio-workspace-v4";
+const BROWSER_SNAPSHOT_KEY = "strut-studio-saved-project-v1";
 
 function createChat(projectId: string, title: string, messages: ChatMessage[] = []): ChatThread {
   return {
@@ -280,6 +344,9 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
     layerUi: {},
     pendingOperation: null,
     operationHistory: [],
+    operationBatches: [],
+    undoStack: [],
+    redoStack: [],
   };
 }
 
@@ -359,6 +426,7 @@ function normalizeMessages(value: unknown): ChatMessage[] {
         role,
         text: typeof candidate.text === "string" ? candidate.text : "",
         attachments: normalizeAttachments(candidate.attachments),
+        operationBatchId: typeof candidate.operationBatchId === "string" ? candidate.operationBatchId : undefined,
       };
     })
     .filter((message) => message.text.trim().length > 0 || (message.attachments?.length ?? 0) > 0);
@@ -384,11 +452,75 @@ function normalizeLayerUi(value: unknown): Record<string, LayerUiState> {
   );
 }
 
-function normalizeOperationPreview(value: unknown): OperationPreview | null {
+function isOperationSourceType(value: unknown): value is OperationSourceType {
+  return value === "ai" || value === "sprite-python" || value === "manual" || value === "cli";
+}
+
+function isOperationBatchStatus(value: unknown): value is OperationBatchStatus {
+  return value === "pending" || value === "applied" || value === "rejected" || value === "undone";
+}
+
+function normalizeValidationResult(value: unknown): OperationValidationResult {
+  if (!value || typeof value !== "object") {
+    return {
+      ok: false,
+      message: "Migrated preview has not been validated for persistence",
+      validator: "strut-studio-migration",
+      validatedAt: "migration",
+    };
+  }
+  const candidate = value as Partial<OperationValidationResult>;
+  return {
+    ok: Boolean(candidate.ok),
+    message: typeof candidate.message === "string" ? candidate.message : "Validation state unavailable",
+    validator: typeof candidate.validator === "string" ? candidate.validator : "strut-studio",
+    validatedAt: typeof candidate.validatedAt === "string" ? candidate.validatedAt : "migration",
+  };
+}
+
+function normalizeOperationRecord(value: unknown): OperationRecord | null {
   if (!value || typeof value !== "object") {
     return null;
   }
-  const candidate = value as Partial<OperationPreview>;
+  const candidate = value as Partial<OperationRecord>;
+  if (candidate.type === "set_property") {
+    const operation = candidate as Partial<SetPropertyOperation>;
+    if (
+      typeof operation.id === "string"
+      && typeof operation.targetId === "string"
+      && typeof operation.targetName === "string"
+      && typeof operation.property === "string"
+    ) {
+      return {
+        id: operation.id,
+        type: "set_property",
+        targetId: operation.targetId,
+        targetName: operation.targetName,
+        property: operation.property,
+        previousValue: operation.previousValue,
+        value: operation.value,
+      };
+    }
+  }
+  if (candidate.type === "replace_document") {
+    const operation = candidate as Partial<ReplaceDocumentOperation>;
+    if (typeof operation.id === "string" && isStrutDocument(operation.nextDocument)) {
+      return {
+        id: operation.id,
+        type: "replace_document",
+        previousDocument: isStrutDocument(operation.previousDocument) ? operation.previousDocument : null,
+        nextDocument: operation.nextDocument,
+      };
+    }
+  }
+  return null;
+}
+
+function normalizeOperationPreview(value: unknown): OperationBatch | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<OperationBatch>;
   if (
     typeof candidate.id !== "string"
     || typeof candidate.targetId !== "string"
@@ -413,14 +545,39 @@ function normalizeOperationPreview(value: unknown): OperationPreview | null {
       ? candidate.affectedProperties.filter((item): item is string => typeof item === "string")
       : [],
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : "now",
+    sourceType: isOperationSourceType(candidate.sourceType) ? candidate.sourceType : "manual",
+    status: isOperationBatchStatus(candidate.status) ? candidate.status : "pending",
+    validationResult: normalizeValidationResult(candidate.validationResult),
+    documentRevisionId: typeof candidate.documentRevisionId === "string" ? candidate.documentRevisionId : "rev-migrated-local-state",
+    previousDocumentRevisionId: typeof candidate.previousDocumentRevisionId === "string" ? candidate.previousDocumentRevisionId : null,
+    prompt: typeof candidate.prompt === "string" ? candidate.prompt : candidate.intent,
+    sourceMetadata: candidate.sourceMetadata && typeof candidate.sourceMetadata === "object" ? candidate.sourceMetadata as Record<string, unknown> : { migratedFrom: "operationPreview" },
+    operations: Array.isArray(candidate.operations)
+      ? candidate.operations.map(normalizeOperationRecord).filter((item): item is OperationRecord => item !== null)
+      : [],
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "migration",
+    appliedAt: typeof candidate.appliedAt === "string" ? candidate.appliedAt : null,
+    rejectedAt: typeof candidate.rejectedAt === "string" ? candidate.rejectedAt : null,
   };
 }
 
-function normalizeOperationHistory(value: unknown): OperationPreview[] {
+function normalizeOperationHistory(value: unknown): OperationBatch[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.map(normalizeOperationPreview).filter((item): item is OperationPreview => item !== null);
+  return value.map(normalizeOperationPreview).filter((item): item is OperationBatch => item !== null);
+}
+
+function normalizeOperationBatches(value: unknown, fallback: unknown): OperationBatch[] {
+  const batches = normalizeOperationHistory(value);
+  if (batches.length) {
+    return batches;
+  }
+  return normalizeOperationHistory(fallback);
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function normalizeProjects(value: unknown): ProjectRecord[] {
@@ -438,6 +595,7 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
             .filter((chat) => chat && typeof chat === "object")
             .map((chat) => {
               const chatCandidate = chat as Partial<ChatThread>;
+              const operationBatches = normalizeOperationBatches(chatCandidate.operationBatches, chatCandidate.operationHistory);
               return {
                 id: typeof chatCandidate.id === "string" && chatCandidate.id ? chatCandidate.id : `chat-${Date.now()}-${Math.random()}`,
                 title: typeof chatCandidate.title === "string" && chatCandidate.title ? chatCandidate.title : "Untitled chat",
@@ -450,7 +608,10 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
                 selectedNodeId: typeof chatCandidate.selectedNodeId === "string" ? chatCandidate.selectedNodeId : null,
                 layerUi: normalizeLayerUi(chatCandidate.layerUi),
                 pendingOperation: normalizeOperationPreview(chatCandidate.pendingOperation),
-                operationHistory: normalizeOperationHistory(chatCandidate.operationHistory),
+                operationHistory: operationBatches,
+                operationBatches,
+                undoStack: normalizeStringList(chatCandidate.undoStack),
+                redoStack: normalizeStringList(chatCandidate.redoStack),
               };
             })
         : [];
@@ -607,6 +768,7 @@ function ChatMessageView({ compact = false, message }: { compact?: boolean; mess
       <span className="message-role">{roleLabel}</span>
       <div className="message-body">
         {message.role === "user" ? <span className="message-text">{message.text}</span> : <MarkdownResponse text={message.text} />}
+        {message.operationBatchId ? <span className="message-batch-link">Batch {message.operationBatchId}</span> : null}
         {message.attachments?.length ? (
           <span className="message-attachments">
             {message.attachments.map((attachment) => (
@@ -658,7 +820,7 @@ function inferAffectedProperties(intent: string, operationType: OperationPreview
   if (/(color|fill)/.test(value)) properties.add("style.fill");
   if (/stroke|outline/.test(value)) properties.add("style.stroke");
   if (/opacity|transparent|fade/.test(value)) properties.add("style.opacity");
-  if (/move|position|shift|x|y/.test(value)) properties.add("transform.translate");
+  if (/\b(move|position|shift|translate)\b/.test(value)) properties.add("transform.translate");
   if (/rotate|tilt/.test(value)) properties.add("transform.rotate");
   if (/scale|bigger|smaller|size/.test(value)) properties.add("transform.scale");
   if (/timing|speed|duration/.test(value)) properties.add("timeline.duration");
@@ -668,6 +830,239 @@ function inferAffectedProperties(intent: string, operationType: OperationPreview
     properties.add(operationType === "style.patch" ? "style" : operationType === "transform.patch" ? "transform" : "timeline");
   }
   return Array.from(properties);
+}
+
+function nowStamp() {
+  return new Date().toISOString();
+}
+
+function documentRevisionId(document: StrutDocument | null) {
+  if (!document) {
+    return "rev-empty";
+  }
+  const artboard = document.artboards[0];
+  const layerCount = artboard ? flattenNodes(artboard.nodes).length : 0;
+  return `rev-${slugToken(document.name)}-${layerCount}-${document.timelines.length}-${document.state_machines.length}`;
+}
+
+function slugToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "untitled";
+}
+
+function findNodeById(nodes: StrutNode[], nodeId: string): StrutNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node;
+    }
+    const child = findNodeById(node.children ?? [], nodeId);
+    if (child) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function getNodeProperty(node: StrutNode, property: string): unknown {
+  if (property.startsWith("style.")) {
+    return node.style?.[property.slice(6) as keyof NonNullable<StrutNode["style"]>];
+  }
+  if (property.startsWith("transform.")) {
+    return node.transform?.[property.slice(10) as keyof NonNullable<StrutNode["transform"]>];
+  }
+  return undefined;
+}
+
+function setNodeProperty(node: StrutNode, property: string, value: unknown): StrutNode {
+  if (property.startsWith("style.")) {
+    const key = property.slice(6) as keyof NonNullable<StrutNode["style"]>;
+    return { ...node, style: { ...(node.style ?? {}), [key]: value } };
+  }
+  if (property.startsWith("transform.")) {
+    const key = property.slice(10) as keyof NonNullable<StrutNode["transform"]>;
+    return { ...node, transform: { ...(node.transform ?? {}), [key]: value } };
+  }
+  return node;
+}
+
+function updateNodeById(nodes: StrutNode[], nodeId: string, updater: (node: StrutNode) => StrutNode): StrutNode[] {
+  return nodes.map((node) => {
+    if (node.id === nodeId) {
+      return updater(node);
+    }
+    if (node.children?.length) {
+      return { ...node, children: updateNodeById(node.children, nodeId, updater) };
+    }
+    return node;
+  });
+}
+
+function validateOperationBatch(document: StrutDocument | null, batch: OperationBatch): OperationValidationResult {
+  const validatedAt = nowStamp();
+  if (!document && !batch.operations.some((operation) => operation.type === "replace_document")) {
+    return {
+      ok: false,
+      message: "No validated document is open for this operation batch",
+      validator: "strut-studio-browser",
+      validatedAt,
+    };
+  }
+  if (!batch.operations.length) {
+    return {
+      ok: false,
+      message: "Operation batch has no operations to apply",
+      validator: "strut-studio-browser",
+      validatedAt,
+    };
+  }
+  const nodes = document?.artboards[0]?.nodes ?? [];
+  for (const operation of batch.operations) {
+    if (operation.type === "replace_document") {
+      if (!isStrutDocument(operation.nextDocument)) {
+        return {
+          ok: false,
+          message: "Replacement operation does not contain a valid Strut document",
+          validator: "strut-studio-browser",
+          validatedAt,
+        };
+      }
+      continue;
+    }
+    const node = findNodeById(nodes, operation.targetId);
+    if (!node) {
+      return {
+        ok: false,
+        message: `Operation targets missing node ${operation.targetId}`,
+        validator: "strut-studio-browser",
+        validatedAt,
+      };
+    }
+    if (!/^style\.(fill|stroke|opacity|stroke_width)$|^transform\.(translate_x|translate_y|rotate|scale_x|scale_y)$/.test(operation.property)) {
+      return {
+        ok: false,
+        message: `Unsupported operation property ${operation.property}`,
+        validator: "strut-studio-browser",
+        validatedAt,
+      };
+    }
+  }
+  return {
+    ok: true,
+    message: "Operation batch validated against the current Strut document",
+    validator: "strut-studio-browser",
+    validatedAt,
+  };
+}
+
+function applyOperationBatch(document: StrutDocument | null, batch: OperationBatch, direction: "apply" | "undo"): StrutDocument | null {
+  if (!batch.validationResult.ok) {
+    return document;
+  }
+  if (!document && !batch.operations.some((operation) => operation.type === "replace_document")) {
+    return document;
+  }
+  let nextDocument = document;
+  for (const operation of batch.operations) {
+    if (operation.type === "replace_document") {
+      nextDocument = direction === "apply" ? operation.nextDocument : operation.previousDocument;
+      continue;
+    }
+    if (!nextDocument) {
+      return null;
+    }
+    const value = direction === "apply" ? operation.value : operation.previousValue;
+    nextDocument = {
+      ...nextDocument,
+      artboards: nextDocument.artboards.map((artboard, index) =>
+        index === 0
+          ? { ...artboard, nodes: updateNodeById(artboard.nodes, operation.targetId, (node) => setNodeProperty(node, operation.property, value)) }
+          : artboard,
+      ),
+    };
+  }
+  return nextDocument;
+}
+
+function operationForIntent(selectedLayer: StrutNode, intent: string, operationType: OperationPreview["operationType"]): SetPropertyOperation {
+  const lower = intent.toLowerCase();
+  let property = "style.fill";
+  let value: unknown = "#d8f5e3";
+
+  if (operationType === "transform.patch") {
+    if (/rotate|tilt/.test(lower)) {
+      property = "transform.rotate";
+      value = (selectedLayer.transform?.rotate ?? 0) + 6;
+    } else if (/\b(move|shift|position|translate|up|down)\b/.test(lower)) {
+      property = "transform.translate_y";
+      value = (selectedLayer.transform?.translate_y ?? 0) - 10;
+    } else {
+      property = "transform.scale_x";
+      value = Number(((selectedLayer.transform?.scale_x ?? 1) + 0.08).toFixed(2));
+    }
+  } else if (operationType === "timeline.patch") {
+    property = "transform.translate_y";
+    value = (selectedLayer.transform?.translate_y ?? 0) - 6;
+  } else if (/stroke|outline/.test(lower)) {
+    property = "style.stroke";
+    value = "#0f766e";
+  } else if (/opacity|transparent|fade/.test(lower)) {
+    property = "style.opacity";
+    value = 0.72;
+  }
+
+  return {
+    id: `op-${slugToken(property)}-${Date.now()}`,
+    type: "set_property",
+    targetId: selectedLayer.id,
+    targetName: selectedLayer.name,
+    property,
+    previousValue: getNodeProperty(selectedLayer, property),
+    value,
+  };
+}
+
+function createGenerationBatch(
+  result: GeneratedCharacter,
+  previousDocument: StrutDocument | null,
+  prompt: string,
+  sourceType: OperationSourceType,
+): OperationBatch {
+  const timestamp = nowStamp();
+  const batch: OperationBatch = {
+    id: `batch-${sourceType}-${documentRevisionId(result.document)}-${Date.now()}`,
+    targetId: result.document.id,
+    targetName: result.document.name,
+    intent: prompt,
+    operationType: "timeline.patch",
+    affectedProperties: ["document"],
+    createdAt: timestamp,
+    sourceType,
+    status: "applied",
+    validationResult: {
+      ok: true,
+      message: "Generated document was validated by Rust before Studio persistence",
+      validator: "strut-studio-rust",
+      validatedAt: timestamp,
+    },
+    previousDocumentRevisionId: documentRevisionId(previousDocument),
+    documentRevisionId: documentRevisionId(result.document),
+    prompt,
+    sourceMetadata: {
+      provider: result.source,
+      subjectClassification: result.planSummary?.subjectClassification,
+      subjectLabel: result.planSummary?.subjectLabel,
+      operationCount: result.operationCount,
+    },
+    operations: [{
+      id: `op-replace-${Date.now()}`,
+      type: "replace_document",
+      previousDocument,
+      nextDocument: result.document,
+    }],
+    updatedAt: timestamp,
+    appliedAt: timestamp,
+    rejectedAt: null,
+  };
+  return batch;
 }
 
 function latestPreviewForProject(project: ProjectRecord | null, activeChatId: string | null) {
@@ -708,7 +1103,8 @@ function documentSummary(document: StrutDocument | null) {
 function projectFiles(project: ProjectRecord): ProjectFile[] {
   return [
     { name: "strut.project.json", path: `${project.path}\\strut.project.json`, kind: "project" },
-    { name: "starter.strut.json", path: `${project.path}\\scenes\\starter.strut.json`, kind: "scene" },
+    { name: "main.strut", path: `${project.path}\\scenes\\main.strut`, kind: "scene" },
+    { name: "operation-batches.json", path: `${project.path}\\operations\\operation-batches.json`, kind: "operations" },
     { name: "assets", path: `${project.path}\\assets`, kind: "folder" },
     { name: "exports", path: `${project.path}\\exports`, kind: "folder" },
   ];
@@ -1202,7 +1598,10 @@ function App() {
   const selectedNodeId = activeChat?.selectedNodeId ?? null;
   const layerUi = activeChat?.layerUi ?? {};
   const pendingOperation = activeChat?.pendingOperation ?? null;
-  const operationHistory = activeChat?.operationHistory ?? [];
+  const operationBatches = activeChat?.operationBatches ?? activeChat?.operationHistory ?? [];
+  const operationHistory = operationBatches;
+  const undoStack = activeChat?.undoStack ?? [];
+  const redoStack = activeChat?.redoStack ?? [];
   const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
   const selectedTargetLabel = selectedLayer?.name ?? "No selection";
   const selectedTimelineMembership = selectedLayer ? nodeTimelineMembership(currentDocument, selectedLayer.id) : [];
@@ -1266,28 +1665,185 @@ function App() {
   }
 
   function stageOperationPreview() {
-    if (!selectedLayer) {
+    if (!selectedLayer || !currentDocument) {
       setActivity("Select a visible semantic part before staging an edit preview");
       return;
     }
     const intent = prompt.trim() || `Edit ${selectedLayer.name}`;
     const operationType = inferOperationType(intent);
-    const preview: OperationPreview = {
-      id: `op-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+    const operation = operationForIntent(selectedLayer, intent, operationType);
+    const timestamp = nowStamp();
+    const draft: OperationBatch = {
+      id: `batch-manual-${selectedLayer.id}-${Date.now()}`,
       targetId: selectedLayer.id,
       targetName: selectedLayer.name,
       intent,
       operationType,
       affectedProperties: inferAffectedProperties(intent, operationType),
-      createdAt: "now",
+      createdAt: timestamp,
+      sourceType: "manual",
+      status: "pending",
+      validationResult: {
+        ok: false,
+        message: "Validation has not run",
+        validator: "strut-studio-browser",
+        validatedAt: timestamp,
+      },
+      previousDocumentRevisionId: documentRevisionId(currentDocument),
+      documentRevisionId: documentRevisionId(currentDocument),
+      prompt: intent,
+      sourceMetadata: { selectedNodeId: selectedLayer.id, selectedNodeName: selectedLayer.name },
+      operations: [operation],
+      updatedAt: timestamp,
+      appliedAt: null,
+      rejectedAt: null,
+    };
+    const preview: OperationBatch = {
+      ...draft,
+      validationResult: validateOperationBatch(currentDocument, draft),
     };
     updateCurrentChat((chat) => ({
       ...chat,
       pendingOperation: preview,
-      operationHistory: [preview, ...(chat.operationHistory ?? [])].slice(0, 8),
+      operationBatches: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)],
+      operationHistory: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)].slice(0, 12),
       updated: "now",
     }));
-    setActivity(`Preview-only operation staged for ${selectedLayer.name}`);
+    setActivity(preview.validationResult.ok ? `Validated operation batch staged for ${selectedLayer.name}` : preview.validationResult.message);
+  }
+
+  function applyPendingOperation() {
+    if (!pendingOperation) {
+      setActivity("No operation batch is staged");
+      return;
+    }
+    const validation = validateOperationBatch(currentDocument, pendingOperation);
+    if (!validation.ok) {
+      const rejected = { ...pendingOperation, validationResult: validation, updatedAt: nowStamp() };
+      updateCurrentChat((chat) => ({
+        ...chat,
+        pendingOperation: rejected,
+        operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
+        operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
+        updated: "now",
+      }));
+      setActivity(validation.message);
+      return;
+    }
+    const nextDocument = applyOperationBatch(currentDocument, { ...pendingOperation, validationResult: validation }, "apply");
+    if (!nextDocument) {
+      setActivity("Operation batch could not apply because no document is open");
+      return;
+    }
+    const timestamp = nowStamp();
+    const applied: OperationBatch = {
+      ...pendingOperation,
+      status: "applied",
+      validationResult: validation,
+      previousDocumentRevisionId: documentRevisionId(currentDocument),
+      documentRevisionId: documentRevisionId(nextDocument),
+      updatedAt: timestamp,
+      appliedAt: timestamp,
+      rejectedAt: null,
+    };
+    updateCurrentChat((chat) => ({
+      ...chat,
+      document: nextDocument,
+      pendingOperation: null,
+      operationBatches: [applied, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== applied.id)],
+      operationHistory: [applied, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== applied.id)].slice(0, 12),
+      undoStack: [applied.id, ...(chat.undoStack ?? [])],
+      redoStack: [],
+      updated: "now",
+      messages: [
+        ...chat.messages,
+        { id: Date.now() + Math.random(), role: "assistant", text: `Applied validated batch ${applied.id} to ${applied.targetName}.`, operationBatchId: applied.id },
+      ],
+    }));
+    setActivity(`Applied validated batch ${applied.id}`);
+  }
+
+  function rejectPendingOperation() {
+    if (!pendingOperation) {
+      setActivity("No operation batch is staged");
+      return;
+    }
+    const timestamp = nowStamp();
+    const rejected: OperationBatch = {
+      ...pendingOperation,
+      status: "rejected",
+      updatedAt: timestamp,
+      rejectedAt: timestamp,
+    };
+    updateCurrentChat((chat) => ({
+      ...chat,
+      pendingOperation: null,
+      operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
+      operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
+      updated: "now",
+      messages: [
+        ...chat.messages,
+        { id: Date.now() + Math.random(), role: "assistant", text: `Rejected batch ${rejected.id}; no document mutation was applied.`, operationBatchId: rejected.id },
+      ],
+    }));
+    setActivity(`Rejected batch ${rejected.id}`);
+  }
+
+  function undoLastBatch() {
+    const batchId = undoStack[0];
+    const batch = operationBatches.find((item) => item.id === batchId);
+    if (!batch || batch.status !== "applied") {
+      setActivity("No applied operation batch is available to undo");
+      return;
+    }
+    const nextDocument = applyOperationBatch(currentDocument, batch, "undo");
+    if (!nextDocument) {
+      setActivity("Undo could not run because no document is open");
+      return;
+    }
+    const timestamp = nowStamp();
+    const undone = { ...batch, status: "undone" as const, updatedAt: timestamp };
+    updateCurrentChat((chat) => ({
+      ...chat,
+      document: nextDocument,
+      operationBatches: [undone, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)],
+      operationHistory: [undone, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)].slice(0, 12),
+      undoStack: (chat.undoStack ?? []).filter((id) => id !== batch.id),
+      redoStack: [batch.id, ...(chat.redoStack ?? [])],
+      updated: "now",
+    }));
+    setActivity(`Undid batch ${batch.id}`);
+  }
+
+  function redoLastBatch() {
+    const batchId = redoStack[0];
+    const batch = operationBatches.find((item) => item.id === batchId);
+    if (!batch) {
+      setActivity("No operation batch is available to redo");
+      return;
+    }
+    const reapplied = { ...batch, status: "applied" as const, validationResult: validateOperationBatch(currentDocument, batch) };
+    if (!reapplied.validationResult.ok) {
+      setActivity(reapplied.validationResult.message);
+      return;
+    }
+    const nextDocument = applyOperationBatch(currentDocument, reapplied, "apply");
+    if (!nextDocument) {
+      setActivity("Redo could not run because no document is open");
+      return;
+    }
+    const timestamp = nowStamp();
+    const updated = { ...reapplied, documentRevisionId: documentRevisionId(nextDocument), updatedAt: timestamp, appliedAt: timestamp };
+    updateCurrentChat((chat) => ({
+      ...chat,
+      document: nextDocument,
+      operationBatches: [updated, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)],
+      operationHistory: [updated, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)].slice(0, 12),
+      undoStack: [batch.id, ...(chat.undoStack ?? [])],
+      redoStack: (chat.redoStack ?? []).filter((id) => id !== batch.id),
+      updated: "now",
+    }));
+    setActivity(`Redid batch ${batch.id}`);
   }
 
   function providerPayload(): GenerationProvider {
@@ -1325,11 +1881,11 @@ function App() {
     updateChat(activeProjectId, activeChatId, updater);
   }
 
-  function appendMessage(role: ChatMessage["role"], text: string) {
+  function appendMessage(role: ChatMessage["role"], text: string, operationBatchId?: string) {
     updateCurrentChat((chat) => ({
       ...chat,
       updated: "now",
-      messages: [...chat.messages, { id: Date.now() + Math.random(), role, text }],
+      messages: [...chat.messages, { id: Date.now() + Math.random(), role, text, operationBatchId }],
     }));
   }
 
@@ -1553,6 +2109,123 @@ function App() {
     }
   }
 
+  async function saveActiveProject() {
+    if (!activeProject || !currentDocument) {
+      setActivity("Open a validated scene before saving");
+      return;
+    }
+
+    if (!desktopRuntime) {
+      window.localStorage.setItem(
+        BROWSER_SNAPSHOT_KEY,
+        JSON.stringify({
+          projects,
+          activeProjectId,
+          activeChatId,
+          themeMode,
+          savedAt: nowStamp(),
+        }),
+      );
+      setActivity(`Saved browser snapshot for ${activeProject.name}`);
+      return;
+    }
+
+    try {
+      const snapshot = await invoke<ProjectSnapshot>("save_project_snapshot", {
+        projectPath: activeProject.path,
+        projectName: activeProject.name,
+        document: currentDocument,
+        operationBatches,
+        selection: {
+          activeState: currentActiveState,
+          selectedNodeId,
+          layerUi,
+        },
+      });
+      setProjects((current) =>
+        current.map((project) =>
+          project.id === activeProject.id
+            ? { ...project, name: snapshot.project.name, path: snapshot.project.path }
+            : project,
+        ),
+      );
+      setActivity(`Saved ${snapshot.mainScene} with ${snapshot.operationBatches.length} operation batches`);
+    } catch (error) {
+      setActivity(`Save rejected: ${String(error)}`);
+    }
+  }
+
+  async function loadActiveProject() {
+    if (!activeProject) {
+      setActivity("Select a project before loading");
+      return;
+    }
+
+    if (!desktopRuntime) {
+      const raw = window.localStorage.getItem(BROWSER_SNAPSHOT_KEY);
+      if (!raw) {
+        setActivity("No browser snapshot has been saved yet");
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
+        const loaded = {
+          projects: normalizeProjects(parsed.projects),
+          activeProjectId: typeof parsed.activeProjectId === "string" ? parsed.activeProjectId : activeProjectId,
+          activeChatId: typeof parsed.activeChatId === "string" ? parsed.activeChatId : activeChatId,
+          themeMode: isThemeMode(parsed.themeMode) ? parsed.themeMode : themeMode,
+        };
+        setProjects(loaded.projects);
+        setActiveProjectId(loaded.activeProjectId ?? null);
+        setActiveChatId(loaded.activeChatId ?? null);
+        setThemeMode(loaded.themeMode);
+        setActivity("Reopened browser snapshot");
+      } catch (error) {
+        setActivity(`Browser snapshot rejected: ${String(error)}`);
+      }
+      return;
+    }
+
+    try {
+      const snapshot = await invoke<ProjectSnapshot>("load_project_snapshot", { projectPath: activeProject.path });
+      const activeId = activeChatId ?? `chat-${Date.now()}`;
+      const loadedChat: ChatThread = {
+        ...(activeChat ?? createChat(activeProject.id, "Loaded scene")),
+        id: activeId,
+        title: activeChat?.title ?? "Loaded scene",
+        projectId: activeProject.id,
+        updated: "now",
+        document: snapshot.document,
+        activeState: snapshot.selection?.activeState ?? snapshot.document.state_machines[0]?.states[0] ?? "idle",
+        selectedNodeId: snapshot.selection?.selectedNodeId ?? null,
+        layerUi: snapshot.selection?.layerUi ?? {},
+        pendingOperation: null,
+        operationBatches: snapshot.operationBatches,
+        operationHistory: snapshot.operationBatches,
+        undoStack: snapshot.operationBatches.filter((batch) => batch.status === "applied").map((batch) => batch.id),
+        redoStack: [],
+      };
+      setProjects((current) =>
+        current.map((project) =>
+          project.id === activeProject.id
+            ? {
+                ...project,
+                name: snapshot.project.name,
+                path: snapshot.project.path,
+                chats: project.chats.some((chat) => chat.id === activeId)
+                  ? project.chats.map((chat) => (chat.id === activeId ? loadedChat : chat))
+                  : [loadedChat, ...project.chats],
+              }
+            : project,
+        ),
+      );
+      setActiveChatId(activeId);
+      setActivity(`Loaded ${snapshot.mainScene} with ${snapshot.operationBatches.length} operation batches`);
+    } catch (error) {
+      setActivity(`Load rejected: ${String(error)}`);
+    }
+  }
+
   async function runGeneration() {
     const trimmed = prompt.trim();
     if (!trimmed && pendingReferences.length === 0) {
@@ -1580,12 +2253,17 @@ function App() {
       }
       const args = { prompt: generationPrompt, provider: providerPayload(), references, context: generationContext() };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
+      const generationBatch = createGenerationBatch(result, currentDocument, generationPrompt, "ai");
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
         title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference motion") : chat.title,
         updated: "now",
         document: result.document,
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
+        operationBatches: [generationBatch, ...(chat.operationBatches ?? [])],
+        operationHistory: [generationBatch, ...(chat.operationBatches ?? [])].slice(0, 12),
+        undoStack: [generationBatch.id, ...(chat.undoStack ?? [])],
+        redoStack: [],
       }));
       const generatedPartSummary = result.planSummary?.partNames.length
         ? result.planSummary.partNames.slice(0, 6).join(", ")
@@ -1597,6 +2275,7 @@ function App() {
       appendMessage(
         "assistant",
         `**${result.document.name} is ready.**\n\nProvider: ${activeProviderLabel}\n\nSubject: ${result.planSummary?.subjectLabel ?? "validated Strut document"} (${result.planSummary?.subjectClassification ?? "fallback"})\n\nOperations: ${result.operationCount ?? 0} validated before conversion\n\nParts: ${generatedPartSummary}\n\nTimelines: ${generatedTimelineSummary}\n\nI ${currentDocument ? "updated" : "created"} editable layers, states, timelines, bindings, and events.`,
+        generationBatch.id,
       );
     } catch (error) {
       setActivity(String(error));
@@ -1737,7 +2416,26 @@ function App() {
           <div className="workspace-status" aria-label="Project status">
             <span>{viewMode === "editor" ? "AI editor" : titleCase(viewMode)}</span>
             <span>{currentDocument ? `${layers.length} layers` : "No scene"}</span>
+            <span>{operationBatches.length} batches</span>
             <span data-testid="selected-provider-chip">Provider: {activeProviderLabel}</span>
+          </div>
+          <div className="persistence-actions" aria-label="Persistence controls">
+            <button disabled={!activeProject || !currentDocument} type="button" onClick={() => void saveActiveProject()}>
+              <Save size={15} />
+              Save
+            </button>
+            <button disabled={!activeProject} type="button" onClick={() => void loadActiveProject()}>
+              <FolderOpen size={15} />
+              Reopen
+            </button>
+            <button disabled={!undoStack.length} type="button" onClick={undoLastBatch}>
+              <RotateCcw size={15} />
+              Undo
+            </button>
+            <button disabled={!redoStack.length} type="button" onClick={redoLastBatch}>
+              <RotateCw size={15} />
+              Redo
+            </button>
           </div>
           <button
             aria-label="Open in file explorer"
@@ -2033,7 +2731,9 @@ function App() {
                 canStageOperation={Boolean(selectedLayer)}
                 fileInputRef={fileInputRef}
                 onAttachReferenceImages={(filesToAttach) => void attachReferenceImages(filesToAttach)}
+                onApplyPendingOperation={applyPendingOperation}
                 onRemovePendingReference={removePendingReference}
+                onRejectPendingOperation={rejectPendingOperation}
                 onRunGeneration={() => void runGeneration()}
                 onStageOperationPreview={stageOperationPreview}
                 operationHistory={operationHistory}
@@ -2157,8 +2857,10 @@ function AiEditRail({
   activeProviderLabel,
   canStageOperation,
   fileInputRef,
+  onApplyPendingOperation,
   onAttachReferenceImages,
   onRemovePendingReference,
+  onRejectPendingOperation,
   onRunGeneration,
   onStageOperationPreview,
   operationHistory,
@@ -2173,12 +2875,14 @@ function AiEditRail({
   activeProviderLabel: string;
   canStageOperation: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
+  onApplyPendingOperation: () => void;
   onAttachReferenceImages: (files: FileList | null) => void;
   onRemovePendingReference: (id: string) => void;
+  onRejectPendingOperation: () => void;
   onRunGeneration: () => void;
   onStageOperationPreview: () => void;
-  operationHistory: OperationPreview[];
-  pendingOperation: OperationPreview | null;
+  operationHistory: OperationBatch[];
+  pendingOperation: OperationBatch | null;
   pendingReferences: ReferenceAttachment[];
   prompt: string;
   selectedLayer: StrutNode | null;
@@ -2229,23 +2933,37 @@ function AiEditRail({
                 <dt>Affected</dt>
                 <dd>{pendingOperation.affectedProperties.join(", ")}</dd>
               </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{pendingOperation.status}</dd>
+              </div>
+              <div>
+                <dt>Validation</dt>
+                <dd>{pendingOperation.validationResult.message}</dd>
+              </div>
             </dl>
           </div>
         ) : (
           <>
             <strong>No operation staged</strong>
-            <p>Phase 2 creates inspectable operation previews only. Apply and reject stay disabled until patch execution is modeled and tested.</p>
+            <p>Validated operation batches can be applied, rejected, undone, redone, saved, and reopened with the Strut scene.</p>
           </>
         )}
         <div>
-          <button disabled type="button">Apply operation</button>
-          <button disabled type="button">Reject</button>
+          <button disabled={!pendingOperation?.validationResult.ok} type="button" onClick={onApplyPendingOperation}>
+            <Check size={14} />
+            Apply operation
+          </button>
+          <button disabled={!pendingOperation} type="button" onClick={onRejectPendingOperation}>
+            <X size={14} />
+            Reject
+          </button>
         </div>
         {operationHistory.length ? (
           <div className="operation-history">
-            <span>History</span>
-            {operationHistory.slice(0, 3).map((operation) => (
-              <em key={operation.id}>{operation.targetName}: {operation.operationType}</em>
+            <span><History size={13} /> Operation history</span>
+            {operationHistory.slice(0, 6).map((operation) => (
+              <em key={operation.id}>{operation.targetName}: {operation.status} / {operation.sourceType}</em>
             ))}
           </div>
         ) : null}

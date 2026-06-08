@@ -470,6 +470,29 @@ textarea:focus-visible {
   background: var(--panel);
 }
 
+.persistence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.persistence-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.persistence-actions button:hover:not(:disabled) {
+  background: var(--mode-hover);
+}
+
+.persistence-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .workspace-context strong,
 .workspace-context span {
   overflow: hidden;
@@ -846,6 +869,18 @@ textarea:focus-visible {
 
 .message-text {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-batch-link {
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
   overflow-wrap: anywhere;
 }
 
@@ -1446,6 +1481,9 @@ textarea:focus-visible {
 
 .operation-preview-card dt,
 .operation-history span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
