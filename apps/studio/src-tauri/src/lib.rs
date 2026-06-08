@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::net::IpAddr;
@@ -9,22 +9,51 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+const GENERATION_PLAN_SYSTEM_PROMPT: &str = r##"You convert design prompts into editable Strut motion plans and inspectable Strut operations. Return only JSON in this shape: {"plan": <GenerationPlan>, "operations": <SceneOperation[]>}.
+
+GenerationPlan schema:
+- id: short stable string
+- name: animation, asset, interaction, object, mascot, logo, loader, or scene name
+- subject: {"classification":"dice|logo|loader|mascot|ui|object|scene|abstract|other","label":"human readable subject"}
+- parts: 6 to 14 semantic editable parts. Each part has id, name, role, geometry, style, motion_roles, and constraints.
+- geometry: {"kind":"rect","x":...,"y":...,"width":...,"height":...,"rx":...}, {"kind":"ellipse","cx":...,"cy":...,"rx":...,"ry":...}, {"kind":"path","d":"SVG path data"}, or {"kind":"text","x":...,"y":...,"value":"...","size":...}
+- style: fill, stroke, stroke_width, opacity
+- motion_roles: array of role ids such as idle, roll, settle, reveal, sweep, pulse, hover, success, error, loading, transition, custom
+- constraints: {"editable":true,"allowed_properties":["fill","stroke","translation.x","translation.y","rotation","scale","opacity"]}
+- motion_roles: top-level array of {"id":"settle","purpose":"short purpose","part_refs":["DieBody","TopFace"]}
+- states: concise names such as idle, roll, settle, reveal, loading, pulse, success, hover, error
+- timelines: named timeline plans with id, name, state, duration_ms, and tracks. Every track target must be a real part id. Keep motion calm and readable.
+- editability: {"editable_parts":["..."],"locked_parts":[],"notes":["..."]}
+
+SceneOperation vocabulary:
+- create_node, group_nodes, set_property, add_state, add_timeline, add_keyframe, bind_property, emit_event
+- Operations must reference part ids from the plan and must be valid before Strut converts them into a document.
+
+Subject rules:
+- Rolling dice parts should look like DieBody, FrontFace, TopFace, Pips, EdgeHighlight, SettleShadow.
+- Abstract logo parts should look like PrimaryMark, Wordmark, AccentStroke, RevealMask, AnchorGrid.
+- Loader parts should look like Track, ActiveSegment, PulseDot, ProgressSweep, Glow.
+- Mascot anatomy such as Body, Head, Eyes, Arms, Legs, Face, Smile is allowed only when the user clearly requests a mascot or character.
+- Low-energy motion means subtle, calm, breathable motion. It does not imply a face, pet, mascot, body, head, or fixed anatomy.
+
+Return compact JSON; do not explain, do not use markdown, do not return a whole document unless asked to repair an explicit fallback."##;
+
 const CHARACTER_DOCUMENT_SYSTEM_PROMPT: &str = r##"You convert design prompts into editable Strut motion documents. Return only JSON in this shape: {"document": <StrutDocument>}.
 
 StrutDocument schema:
 - id: UUID string
-- name: character or scene name
+- name: animation, asset, interaction, character, or scene name
 - artboards: one artboard with id, name, width 960, height 540, and editable nodes
 - nodes: recursive objects with id, name, kind, transform, style, shape, children
 - kind: group, rect, ellipse, path, text, image, or hit_area
 - transform: translate_x, translate_y, rotate, scale_x, scale_y
 - style: fill, stroke, stroke_width, opacity, linecap, linejoin
 - shape variants use {"type":"rect","x":...,"y":...,"width":...,"height":...,"rx":...}, {"type":"ellipse","cx":...,"cy":...,"rx":...,"ry":...}, {"type":"path","d":"SVG path data"}, {"type":"text","x":...,"y":...,"value":"...","size":...}, or {"type":"none"}
-- timelines: include idle_float, wave, blink, scan, and celebrate timelines. Every track target must be a real node id. Keep timelines compact: one or two tracks per timeline and two or three keyframes per track.
-- state_machines: include one machine with states idle, float, wave, blink, scan, celebrate, sleep.
+- timelines: include idle_float, wave, blink, scan, and celebrate timelines. Every track target must be a real node id. Keep timelines compact, low-energy, and loop-friendly: one or two tracks per timeline, two or three keyframes per track, 300-1400 ms duration.
+- state_machines: include one machine with states idle, float, wave, blink, scan, celebrate, sleep. Treat these as a reusable quiet motion language, not only character moods: idle is stillness, float is gentle breathing/drift, wave is a small acknowledgment, blink is a tiny reset, scan is focused inspection, celebrate is restrained success, sleep is reduced attention.
 - bindings and events: arrays, may be empty.
 
-Make the silhouette, named layers, palette, and motion match the request. If the user asks for Pikachu, R2D2, a bird, a loader, or anything else, create that subject's distinct editable parts. Use 8 to 16 editable nodes unless the user asks for a complex scene. Return compact JSON; do not pretty-print. Do not return a preset selector such as variant/name/accent/shell."##;
+Make the composition, named layers, palette, and motion match the request. Strut can generate logo reveals, SVG animations, icons, loaders, buttons, app-state motion, product graphics, characters, storyboards, and scenes. If the user asks for a logo, loader, UI control, object, mascot, or anything else, create that subject's distinct editable parts. Prefer calm low-energy motion: subtle breathing, tiny bobs, soft pauses, restrained acknowledgment, and readable state changes that do not demand attention. Low-energy does not imply mascot anatomy, a face, a pet, or a fixed body model. Avoid frantic motion, giant jumps, confetti storms, speed lines, heavy squash/stretch, camera moves, and noisy effects unless explicitly requested. Use 8 to 16 editable nodes unless the user asks for a complex scene. Return compact JSON; do not pretty-print. Do not return a preset selector such as variant/name/accent/shell."##;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalGenerationKind {
@@ -122,6 +151,231 @@ struct GeneratedCharacter {
     document: strut_core::Document,
     source: String,
     message: String,
+    plan_summary: Option<GenerationPlanSummary>,
+    operation_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationPlanSummary {
+    subject_classification: String,
+    subject_label: String,
+    part_names: Vec<String>,
+    timeline_names: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PlannedDocument {
+    document: strut_core::Document,
+    summary: GenerationPlanSummary,
+    operation_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationPlanEnvelope {
+    plan: GenerationPlan,
+    #[serde(default)]
+    operations: Vec<SceneOperation>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationPlan {
+    id: Option<String>,
+    name: String,
+    subject: SubjectPlan,
+    #[serde(default)]
+    parts: Vec<SemanticPartPlan>,
+    #[serde(default)]
+    motion_roles: Vec<MotionRolePlan>,
+    #[serde(default)]
+    states: Vec<String>,
+    #[serde(default)]
+    timelines: Vec<TimelinePlan>,
+    #[serde(default)]
+    editability: EditabilityPlan,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubjectPlan {
+    classification: String,
+    label: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SemanticPartPlan {
+    id: String,
+    name: String,
+    role: String,
+    geometry: PlanGeometry,
+    #[serde(default)]
+    style: PlanStyle,
+    #[serde(default)]
+    motion_roles: Vec<String>,
+    #[serde(default)]
+    constraints: EditabilityConstraint,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanGeometry {
+    kind: String,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+    rx: Option<f64>,
+    ry: Option<f64>,
+    cx: Option<f64>,
+    cy: Option<f64>,
+    d: Option<String>,
+    value: Option<String>,
+    size: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanStyle {
+    fill: Option<String>,
+    stroke: Option<String>,
+    #[serde(alias = "stroke_width")]
+    stroke_width: Option<f64>,
+    opacity: Option<f64>,
+}
+
+impl Default for PlanStyle {
+    fn default() -> Self {
+        Self {
+            fill: Some("#f6f0df".to_string()),
+            stroke: Some("#25221d".to_string()),
+            stroke_width: Some(5.0),
+            opacity: Some(1.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EditabilityConstraint {
+    #[serde(default = "default_editable")]
+    editable: bool,
+    #[serde(default)]
+    allowed_properties: Vec<String>,
+}
+
+impl Default for EditabilityConstraint {
+    fn default() -> Self {
+        Self {
+            editable: true,
+            allowed_properties: Vec::new(),
+        }
+    }
+}
+
+fn default_editable() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EditabilityPlan {
+    #[serde(default)]
+    editable_parts: Vec<String>,
+    #[serde(default)]
+    locked_parts: Vec<String>,
+    #[serde(default)]
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MotionRolePlan {
+    id: String,
+    purpose: String,
+    #[serde(default)]
+    part_refs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TimelinePlan {
+    id: String,
+    name: String,
+    state: Option<String>,
+    duration_ms: u32,
+    #[serde(default)]
+    tracks: Vec<TimelineTrackPlan>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TimelineTrackPlan {
+    target: String,
+    property: String,
+    #[serde(default)]
+    keyframes: Vec<KeyframePlan>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyframePlan {
+    time_ms: u32,
+    value: f64,
+    easing: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum SceneOperation {
+    CreateNode {
+        id: String,
+        name: String,
+        kind: String,
+        parent: Option<String>,
+        geometry: PlanGeometry,
+        #[serde(default)]
+        style: PlanStyle,
+        role: Option<String>,
+    },
+    GroupNodes {
+        id: String,
+        name: String,
+        children: Vec<String>,
+    },
+    SetProperty {
+        target: String,
+        property: String,
+        value: Value,
+    },
+    AddState {
+        state: String,
+    },
+    AddTimeline {
+        id: String,
+        name: String,
+        state: Option<String>,
+        duration_ms: u32,
+    },
+    AddKeyframe {
+        timeline: String,
+        target: String,
+        property: String,
+        time_ms: u32,
+        value: f64,
+        easing: Option<String>,
+    },
+    BindProperty {
+        name: String,
+        target: String,
+        property: String,
+    },
+    EmitEvent {
+        name: String,
+        description: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,7 +510,9 @@ async fn generate_character(
             Ok(GeneratedCharacter {
                 source: config.provider_id,
                 message: reference_message("Generated through BYOK provider", &references),
-                document,
+                plan_summary: Some(document.summary),
+                operation_count: Some(document.operation_count),
+                document: document.document,
             })
         }
         "local" => {
@@ -269,7 +525,9 @@ async fn generate_character(
             Ok(GeneratedCharacter {
                 source: adapter_id,
                 message: reference_message("Generated through local provider", &references),
-                document,
+                plan_summary: Some(document.summary),
+                operation_count: Some(document.operation_count),
+                document: document.document,
             })
         }
         _ => Err("Unknown generation provider mode".to_string()),
@@ -386,7 +644,7 @@ fn test_local_adapter(adapter_id: String) -> ProviderOperationResult {
 async fn test_byok_provider(config: ByokProviderConfig) -> Result<ProviderOperationResult, String> {
     ensure_byok_config(&config)?;
     let smoke_prompt =
-        "Create a small floating helper character named Smoke Bot with a cyan accent.";
+        "Create a small floating helper animation named Smoke Bot with a cyan accent.";
     match generate_document_with_byok(smoke_prompt, &config, &[]).await {
         Ok(_) => Ok(ProviderOperationResult {
             ok: true,
@@ -721,9 +979,20 @@ fn document_repair_prompt(
     )
 }
 
+fn generation_plan_repair_prompt(
+    original_prompt: &str,
+    invalid_response: &str,
+    parse_error: &str,
+) -> String {
+    format!(
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nThe previous response could not be converted by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}. Keep the requested subject, use subject-specific semantic parts, include named states/timelines, and leave operations empty if unsure so Strut can derive validated operations. Do not explain, do not use markdown, do not return mascot anatomy unless the subject is a mascot.",
+        response_preview(invalid_response)
+    )
+}
+
 fn compact_plan_prompt(original_prompt: &str, previous_error: &str) -> String {
     format!(
-        "Convert this motion design request into a compact Strut scene plan.\nOriginal request: {original_prompt}\nPrevious full-document attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\":{{\"name\":\"Short scene name\",\"parts\":[{{\"name\":\"Body\",\"kind\":\"ellipse\",\"x\":480,\"y\":280,\"width\":160,\"height\":190,\"fill\":\"#58CC02\",\"stroke\":\"#1f1f1f\"}}],\"motion\":\"short phrase\"}}}}\nRules: include 6 to 10 visually distinct parts that match the requested subject, using kind ellipse, rect, path, or text. Use absolute artboard coordinates for x/y/width/height. For path parts include d. Do not explain."
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nConvert this motion design request into a compact Strut generation plan.\nOriginal request: {original_prompt}\nPrevious attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}.\nRules: include 6 to 10 visually distinct parts that match the requested subject. Use absolute artboard coordinates. Include states, timelines, tracks, and editable constraints. The motion must be calm and low-energy: subtle bob, tiny tilt, focused scan, restrained settle, soft reveal, progress sweep, or similar. Do not explain."
     )
 }
 
@@ -1055,7 +1324,7 @@ fn prompt_with_reference_context(prompt: &str, references: &[ReferenceImageInput
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{prompt}\n\nReference images attached: {names}. Inspect the image composition, silhouette, pose, palette, and visible parts, then return an editable Strut character spec that matches the reference direction."
+        "{prompt}\n\nReference images attached: {names}. Inspect the image composition, silhouette, pose, palette, typography, geometry, and visible parts, then return an editable Strut motion document that matches the reference direction."
     )
 }
 
@@ -1125,7 +1394,7 @@ fn contextual_generation_prompt(
         let document_json = serde_json::to_string_pretty(document)
             .map_err(|error| format!("Could not serialize current Strut document: {error}"))?;
         text.push_str(
-            "\nCurrent editable Strut document. Treat the user request as an edit to this document unless they explicitly ask for a new scene. Preserve unaffected layers, states, timelines, bindings, and events. Return the complete updated document, not a patch:\n",
+            "\nCurrent editable Strut document. Treat the user request as an edit to this document unless they explicitly ask for a new scene. Preserve unaffected layers, states, timelines, bindings, and events. Return a subject-aware generation plan plus explicit operations; do not replace the whole document unless the fallback repair prompt specifically asks for it:\n",
         );
         text.push_str(&document_json);
         text.push('\n');
@@ -1142,7 +1411,7 @@ fn local_character_prompt(
     reference_files: Option<&WrittenReferenceFiles>,
 ) -> String {
     let mut text = format!(
-        "{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\n\nUser request:\n{}",
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nUser request:\n{}",
         prompt_with_reference_context(prompt, references)
     );
     if let Some(files) = reference_files {
@@ -1155,7 +1424,7 @@ fn local_character_prompt(
         }
     }
     text.push_str(
-        "\n\nDo not inspect files, run tools, edit the workspace, or explain your answer. Return only the JSON object. Do not include markdown or a legacy variant spec.",
+        "\n\nDo not inspect files, run tools, edit the workspace, or explain your answer. Return only the JSON object. Prefer the generation plan and operations schema. Do not include markdown or a legacy variant spec.",
     );
     text
 }
@@ -1225,21 +1494,23 @@ async fn generate_document_with_byok(
     prompt: &str,
     config: &ByokProviderConfig,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::Document, String> {
+) -> Result<PlannedDocument, String> {
     ensure_byok_config(config)?;
     let response_text = byok_generate_text(prompt, config, references).await?;
 
-    match parse_generated_document(&response_text) {
+    match parse_provider_response_document(&response_text) {
         Ok(document) => Ok(document),
         Err(first_error) => {
-            let repair_prompt = document_repair_prompt(prompt, &response_text, &first_error);
+            let repair_prompt = generation_plan_repair_prompt(prompt, &response_text, &first_error);
             let repaired_text = byok_generate_text(&repair_prompt, config, &[]).await?;
-            match parse_generated_document(&repaired_text) {
+            match parse_provider_response_document(&repaired_text) {
                 Ok(document) => Ok(document),
                 Err(repair_error) => {
                     let plan_prompt = compact_plan_prompt(prompt, &repair_error);
                     let plan_text = byok_generate_text(&plan_prompt, config, &[]).await?;
-                    document_from_compact_plan_text(&plan_text).map_err(|plan_error| {
+                    document_from_generation_plan_text(&plan_text)
+                        .or_else(|_| document_from_compact_plan_text(&plan_text).map(planned_from_compact_document))
+                        .map_err(|plan_error| {
                         format!(
                             "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
                             response_preview(&plan_text)
@@ -1267,7 +1538,7 @@ async fn generate_document_with_local_adapter(
     adapter_id: &str,
     prompt: &str,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::Document, String> {
+) -> Result<PlannedDocument, String> {
     let definition = local_adapter_definitions()
         .into_iter()
         .find(|definition| definition.id == adapter_id)
@@ -1313,9 +1584,9 @@ async fn generate_document_with_local_adapter(
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let assistant_text = cli_assistant_text(&stdout);
-    match parse_generated_document(&assistant_text)
-        .or_else(|_| parse_generated_document(&stdout))
-        .or_else(|_| parse_generated_document(&stderr))
+    match parse_provider_response_document(&assistant_text)
+        .or_else(|_| parse_provider_response_document(&stdout))
+        .or_else(|_| parse_provider_response_document(&stderr))
     {
         Ok(document) => Ok(document),
         Err(first_error) => {
@@ -1325,7 +1596,7 @@ async fn generate_document_with_local_adapter(
                 assistant_text
             };
             let repair_prompt = local_character_prompt(
-                &document_repair_prompt(prompt, &invalid_response, &first_error),
+                &generation_plan_repair_prompt(prompt, &invalid_response, &first_error),
                 &[],
                 None,
             );
@@ -1345,9 +1616,9 @@ async fn generate_document_with_local_adapter(
             let repair_stdout = String::from_utf8_lossy(&repair_output.stdout).to_string();
             let repair_stderr = String::from_utf8_lossy(&repair_output.stderr).to_string();
             let repair_text = cli_assistant_text(&repair_stdout);
-            match parse_generated_document(&repair_text)
-                .or_else(|_| parse_generated_document(&repair_stdout))
-                .or_else(|_| parse_generated_document(&repair_stderr))
+            match parse_provider_response_document(&repair_text)
+                .or_else(|_| parse_provider_response_document(&repair_stdout))
+                .or_else(|_| parse_provider_response_document(&repair_stderr))
             {
                 Ok(document) => Ok(document),
                 Err(repair_error) => {
@@ -1372,9 +1643,12 @@ async fn generate_document_with_local_adapter(
                     let plan_stdout = String::from_utf8_lossy(&plan_output.stdout).to_string();
                     let plan_stderr = String::from_utf8_lossy(&plan_output.stderr).to_string();
                     let plan_text = cli_assistant_text(&plan_stdout);
-                    document_from_compact_plan_text(&plan_text)
-                        .or_else(|_| document_from_compact_plan_text(&plan_stdout))
-                        .or_else(|_| document_from_compact_plan_text(&plan_stderr))
+                    document_from_generation_plan_text(&plan_text)
+                        .or_else(|_| document_from_generation_plan_text(&plan_stdout))
+                        .or_else(|_| document_from_generation_plan_text(&plan_stderr))
+                        .or_else(|_| document_from_compact_plan_text(&plan_text).map(planned_from_compact_document))
+                        .or_else(|_| document_from_compact_plan_text(&plan_stdout).map(planned_from_compact_document))
+                        .or_else(|_| document_from_compact_plan_text(&plan_stderr).map(planned_from_compact_document))
                         .map_err(|plan_error| {
                             format!(
                                 "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
@@ -1390,7 +1664,7 @@ async fn generate_document_with_local_adapter(
 async fn generate_document_with_ollama(
     prompt: &str,
     references: &[ReferenceImageInput],
-) -> Result<strut_core::Document, String> {
+) -> Result<PlannedDocument, String> {
     let client = http_client()?;
     let images = references
         .iter()
@@ -1400,7 +1674,7 @@ async fn generate_document_with_ollama(
         .post("http://127.0.0.1:11434/api/generate")
         .json(&json!({
             "model": "llama3.2",
-            "prompt": format!("{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references)),
+            "prompt": format!("{GENERATION_PLAN_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references)),
             "images": images,
             "stream": false,
             "format": "json"
@@ -1419,10 +1693,10 @@ async fn generate_document_with_ollama(
         .get("response")
         .and_then(|value| value.as_str())
         .ok_or_else(|| "Ollama response did not include a response field".to_string())?;
-    match parse_generated_document(text) {
+    match parse_provider_response_document(text) {
         Ok(document) => Ok(document),
         Err(first_error) => {
-            let repair_prompt = document_repair_prompt(prompt, text, &first_error);
+            let repair_prompt = generation_plan_repair_prompt(prompt, text, &first_error);
             let repair_response = client
                 .post("http://127.0.0.1:11434/api/generate")
                 .json(&json!({
@@ -1448,7 +1722,7 @@ async fn generate_document_with_ollama(
                 .ok_or_else(|| {
                     "Ollama repair response did not include a response field".to_string()
                 })?;
-            match parse_generated_document(repair_text) {
+            match parse_provider_response_document(repair_text) {
                 Ok(document) => Ok(document),
                 Err(repair_error) => {
                     let plan_response = client
@@ -1477,7 +1751,9 @@ async fn generate_document_with_ollama(
                             "Ollama compact plan response did not include a response field"
                                 .to_string()
                         })?;
-                    document_from_compact_plan_text(plan_text).map_err(|plan_error| {
+                    document_from_generation_plan_text(plan_text)
+                        .or_else(|_| document_from_compact_plan_text(plan_text).map(planned_from_compact_document))
+                        .map_err(|plan_error| {
                         format!(
                             "model did not return a valid Strut document after repair. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}",
                             response_preview(plan_text)
@@ -1518,7 +1794,7 @@ async fn openai_compatible_chat(
         .json(&json!({
             "model": config.model,
             "messages": [
-                {"role": "system", "content": CHARACTER_DOCUMENT_SYSTEM_PROMPT},
+                {"role": "system", "content": GENERATION_PLAN_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content}
             ],
             "temperature": 0.2,
@@ -1565,7 +1841,7 @@ async fn anthropic_message(
         .json(&json!({
             "model": config.model,
             "max_tokens": 8192,
-            "system": CHARACTER_DOCUMENT_SYSTEM_PROMPT,
+            "system": GENERATION_PLAN_SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": content}]
         }))
         .send()
@@ -1592,7 +1868,7 @@ async fn gemini_generate_content(
     let client = http_client()?;
     let model = config.model.trim().trim_start_matches("models/");
     let mut parts = vec![json!({
-        "text": format!("{CHARACTER_DOCUMENT_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references))
+        "text": format!("{GENERATION_PLAN_SYSTEM_PROMPT}\nPrompt: {}", prompt_with_reference_context(prompt, references))
     })];
     parts.extend(references.iter().filter_map(|reference| {
         Some(json!({
@@ -1951,6 +2227,1031 @@ fn normalize_none_string(value: Option<&mut Value>) {
     }
 }
 
+fn parse_provider_response_document(text: &str) -> Result<PlannedDocument, String> {
+    document_from_generation_plan_text(text).or_else(|plan_error| {
+        parse_generated_document(text).map(|document| PlannedDocument {
+            document,
+            summary: GenerationPlanSummary {
+                subject_classification: "whole-document-fallback".to_string(),
+                subject_label: "Validated whole document fallback".to_string(),
+                part_names: Vec::new(),
+                timeline_names: Vec::new(),
+            },
+            operation_count: 0,
+        }).map_err(|document_error| {
+            format!("plan parse failed: {plan_error}; whole-document fallback failed: {document_error}")
+        })
+    })
+}
+
+fn planned_from_compact_document(document: strut_core::Document) -> PlannedDocument {
+    let timeline_names = document
+        .timelines
+        .iter()
+        .map(|timeline| timeline.name.clone())
+        .collect::<Vec<_>>();
+    PlannedDocument {
+        document,
+        summary: GenerationPlanSummary {
+            subject_classification: "compact-plan-fallback".to_string(),
+            subject_label: "Validated compact plan fallback".to_string(),
+            part_names: Vec::new(),
+            timeline_names,
+        },
+        operation_count: 0,
+    }
+}
+
+fn document_from_generation_plan_text(text: &str) -> Result<PlannedDocument, String> {
+    if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        if let Ok(document) = document_from_generation_plan_value(&value) {
+            return Ok(document);
+        }
+    }
+
+    let mut last_error = None;
+    for json_text in extract_json_objects(text).into_iter().rev() {
+        match serde_json::from_str::<Value>(&json_text)
+            .map_err(|error| error.to_string())
+            .and_then(|value| document_from_generation_plan_value(&value))
+        {
+            Ok(document) => return Ok(document),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "model did not return a valid generation plan".to_string()))
+}
+
+fn document_from_generation_plan_value(value: &Value) -> Result<PlannedDocument, String> {
+    let envelope_value = if value.get("plan").is_some() {
+        value.clone()
+    } else if let Some(plan) = value
+        .get("generation_plan")
+        .or_else(|| value.get("generationPlan"))
+    {
+        json!({
+            "plan": plan,
+            "operations": value.get("operations").cloned().unwrap_or_else(|| json!([]))
+        })
+    } else {
+        return Err("generation response must include a plan object".to_string());
+    };
+    let envelope: GenerationPlanEnvelope = serde_json::from_value(envelope_value)
+        .map_err(|error| format!("generation plan schema mismatch: {error}"))?;
+    validate_generation_plan(&envelope.plan)?;
+    let operations = if envelope.operations.is_empty() {
+        operations_from_generation_plan(&envelope.plan)
+    } else {
+        envelope.operations
+    };
+    validate_scene_operations(&envelope.plan, &operations)?;
+    let document = document_from_scene_operations(&envelope.plan, &operations)?;
+    let summary = GenerationPlanSummary {
+        subject_classification: envelope.plan.subject.classification.clone(),
+        subject_label: envelope.plan.subject.label.clone(),
+        part_names: envelope
+            .plan
+            .parts
+            .iter()
+            .map(|part| part.name.clone())
+            .collect(),
+        timeline_names: envelope
+            .plan
+            .timelines
+            .iter()
+            .map(|timeline| timeline.name.clone())
+            .collect(),
+    };
+
+    Ok(PlannedDocument {
+        document,
+        summary,
+        operation_count: operations.len(),
+    })
+}
+
+fn validate_generation_plan(plan: &GenerationPlan) -> Result<(), String> {
+    if plan.name.trim().is_empty() {
+        return Err("generation plan must include a non-empty name".to_string());
+    }
+    if let Some(id) = &plan.id {
+        if id.trim().is_empty() {
+            return Err("generation plan id must not be empty".to_string());
+        }
+    }
+    if plan.subject.classification.trim().is_empty() || plan.subject.label.trim().is_empty() {
+        return Err("generation plan must classify the requested subject".to_string());
+    }
+    if plan.parts.len() < 5 {
+        return Err("generation plan must include at least five semantic parts".to_string());
+    }
+
+    let mut part_ids = HashSet::new();
+    let mut role_ids = HashSet::new();
+    for role in &plan.motion_roles {
+        if role.id.trim().is_empty() {
+            return Err("motion role ids must not be empty".to_string());
+        }
+        if !role_ids.insert(role.id.as_str()) {
+            return Err(format!("duplicate motion role id '{}'", role.id));
+        }
+        if role.purpose.trim().is_empty() {
+            return Err(format!(
+                "motion role '{}' must describe its purpose",
+                role.id
+            ));
+        }
+    }
+
+    for part in &plan.parts {
+        if part.id.trim().is_empty() || part.name.trim().is_empty() {
+            return Err("semantic parts must include non-empty id and name".to_string());
+        }
+        if !part_ids.insert(part.id.as_str()) {
+            return Err(format!("duplicate part id '{}'", part.id));
+        }
+        if part.role.trim().is_empty() {
+            return Err(format!("part '{}' must include a semantic role", part.id));
+        }
+        validate_part_geometry(part)?;
+        if !part.constraints.editable && plan.editability.locked_parts.is_empty() {
+            return Err(format!(
+                "part '{}' is non-editable but the plan did not list locked parts",
+                part.id
+            ));
+        }
+        for property in &part.constraints.allowed_properties {
+            if !allowed_edit_property(property) {
+                return Err(format!(
+                    "part '{}' allows unsupported editable property '{}'",
+                    part.id, property
+                ));
+            }
+        }
+        for role in &part.motion_roles {
+            if !role_ids.is_empty() && !role_ids.contains(role.as_str()) {
+                return Err(format!(
+                    "part '{}' references missing motion role '{}'",
+                    part.id, role
+                ));
+            }
+        }
+    }
+
+    for role in &plan.motion_roles {
+        for part_ref in &role.part_refs {
+            if !part_ids.contains(part_ref.as_str()) {
+                return Err(format!(
+                    "motion role '{}' references missing part '{}'",
+                    role.id, part_ref
+                ));
+            }
+        }
+    }
+
+    if !subject_allows_mascot_anatomy(&plan.subject) {
+        let mascot_parts = plan
+            .parts
+            .iter()
+            .filter(|part| is_mascot_anatomy_name(&part.name) || is_mascot_anatomy_name(&part.id))
+            .map(|part| part.name.as_str())
+            .collect::<Vec<_>>();
+        if !mascot_parts.is_empty() {
+            return Err(format!(
+                "non-mascot subject '{}' cannot use mascot-only anatomy: {}",
+                plan.subject.classification,
+                mascot_parts.join(", ")
+            ));
+        }
+    }
+
+    let states = normalized_state_set(&plan.states);
+    if states.is_empty() {
+        return Err("generation plan must include named states".to_string());
+    }
+    if !states.contains("idle") {
+        return Err("generation plan must include an idle state".to_string());
+    }
+    let mut timeline_ids = HashSet::new();
+    let mut timeline_names = HashSet::new();
+    for timeline in &plan.timelines {
+        if timeline.id.trim().is_empty() || timeline.name.trim().is_empty() {
+            return Err("timeline plans must include id and name".to_string());
+        }
+        if !timeline_ids.insert(timeline.id.as_str()) {
+            return Err(format!("duplicate timeline id '{}'", timeline.id));
+        }
+        if !timeline_names.insert(timeline.name.as_str()) {
+            return Err(format!("duplicate timeline name '{}'", timeline.name));
+        }
+        if timeline.duration_ms == 0 {
+            return Err(format!(
+                "timeline '{}' duration must be greater than zero",
+                timeline.name
+            ));
+        }
+        if let Some(state) = &timeline.state {
+            if !states.contains(normalized_state_name(state).as_str()) {
+                return Err(format!(
+                    "timeline '{}' references unknown state '{}'",
+                    timeline.name, state
+                ));
+            }
+        }
+        if timeline.tracks.is_empty() {
+            return Err(format!("timeline '{}' must include tracks", timeline.name));
+        }
+        for track in &timeline.tracks {
+            if !part_ids.contains(track.target.as_str()) {
+                return Err(format!(
+                    "timeline '{}' track targets missing part '{}'",
+                    timeline.name, track.target
+                ));
+            }
+            if !allowed_timeline_property(&track.property) {
+                return Err(format!(
+                    "timeline '{}' uses unsupported property '{}'",
+                    timeline.name, track.property
+                ));
+            }
+            if track.keyframes.len() < 2 {
+                return Err(format!(
+                    "timeline '{}' track '{}' must include at least two keyframes",
+                    timeline.name, track.target
+                ));
+            }
+            for keyframe in &track.keyframes {
+                if keyframe.time_ms > timeline.duration_ms {
+                    return Err(format!(
+                        "timeline '{}' keyframe at {}ms exceeds duration {}ms",
+                        timeline.name, keyframe.time_ms, timeline.duration_ms
+                    ));
+                }
+                if !keyframe.value.is_finite() {
+                    return Err(format!(
+                        "timeline '{}' has a non-finite keyframe value",
+                        timeline.name
+                    ));
+                }
+            }
+        }
+    }
+
+    for editable_part in &plan.editability.editable_parts {
+        if !part_ids.contains(editable_part.as_str()) {
+            return Err(format!(
+                "editability references missing editable part '{}'",
+                editable_part
+            ));
+        }
+    }
+    for locked_part in &plan.editability.locked_parts {
+        if !part_ids.contains(locked_part.as_str()) {
+            return Err(format!(
+                "editability references missing locked part '{}'",
+                locked_part
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_part_geometry(part: &SemanticPartPlan) -> Result<(), String> {
+    let geometry = &part.geometry;
+    match geometry.kind.to_lowercase().as_str() {
+        "rect" | "rectangle" => {
+            let width = geometry.width.unwrap_or_default();
+            let height = geometry.height.unwrap_or_default();
+            if width <= 0.0 || height <= 0.0 || !width.is_finite() || !height.is_finite() {
+                return Err(format!("part '{}' has invalid rect geometry", part.id));
+            }
+        }
+        "ellipse" => {
+            let rx = geometry
+                .rx
+                .or_else(|| geometry.width.map(|width| width / 2.0))
+                .unwrap_or_default();
+            let ry = geometry
+                .ry
+                .or_else(|| geometry.height.map(|height| height / 2.0))
+                .unwrap_or_default();
+            if rx <= 0.0 || ry <= 0.0 || !rx.is_finite() || !ry.is_finite() {
+                return Err(format!("part '{}' has invalid ellipse geometry", part.id));
+            }
+        }
+        "path" => {
+            if geometry.d.as_deref().unwrap_or_default().trim().is_empty() {
+                return Err(format!("part '{}' path geometry must include d", part.id));
+            }
+        }
+        "text" => {
+            let size = geometry.size.unwrap_or(24.0);
+            if size <= 0.0 || !size.is_finite() {
+                return Err(format!("part '{}' text geometry has invalid size", part.id));
+            }
+        }
+        other => {
+            return Err(format!(
+                "part '{}' uses unsupported geometry kind '{}'",
+                part.id, other
+            ))
+        }
+    }
+    Ok(())
+}
+
+fn operations_from_generation_plan(plan: &GenerationPlan) -> Vec<SceneOperation> {
+    let mut operations = Vec::new();
+    let child_ids = plan
+        .parts
+        .iter()
+        .map(|part| part.id.clone())
+        .collect::<Vec<_>>();
+    operations.push(SceneOperation::GroupNodes {
+        id: "SceneRig".to_string(),
+        name: format!("{} Rig", plan.name),
+        children: child_ids,
+    });
+    operations.extend(plan.parts.iter().map(|part| SceneOperation::CreateNode {
+        id: part.id.clone(),
+        name: part.name.clone(),
+        kind: node_kind_from_geometry(&part.geometry).to_string(),
+        parent: Some("SceneRig".to_string()),
+        geometry: part.geometry.clone(),
+        style: part.style.clone(),
+        role: Some(part.role.clone()),
+    }));
+    operations.extend(plan.states.iter().map(|state| SceneOperation::AddState {
+        state: normalized_state_name(state),
+    }));
+    for timeline in &plan.timelines {
+        operations.push(SceneOperation::AddTimeline {
+            id: timeline.id.clone(),
+            name: timeline.name.clone(),
+            state: timeline
+                .state
+                .as_ref()
+                .map(|state| normalized_state_name(state)),
+            duration_ms: timeline.duration_ms,
+        });
+        for track in &timeline.tracks {
+            for keyframe in &track.keyframes {
+                operations.push(SceneOperation::AddKeyframe {
+                    timeline: timeline.id.clone(),
+                    target: track.target.clone(),
+                    property: normalize_motion_property(&track.property),
+                    time_ms: keyframe.time_ms,
+                    value: keyframe.value,
+                    easing: keyframe.easing.clone(),
+                });
+            }
+        }
+    }
+    for part in &plan.parts {
+        if part.constraints.editable
+            && !plan
+                .editability
+                .locked_parts
+                .iter()
+                .any(|id| id == &part.id)
+        {
+            operations.push(SceneOperation::BindProperty {
+                name: format!("edit_{}_fill", semantic_token(&part.id)),
+                target: part.id.clone(),
+                property: "fill".to_string(),
+            });
+        }
+    }
+    operations.push(SceneOperation::EmitEvent {
+        name: "generation_plan_validated".to_string(),
+        description: format!(
+            "{} plan converted through validated Strut operations",
+            plan.subject.label
+        ),
+    });
+    operations
+}
+
+fn validate_scene_operations(
+    plan: &GenerationPlan,
+    operations: &[SceneOperation],
+) -> Result<(), String> {
+    if operations.is_empty() {
+        return Err("generation plan did not produce operations".to_string());
+    }
+    let plan_parts = plan
+        .parts
+        .iter()
+        .map(|part| part.id.as_str())
+        .collect::<HashSet<_>>();
+    let states = normalized_state_set(&plan.states);
+    let mut created_nodes = HashSet::new();
+    let mut timelines: HashMap<&str, u32> = HashMap::new();
+    let mut grouped_children = HashSet::new();
+
+    for operation in operations {
+        match operation {
+            SceneOperation::CreateNode { id, geometry, .. } => {
+                if !plan_parts.contains(id.as_str()) {
+                    return Err(format!("create_node references part outside plan: '{id}'"));
+                }
+                if !created_nodes.insert(id.as_str()) {
+                    return Err(format!("duplicate create_node id '{id}'"));
+                }
+                validate_plan_geometry(id, geometry)?;
+            }
+            SceneOperation::GroupNodes { id, children, .. } => {
+                if id.trim().is_empty() {
+                    return Err("group_nodes id must not be empty".to_string());
+                }
+                for child in children {
+                    if !plan_parts.contains(child.as_str()) {
+                        return Err(format!("group_nodes references missing child '{child}'"));
+                    }
+                    grouped_children.insert(child.as_str());
+                }
+            }
+            SceneOperation::SetProperty {
+                target, property, ..
+            } => {
+                if !plan_parts.contains(target.as_str()) {
+                    return Err(format!("set_property references missing target '{target}'"));
+                }
+                if property.trim().is_empty() {
+                    return Err("set_property property must not be empty".to_string());
+                }
+            }
+            SceneOperation::AddState { state } => {
+                if !states.contains(normalized_state_name(state).as_str()) {
+                    return Err(format!(
+                        "add_state references state outside plan: '{state}'"
+                    ));
+                }
+            }
+            SceneOperation::AddTimeline {
+                id,
+                duration_ms,
+                state,
+                ..
+            } => {
+                if *duration_ms == 0 {
+                    return Err(format!(
+                        "add_timeline '{id}' duration must be greater than zero"
+                    ));
+                }
+                if let Some(state) = state {
+                    if !states.contains(normalized_state_name(state).as_str()) {
+                        return Err(format!(
+                            "add_timeline '{id}' references unknown state '{state}'"
+                        ));
+                    }
+                }
+                if timelines.insert(id.as_str(), *duration_ms).is_some() {
+                    return Err(format!("duplicate add_timeline id '{id}'"));
+                }
+            }
+            SceneOperation::AddKeyframe {
+                timeline,
+                target,
+                property,
+                time_ms,
+                value,
+                ..
+            } => {
+                let Some(duration) = timelines.get(timeline.as_str()) else {
+                    return Err(format!(
+                        "add_keyframe references missing timeline '{timeline}'"
+                    ));
+                };
+                if !plan_parts.contains(target.as_str()) {
+                    return Err(format!("add_keyframe references missing node '{target}'"));
+                }
+                if *time_ms > *duration {
+                    return Err(format!(
+                        "add_keyframe time {time_ms} exceeds timeline '{timeline}' duration"
+                    ));
+                }
+                if !allowed_timeline_property(property) {
+                    return Err(format!(
+                        "add_keyframe uses unsupported property '{property}'"
+                    ));
+                }
+                if !value.is_finite() {
+                    return Err("add_keyframe value must be finite".to_string());
+                }
+            }
+            SceneOperation::BindProperty {
+                target, property, ..
+            } => {
+                if !plan_parts.contains(target.as_str()) {
+                    return Err(format!(
+                        "bind_property references missing target '{target}'"
+                    ));
+                }
+                if !allowed_edit_property(property) {
+                    return Err(format!(
+                        "bind_property uses unsupported property '{property}'"
+                    ));
+                }
+            }
+            SceneOperation::EmitEvent { name, .. } => {
+                if name.trim().is_empty() {
+                    return Err("emit_event name must not be empty".to_string());
+                }
+            }
+        }
+    }
+
+    for part in &plan.parts {
+        if !created_nodes.contains(part.id.as_str()) {
+            return Err(format!(
+                "operations did not create planned part '{}'",
+                part.id
+            ));
+        }
+        if !grouped_children.contains(part.id.as_str()) {
+            return Err(format!(
+                "operations did not group planned part '{}'",
+                part.id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn document_from_scene_operations(
+    plan: &GenerationPlan,
+    operations: &[SceneOperation],
+) -> Result<strut_core::Document, String> {
+    let mut nodes = HashMap::<String, Value>::new();
+    let mut root_group: Option<(String, String, Vec<String>)> = None;
+    let mut states = Vec::<String>::new();
+    let mut timeline_states = HashMap::<String, Option<String>>::new();
+    let mut timelines = HashMap::<String, Value>::new();
+    let mut bindings = Vec::<Value>::new();
+    let mut events = Vec::<Value>::new();
+
+    for operation in operations {
+        match operation {
+            SceneOperation::CreateNode {
+                id,
+                name,
+                kind,
+                geometry,
+                style,
+                role,
+                ..
+            } => {
+                nodes.insert(
+                    id.clone(),
+                    json!({
+                        "id": id,
+                        "name": name,
+                        "kind": normalized_node_kind(kind, geometry),
+                        "role": role,
+                        "transform": default_transform_value(),
+                        "style": plan_style_value(style),
+                        "shape": plan_geometry_shape(geometry),
+                        "children": []
+                    }),
+                );
+            }
+            SceneOperation::GroupNodes { id, name, children } => {
+                root_group = Some((id.clone(), name.clone(), children.clone()));
+            }
+            SceneOperation::SetProperty {
+                target,
+                property,
+                value,
+            } => {
+                if let Some(node) = nodes.get_mut(target) {
+                    set_node_property(node, property, value.clone());
+                }
+            }
+            SceneOperation::AddState { state } => {
+                push_unique(&mut states, normalized_state_name(state));
+            }
+            SceneOperation::AddTimeline {
+                id,
+                name,
+                state,
+                duration_ms,
+            } => {
+                timelines.insert(
+                    id.clone(),
+                    json!({
+                        "id": id,
+                        "name": name,
+                        "duration_ms": duration_ms,
+                        "tracks": []
+                    }),
+                );
+                timeline_states.insert(id.clone(), state.clone());
+            }
+            SceneOperation::AddKeyframe {
+                timeline,
+                target,
+                property,
+                time_ms,
+                value,
+                easing,
+            } => {
+                if let Some(timeline_value) = timelines.get_mut(timeline) {
+                    add_keyframe_to_timeline(
+                        timeline_value,
+                        target,
+                        &normalize_motion_property(property),
+                        *time_ms,
+                        *value,
+                        easing.as_deref().unwrap_or("ease_in_out"),
+                    );
+                }
+            }
+            SceneOperation::BindProperty {
+                name,
+                target,
+                property,
+            } => {
+                bindings.push(json!({
+                    "name": name,
+                    "target": target,
+                    "property": normalize_bind_property(property)
+                }));
+            }
+            SceneOperation::EmitEvent { name, description } => {
+                events.push(json!({
+                    "name": name,
+                    "description": description
+                }));
+            }
+        }
+    }
+
+    if !states.iter().any(|state| state == "idle") {
+        states.insert(0, "idle".to_string());
+    }
+
+    let root = if let Some((id, name, children)) = root_group {
+        let child_values = children
+            .iter()
+            .filter_map(|child| nodes.remove(child))
+            .collect::<Vec<_>>();
+        json!({
+            "id": id,
+            "name": name,
+            "kind": "group",
+            "role": "scene_rig",
+            "transform": default_transform_value(),
+            "style": default_style_value(),
+            "shape": {"type": "none"},
+            "children": child_values
+        })
+    } else {
+        json!({
+            "id": "SceneRig",
+            "name": format!("{} Rig", plan.name),
+            "kind": "group",
+            "role": "scene_rig",
+            "transform": default_transform_value(),
+            "style": default_style_value(),
+            "shape": {"type": "none"},
+            "children": nodes.into_values().collect::<Vec<_>>()
+        })
+    };
+
+    let mut timeline_values = timelines.into_values().collect::<Vec<_>>();
+    timeline_values.sort_by_key(|timeline| {
+        timeline
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    });
+    let transitions = timeline_values
+        .iter()
+        .filter_map(|timeline| {
+            let id = timeline.get("id").and_then(Value::as_str)?;
+            let name = timeline.get("name").and_then(Value::as_str)?;
+            let state = timeline_states
+                .get(id)
+                .and_then(Clone::clone)
+                .unwrap_or_else(|| active_state_from_timeline_name(name));
+            Some(json!({
+                "from": "idle",
+                "to": state,
+                "on": state,
+                "timeline": name
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    let document_value = json!({
+        "id": plan.id.as_deref().unwrap_or("generation-plan-document"),
+        "name": plan.name,
+        "artboards": [{
+            "id": "main-artboard",
+            "name": format!("{} Artboard", semantic_label(&plan.name)),
+            "width": 960,
+            "height": 540,
+            "nodes": [root]
+        }],
+        "timelines": timeline_values,
+        "state_machines": [{
+            "id": "motion-machine",
+            "name": format!("{} Motion", semantic_label(&plan.subject.label)),
+            "inputs": [{"name": "state", "kind": "enum"}],
+            "states": states,
+            "transitions": transitions
+        }],
+        "bindings": bindings,
+        "events": events
+    });
+
+    document_from_value(&document_value).and_then(validate_generated_document)
+}
+
+fn validate_plan_geometry(id: &str, geometry: &PlanGeometry) -> Result<(), String> {
+    let part = SemanticPartPlan {
+        id: id.to_string(),
+        name: id.to_string(),
+        role: "operation".to_string(),
+        geometry: geometry.clone(),
+        style: PlanStyle::default(),
+        motion_roles: Vec::new(),
+        constraints: EditabilityConstraint::default(),
+    };
+    validate_part_geometry(&part)
+}
+
+fn plan_style_value(style: &PlanStyle) -> Value {
+    let fill = style.fill.as_deref().unwrap_or("#f6f0df");
+    json!({
+        "fill": if fill.eq_ignore_ascii_case("none") || fill.eq_ignore_ascii_case("transparent") { Value::Null } else { json!(fill) },
+        "stroke": style.stroke.as_deref().unwrap_or("#25221d"),
+        "stroke_width": style.stroke_width.unwrap_or(5.0),
+        "opacity": style.opacity.unwrap_or(1.0),
+        "linecap": "round",
+        "linejoin": "round"
+    })
+}
+
+fn plan_geometry_shape(geometry: &PlanGeometry) -> Value {
+    match geometry.kind.to_lowercase().as_str() {
+        "rect" | "rectangle" => json!({
+            "type": "rect",
+            "x": geometry.x.unwrap_or(420.0),
+            "y": geometry.y.unwrap_or(220.0),
+            "width": geometry.width.unwrap_or(80.0),
+            "height": geometry.height.unwrap_or(80.0),
+            "rx": geometry.rx.unwrap_or(12.0)
+        }),
+        "path" => json!({
+            "type": "path",
+            "d": geometry.d.as_deref().unwrap_or("M420 240 C460 210 500 270 540 240")
+        }),
+        "text" => json!({
+            "type": "text",
+            "x": geometry.x.unwrap_or(420.0),
+            "y": geometry.y.unwrap_or(280.0),
+            "value": geometry.value.as_deref().unwrap_or("Strut"),
+            "size": geometry.size.unwrap_or(28.0)
+        }),
+        _ => json!({
+            "type": "ellipse",
+            "cx": geometry.cx.or(geometry.x).unwrap_or(480.0),
+            "cy": geometry.cy.or(geometry.y).unwrap_or(270.0),
+            "rx": geometry.rx.or_else(|| geometry.width.map(|width| width / 2.0)).unwrap_or(42.0),
+            "ry": geometry.ry.or_else(|| geometry.height.map(|height| height / 2.0)).unwrap_or(42.0)
+        }),
+    }
+}
+
+fn set_node_property(node: &mut Value, property: &str, value: Value) {
+    let Some(map) = node.as_object_mut() else {
+        return;
+    };
+    let normalized = normalize_bind_property(property);
+    if let Some(property_name) = normalized.strip_prefix("style.") {
+        if let Some(style) = map.get_mut("style").and_then(Value::as_object_mut) {
+            style.insert(property_name.to_string(), value);
+        }
+    } else if let Some(property_name) = normalized.strip_prefix("transform.") {
+        if let Some(transform) = map.get_mut("transform").and_then(Value::as_object_mut) {
+            transform.insert(property_name.to_string(), value);
+        }
+    }
+}
+
+fn add_keyframe_to_timeline(
+    timeline: &mut Value,
+    target: &str,
+    property: &str,
+    time_ms: u32,
+    value: f64,
+    easing: &str,
+) {
+    let Some(tracks) = timeline.get_mut("tracks").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let normalized_property = normalize_motion_property(property);
+    if let Some(track) = tracks.iter_mut().find(|track| {
+        track.get("target").and_then(Value::as_str) == Some(target)
+            && track.get("property").and_then(Value::as_str) == Some(normalized_property.as_str())
+    }) {
+        if let Some(keyframes) = track.get_mut("keyframes").and_then(Value::as_array_mut) {
+            keyframes.push(keyframe_value(time_ms, value, easing));
+        }
+        return;
+    }
+    tracks.push(json!({
+        "target": target,
+        "property": normalized_property,
+        "keyframes": [keyframe_value(time_ms, value, easing)]
+    }));
+}
+
+fn keyframe_value(time_ms: u32, value: f64, easing: &str) -> Value {
+    json!({
+        "time_ms": time_ms,
+        "value": {"type": "number", "value": value},
+        "easing": normalized_easing_name(easing)
+    })
+}
+
+fn normalized_node_kind(kind: &str, geometry: &PlanGeometry) -> &'static str {
+    match kind.to_lowercase().as_str() {
+        "rect" | "rectangle" => "rect",
+        "path" => "path",
+        "text" => "text",
+        "group" => "group",
+        "ellipse" => "ellipse",
+        _ => node_kind_from_geometry(geometry),
+    }
+}
+
+fn node_kind_from_geometry(geometry: &PlanGeometry) -> &'static str {
+    match geometry.kind.to_lowercase().as_str() {
+        "rect" | "rectangle" => "rect",
+        "path" => "path",
+        "text" => "text",
+        _ => "ellipse",
+    }
+}
+
+fn normalized_state_set(states: &[String]) -> HashSet<String> {
+    states
+        .iter()
+        .map(|state| normalized_state_name(state))
+        .collect()
+}
+
+fn normalized_state_name(state: &str) -> String {
+    let normalized = semantic_token(state).to_lowercase();
+    if normalized.is_empty() {
+        "idle".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn active_state_from_timeline_name(name: &str) -> String {
+    match name {
+        "idle_float" => "idle".to_string(),
+        other => normalized_state_name(other),
+    }
+}
+
+fn normalize_motion_property(property: &str) -> String {
+    match property {
+        "translate_x" | "translation_x" | "x" | "transform.translate_x" => "translation.x",
+        "translate_y" | "translation_y" | "y" | "transform.translate_y" => "translation.y",
+        "rotate" | "transform.rotate" => "rotation",
+        "scale_x" | "transform.scale_x" => "scale.x",
+        "scale_y" | "transform.scale_y" => "scale.y",
+        "style.opacity" => "opacity",
+        other => other,
+    }
+    .to_string()
+}
+
+fn normalize_bind_property(property: &str) -> String {
+    match property {
+        "fill" => "style.fill",
+        "stroke" => "style.stroke",
+        "opacity" => "style.opacity",
+        "translate_x" | "translation.x" => "transform.translate_x",
+        "translate_y" | "translation.y" => "transform.translate_y",
+        "rotation" => "transform.rotate",
+        other => other,
+    }
+    .to_string()
+}
+
+fn normalized_easing_name(easing: &str) -> &'static str {
+    match easing {
+        "linear" => "linear",
+        "ease_in" | "easeIn" | "ease-in" => "ease_in",
+        "ease_out" | "easeOut" | "ease-out" => "ease_out",
+        _ => "ease_in_out",
+    }
+}
+
+fn allowed_timeline_property(property: &str) -> bool {
+    matches!(
+        normalize_motion_property(property).as_str(),
+        "translation.x"
+            | "translation.y"
+            | "rotation"
+            | "scale"
+            | "scale.x"
+            | "scale.y"
+            | "opacity"
+    )
+}
+
+fn allowed_edit_property(property: &str) -> bool {
+    matches!(
+        normalize_bind_property(property).as_str(),
+        "style.fill"
+            | "style.stroke"
+            | "style.opacity"
+            | "transform.translate_x"
+            | "transform.translate_y"
+            | "transform.rotate"
+            | "transform.scale"
+            | "fill"
+            | "stroke"
+            | "opacity"
+    )
+}
+
+fn subject_allows_mascot_anatomy(subject: &SubjectPlan) -> bool {
+    let classification = subject.classification.to_lowercase();
+    let label = subject.label.to_lowercase();
+    [
+        "mascot",
+        "character",
+        "avatar",
+        "person",
+        "human",
+        "creature",
+    ]
+    .iter()
+    .any(|word| classification.contains(word) || label.contains(word))
+}
+
+fn is_mascot_anatomy_name(value: &str) -> bool {
+    let token = semantic_token(value).to_lowercase();
+    matches!(
+        token.as_str(),
+        "body"
+            | "head"
+            | "face"
+            | "eyes"
+            | "eye"
+            | "arms"
+            | "arm"
+            | "leftarm"
+            | "rightarm"
+            | "legs"
+            | "leg"
+            | "leftleg"
+            | "rightleg"
+            | "torso"
+            | "mouth"
+            | "smile"
+    )
+}
+
+fn semantic_token(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '_')
+        .collect::<String>()
+}
+
+fn semantic_label(value: &str) -> String {
+    value
+        .split_whitespace()
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<String>()
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
 fn document_from_compact_plan_text(text: &str) -> Result<strut_core::Document, String> {
     if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
         if let Ok(document) = document_from_compact_plan_value(&value) {
@@ -2114,11 +3415,11 @@ fn compact_part_node(index: usize, part: &Value) -> Value {
 
 fn compact_timelines_value() -> Value {
     json!([
-        {"id": "timeline-idle-float", "name": "idle_float", "duration_ms": 1200, "tracks": [{"target": "root", "property": "translate_y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}, {"time_ms": 600, "value": {"type": "number", "value": -18}, "easing": "ease_out"}, {"time_ms": 1200, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}]}]},
-        {"id": "timeline-wave", "name": "wave", "duration_ms": 900, "tracks": [{"target": "root", "property": "rotation", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -3}, "easing": "ease_out"}, {"time_ms": 450, "value": {"type": "number", "value": 6}, "easing": "ease_in_out"}, {"time_ms": 900, "value": {"type": "number", "value": -3}, "easing": "ease_in"}]}]},
-        {"id": "timeline-blink", "name": "blink", "duration_ms": 360, "tracks": [{"target": "root", "property": "scale.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 180, "value": {"type": "number", "value": 0.96}, "easing": "ease_in_out"}, {"time_ms": 360, "value": {"type": "number", "value": 1}, "easing": "ease_out"}]}]},
-        {"id": "timeline-scan", "name": "scan", "duration_ms": 1000, "tracks": [{"target": "root", "property": "translate_x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -10}, "easing": "ease_out"}, {"time_ms": 500, "value": {"type": "number", "value": 10}, "easing": "ease_in_out"}, {"time_ms": 1000, "value": {"type": "number", "value": 0}, "easing": "ease_in"}]}]},
-        {"id": "timeline-celebrate", "name": "celebrate", "duration_ms": 1100, "tracks": [{"target": "root", "property": "scale.x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 500, "value": {"type": "number", "value": 1.14}, "easing": "ease_in_out"}, {"time_ms": 1100, "value": {"type": "number", "value": 1}, "easing": "ease_in"}]}]}
+        {"id": "timeline-idle-float", "name": "idle_float", "duration_ms": 1400, "tracks": [{"target": "root", "property": "translate_y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}, {"time_ms": 700, "value": {"type": "number", "value": -8}, "easing": "ease_out"}, {"time_ms": 1400, "value": {"type": "number", "value": 0}, "easing": "ease_in_out"}]}]},
+        {"id": "timeline-wave", "name": "wave", "duration_ms": 960, "tracks": [{"target": "root", "property": "rotation", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -2}, "easing": "ease_out"}, {"time_ms": 480, "value": {"type": "number", "value": 3}, "easing": "ease_in_out"}, {"time_ms": 960, "value": {"type": "number", "value": -2}, "easing": "ease_in"}]}]},
+        {"id": "timeline-blink", "name": "blink", "duration_ms": 420, "tracks": [{"target": "root", "property": "scale.y", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 210, "value": {"type": "number", "value": 0.985}, "easing": "ease_in_out"}, {"time_ms": 420, "value": {"type": "number", "value": 1}, "easing": "ease_out"}]}]},
+        {"id": "timeline-scan", "name": "scan", "duration_ms": 1200, "tracks": [{"target": "root", "property": "translate_x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": -5}, "easing": "ease_out"}, {"time_ms": 600, "value": {"type": "number", "value": 5}, "easing": "ease_in_out"}, {"time_ms": 1200, "value": {"type": "number", "value": 0}, "easing": "ease_in"}]}]},
+        {"id": "timeline-celebrate", "name": "celebrate", "duration_ms": 1180, "tracks": [{"target": "root", "property": "scale.x", "keyframes": [{"time_ms": 0, "value": {"type": "number", "value": 1}, "easing": "ease_out"}, {"time_ms": 560, "value": {"type": "number", "value": 1.045}, "easing": "ease_in_out"}, {"time_ms": 1180, "value": {"type": "number", "value": 1}, "easing": "ease_in"}]}]}
     ])
 }
 
@@ -2291,6 +3592,61 @@ mod tests {
             names.push(node.name.as_str());
             collect_layer_names(&node.children, names);
         }
+    }
+
+    fn phase3_part(id: &str, name: &str, role: &str, geometry: Value) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "role": role,
+            "geometry": geometry,
+            "style": {"fill": "#f6f0df", "stroke": "#25221d", "strokeWidth": 5, "opacity": 1},
+            "motionRoles": ["primary"],
+            "constraints": {"editable": true, "allowedProperties": ["fill", "translation.x", "translation.y", "rotation", "opacity"]}
+        })
+    }
+
+    fn phase3_plan_text(
+        classification: &str,
+        label: &str,
+        parts: Vec<Value>,
+        state: &str,
+        target: &str,
+    ) -> String {
+        json!({
+            "plan": {
+                "id": format!("{classification}-plan"),
+                "name": format!("{label} Motion"),
+                "subject": {"classification": classification, "label": label},
+                "parts": parts,
+                "motionRoles": [{"id": "primary", "purpose": "calm subject motion", "partRefs": [target]}],
+                "states": ["idle", state],
+                "timelines": [{
+                    "id": format!("{state}-timeline"),
+                    "name": state,
+                    "state": state,
+                    "durationMs": 1200,
+                    "tracks": [{
+                        "target": target,
+                        "property": "translation.y",
+                        "keyframes": [
+                            {"timeMs": 0, "value": 0, "easing": "ease_in_out"},
+                            {"timeMs": 600, "value": -8, "easing": "ease_out"},
+                            {"timeMs": 1200, "value": 0, "easing": "ease_in_out"}
+                        ]
+                    }]
+                }],
+                "editability": {"editableParts": [target], "lockedParts": [], "notes": ["fixture"]}
+            },
+            "operations": []
+        })
+        .to_string()
+    }
+
+    fn semantic_layer_names(document: &strut_core::Document) -> Vec<String> {
+        let mut names = Vec::new();
+        collect_layer_names(&document.artboards[0].nodes, &mut names);
+        names.into_iter().map(str::to_string).collect()
     }
 
     #[test]
@@ -2496,6 +3852,316 @@ mod tests {
     }
 
     #[test]
+    fn rolling_dice_plan_does_not_produce_mascot_anatomy() {
+        let planned = document_from_generation_plan_text(&phase3_plan_text(
+            "dice",
+            "Rolling Dice",
+            vec![
+                phase3_part("DieBody", "DieBody", "volume", json!({"kind":"rect","x":378,"y":174,"width":210,"height":210,"rx":24})),
+                phase3_part("FrontFace", "FrontFace", "front face", json!({"kind":"rect","x":402,"y":214,"width":168,"height":146,"rx":16})),
+                phase3_part("TopFace", "TopFace", "top face", json!({"kind":"path","d":"M402 214 L454 168 L618 184 L570 214 Z"})),
+                phase3_part("Pips", "Pips", "number marks", json!({"kind":"path","d":"M442 252 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 M530 320 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0"})),
+                phase3_part("EdgeHighlight", "EdgeHighlight", "edge light", json!({"kind":"path","d":"M414 228 L454 188 L604 202"})),
+                phase3_part("SettleShadow", "SettleShadow", "grounding shadow", json!({"kind":"ellipse","cx":494,"cy":414,"rx":116,"ry":18})),
+            ],
+            "settle",
+            "DieBody",
+        ))
+        .expect("dice plan should convert");
+
+        let names = semantic_layer_names(&planned.document);
+        assert!(names.iter().any(|name| name == "DieBody"));
+        assert!(names.iter().any(|name| name == "Pips"));
+        assert!(names
+            .iter()
+            .all(|name| !matches!(name.as_str(), "Head" | "Eyes" | "Arms" | "Legs" | "Smile")));
+        assert!(planned
+            .summary
+            .timeline_names
+            .contains(&"settle".to_string()));
+        assert!(planned.operation_count >= 10);
+    }
+
+    #[test]
+    fn abstract_logo_plan_does_not_require_face() {
+        let planned = document_from_generation_plan_text(&phase3_plan_text(
+            "logo",
+            "Abstract Logo",
+            vec![
+                phase3_part("PrimaryMark", "PrimaryMark", "main vector mark", json!({"kind":"path","d":"M382 180 C450 120 540 146 582 222 C520 206 470 234 432 306 C398 266 370 226 382 180 Z"})),
+                phase3_part("Wordmark", "Wordmark", "brand text", json!({"kind":"text","x":396,"y":384,"value":"STRUT","size":42})),
+                phase3_part("AccentStroke", "AccentStroke", "accent line", json!({"kind":"path","d":"M392 326 C452 352 528 348 596 312"})),
+                phase3_part("RevealMask", "RevealMask", "reveal mask", json!({"kind":"rect","x":360,"y":154,"width":280,"height":250,"rx":20})),
+                phase3_part("AnchorGrid", "AnchorGrid", "alignment grid", json!({"kind":"path","d":"M360 270 L640 270 M500 150 L500 410"})),
+                phase3_part("Glow", "Glow", "soft emphasis", json!({"kind":"ellipse","cx":498,"cy":266,"rx":118,"ry":76})),
+            ],
+            "reveal",
+            "PrimaryMark",
+        ))
+        .expect("logo plan should convert");
+
+        let names = semantic_layer_names(&planned.document);
+        assert!(names.iter().any(|name| name == "PrimaryMark"));
+        assert!(names.iter().any(|name| name == "Wordmark"));
+        assert!(names.iter().all(|name| name != "Face" && name != "Eyes"));
+    }
+
+    #[test]
+    fn loader_plan_does_not_require_face_or_body() {
+        let planned = document_from_generation_plan_text(&phase3_plan_text(
+            "loader",
+            "Progress Loader",
+            vec![
+                phase3_part(
+                    "Track",
+                    "Track",
+                    "background track",
+                    json!({"kind":"ellipse","cx":480,"cy":270,"rx":120,"ry":120}),
+                ),
+                phase3_part(
+                    "ActiveSegment",
+                    "ActiveSegment",
+                    "active arc",
+                    json!({"kind":"path","d":"M480 150 A120 120 0 0 1 600 270"}),
+                ),
+                phase3_part(
+                    "PulseDot",
+                    "PulseDot",
+                    "pulse marker",
+                    json!({"kind":"ellipse","cx":600,"cy":270,"rx":14,"ry":14}),
+                ),
+                phase3_part(
+                    "ProgressSweep",
+                    "ProgressSweep",
+                    "sweep indicator",
+                    json!({"kind":"path","d":"M480 270 L600 270"}),
+                ),
+                phase3_part(
+                    "Glow",
+                    "Glow",
+                    "soft glow",
+                    json!({"kind":"ellipse","cx":480,"cy":270,"rx":144,"ry":144}),
+                ),
+                phase3_part(
+                    "CenterLabel",
+                    "CenterLabel",
+                    "progress label",
+                    json!({"kind":"text","x":454,"y":282,"value":"42%","size":24}),
+                ),
+            ],
+            "loading",
+            "ActiveSegment",
+        ))
+        .expect("loader plan should convert");
+
+        let names = semantic_layer_names(&planned.document);
+        assert!(names.iter().any(|name| name == "ActiveSegment"));
+        assert!(names.iter().all(|name| name != "Face" && name != "Body"));
+        assert!(planned.document.state_machines[0]
+            .states
+            .contains(&"loading".to_string()));
+    }
+
+    #[test]
+    fn mascot_plan_can_still_use_mascot_parts() {
+        let planned = document_from_generation_plan_text(&phase3_plan_text(
+            "mascot",
+            "Helpful Mascot",
+            vec![
+                phase3_part("Body", "Body", "body", json!({"kind":"ellipse","cx":480,"cy":306,"rx":92,"ry":118})),
+                phase3_part("Head", "Head", "head", json!({"kind":"ellipse","cx":480,"cy":190,"rx":82,"ry":68})),
+                phase3_part("Eyes", "Eyes", "eyes", json!({"kind":"path","d":"M446 186 q10 -16 20 0 M494 186 q10 -16 20 0"})),
+                phase3_part("Arms", "Arms", "arms", json!({"kind":"path","d":"M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364"})),
+                phase3_part("AccentBadge", "AccentBadge", "accent", json!({"kind":"ellipse","cx":512,"cy":316,"rx":16,"ry":16})),
+                phase3_part("GroundShadow", "GroundShadow", "shadow", json!({"kind":"ellipse","cx":480,"cy":438,"rx":108,"ry":16})),
+            ],
+            "wave",
+            "Body",
+        ))
+        .expect("mascot plan should convert");
+
+        let names = semantic_layer_names(&planned.document);
+        assert!(names.iter().any(|name| name == "Body"));
+        assert!(names.iter().any(|name| name == "Head"));
+        assert!(names.iter().any(|name| name == "Eyes"));
+    }
+
+    #[test]
+    fn generation_plans_reject_invalid_references_and_geometry() {
+        let duplicate = phase3_plan_text(
+            "logo",
+            "Bad Logo",
+            vec![
+                phase3_part(
+                    "PrimaryMark",
+                    "PrimaryMark",
+                    "main",
+                    json!({"kind":"path","d":"M0 0 L10 10"}),
+                ),
+                phase3_part(
+                    "PrimaryMark",
+                    "AccentStroke",
+                    "accent",
+                    json!({"kind":"path","d":"M0 10 L10 0"}),
+                ),
+                phase3_part(
+                    "RevealMask",
+                    "RevealMask",
+                    "mask",
+                    json!({"kind":"rect","x":1,"y":1,"width":10,"height":10,"rx":2}),
+                ),
+                phase3_part(
+                    "AnchorGrid",
+                    "AnchorGrid",
+                    "grid",
+                    json!({"kind":"path","d":"M1 1 L10 1"}),
+                ),
+                phase3_part(
+                    "Glow",
+                    "Glow",
+                    "glow",
+                    json!({"kind":"ellipse","cx":5,"cy":5,"rx":4,"ry":4}),
+                ),
+            ],
+            "reveal",
+            "PrimaryMark",
+        );
+        assert!(document_from_generation_plan_text(&duplicate)
+            .expect_err("duplicate ids should reject")
+            .contains("duplicate part id"));
+
+        let missing_target = phase3_plan_text(
+            "loader",
+            "Bad Loader",
+            vec![
+                phase3_part(
+                    "Track",
+                    "Track",
+                    "track",
+                    json!({"kind":"ellipse","cx":480,"cy":270,"rx":120,"ry":120}),
+                ),
+                phase3_part(
+                    "ActiveSegment",
+                    "ActiveSegment",
+                    "active",
+                    json!({"kind":"path","d":"M480 150 A120 120 0 0 1 600 270"}),
+                ),
+                phase3_part(
+                    "PulseDot",
+                    "PulseDot",
+                    "dot",
+                    json!({"kind":"ellipse","cx":600,"cy":270,"rx":14,"ry":14}),
+                ),
+                phase3_part(
+                    "ProgressSweep",
+                    "ProgressSweep",
+                    "sweep",
+                    json!({"kind":"path","d":"M480 270 L600 270"}),
+                ),
+                phase3_part(
+                    "Glow",
+                    "Glow",
+                    "glow",
+                    json!({"kind":"ellipse","cx":480,"cy":270,"rx":144,"ry":144}),
+                ),
+            ],
+            "loading",
+            "MissingPart",
+        );
+        assert!(document_from_generation_plan_text(&missing_target)
+            .expect_err("unknown timeline target should reject")
+            .contains("missing part"));
+
+        let bad_geometry = phase3_plan_text(
+            "dice",
+            "Bad Dice",
+            vec![
+                phase3_part(
+                    "DieBody",
+                    "DieBody",
+                    "body",
+                    json!({"kind":"rect","x":1,"y":1,"width":0,"height":10,"rx":2}),
+                ),
+                phase3_part(
+                    "FrontFace",
+                    "FrontFace",
+                    "face",
+                    json!({"kind":"rect","x":1,"y":1,"width":10,"height":10,"rx":2}),
+                ),
+                phase3_part(
+                    "TopFace",
+                    "TopFace",
+                    "face",
+                    json!({"kind":"path","d":"M0 0 L10 10"}),
+                ),
+                phase3_part(
+                    "Pips",
+                    "Pips",
+                    "pips",
+                    json!({"kind":"path","d":"M1 1 L2 2"}),
+                ),
+                phase3_part(
+                    "Shadow",
+                    "Shadow",
+                    "shadow",
+                    json!({"kind":"ellipse","cx":5,"cy":5,"rx":4,"ry":4}),
+                ),
+            ],
+            "settle",
+            "DieBody",
+        );
+        assert!(document_from_generation_plan_text(&bad_geometry)
+            .expect_err("invalid geometry should reject")
+            .contains("invalid rect geometry"));
+    }
+
+    #[test]
+    fn non_mascot_plan_rejects_mascot_only_anatomy() {
+        let bad_logo = phase3_plan_text(
+            "logo",
+            "Logo With Face",
+            vec![
+                phase3_part(
+                    "Body",
+                    "Body",
+                    "body",
+                    json!({"kind":"ellipse","cx":480,"cy":270,"rx":80,"ry":80}),
+                ),
+                phase3_part(
+                    "Head",
+                    "Head",
+                    "head",
+                    json!({"kind":"ellipse","cx":480,"cy":190,"rx":60,"ry":50}),
+                ),
+                phase3_part(
+                    "Eyes",
+                    "Eyes",
+                    "eyes",
+                    json!({"kind":"path","d":"M460 190 L470 190"}),
+                ),
+                phase3_part(
+                    "PrimaryMark",
+                    "PrimaryMark",
+                    "mark",
+                    json!({"kind":"path","d":"M420 240 L540 240"}),
+                ),
+                phase3_part(
+                    "AccentStroke",
+                    "AccentStroke",
+                    "accent",
+                    json!({"kind":"path","d":"M420 270 L540 270"}),
+                ),
+            ],
+            "reveal",
+            "PrimaryMark",
+        );
+
+        assert!(document_from_generation_plan_text(&bad_logo)
+            .expect_err("non mascot anatomy should reject")
+            .contains("mascot-only anatomy"));
+    }
+
+    #[test]
     fn open_project_folder_rejects_missing_folder() {
         let missing =
             std::env::temp_dir().join(format!("strut-missing-folder-{}", unix_timestamp()));
@@ -2545,7 +4211,8 @@ mod tests {
             "Make a friendly owl style mascot like Duo. Keep it simple and editable, with wave, blink, scan, and celebrate animation states.",
             &[],
         ))
-        .expect("Gemini CLI should return a full Strut document");
+        .expect("Gemini CLI should return a full Strut document")
+        .document;
         let mut layer_names = Vec::new();
         collect_layer_names(&document.artboards[0].nodes, &mut layer_names);
         let states = &document.state_machines[0].states;

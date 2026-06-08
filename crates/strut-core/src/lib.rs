@@ -26,6 +26,8 @@ pub struct Node {
     pub id: Uuid,
     pub name: String,
     pub kind: NodeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     #[serde(default)]
     pub transform: Transform,
     #[serde(default)]
@@ -146,6 +148,7 @@ impl Node {
             id: Uuid::from_u128(id),
             name: name.into(),
             kind,
+            role: None,
             transform: Transform::default(),
             style: Style::default(),
             shape: Shape::None,
