@@ -402,6 +402,60 @@ struct ProjectFile {
     kind: String,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationValidationResult {
+    ok: bool,
+    message: String,
+    validator: String,
+    validated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationBatchRecord {
+    id: String,
+    source_type: String,
+    status: String,
+    validation_result: OperationValidationResult,
+    document_revision_id: String,
+    previous_document_revision_id: Option<String>,
+    prompt: Option<String>,
+    source_metadata: Option<Value>,
+    operations: Vec<Value>,
+    created_at: String,
+    updated_at: String,
+    applied_at: Option<String>,
+    rejected_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedSelectionState {
+    active_state: String,
+    selected_node_id: Option<String>,
+    layer_ui: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectSnapshot {
+    project: ProjectInfo,
+    document: strut_core::Document,
+    operation_batches: Vec<OperationBatchRecord>,
+    selection: Option<PersistedSelectionState>,
+    main_scene: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidatedGeneratedBatch {
+    document: strut_core::Document,
+    batch: OperationBatchRecord,
+    plan_summary: GenerationPlanSummary,
+    operation_count: usize,
+}
+
 #[tauri::command]
 fn studio_status() -> strut_format::StudioStatus {
     let sample_path =
@@ -425,6 +479,12 @@ fn default_project_location() -> String {
     default_projects_dir().display().to_string()
 }
 
+const PROJECT_MANIFEST_FILE: &str = "strut.project.json";
+const MAIN_SCENE_FILE: &str = "scenes/main.strut";
+const LEGACY_STARTER_SCENE_FILE: &str = "scenes/starter.strut.json";
+const OPERATION_BATCHES_FILE: &str = "operations/operation-batches.json";
+const STUDIO_STATE_FILE: &str = "ui/studio-state.json";
+
 #[tauri::command]
 fn create_project(name: String, location: String) -> Result<ProjectInfo, String> {
     let project_name = sanitize_project_name(&name)?;
@@ -438,29 +498,180 @@ fn create_project(name: String, location: String) -> Result<ProjectInfo, String>
     fs::create_dir_all(project_path.join("scenes")).map_err(|error| error.to_string())?;
     fs::create_dir_all(project_path.join("assets")).map_err(|error| error.to_string())?;
     fs::create_dir_all(project_path.join("exports")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(project_path.join("operations")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(project_path.join("ui")).map_err(|error| error.to_string())?;
 
     let document = strut_core::Document::empty_scene(&project_name);
-    let document_json =
-        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())?;
+    let scene_path = project_path.join(MAIN_SCENE_FILE);
+    strut_format::write_strut_file(&scene_path, &strut_format::StrutPackage::current(document))
+        .map_err(|error| error.to_string())?;
+
+    fs::write(project_path.join(OPERATION_BATCHES_FILE), "[]")
+        .map_err(|error| error.to_string())?;
     fs::write(
-        project_path.join("scenes").join("starter.strut.json"),
-        document_json,
+        project_path.join(STUDIO_STATE_FILE),
+        serde_json::to_string_pretty(&PersistedSelectionState {
+            active_state: "idle".to_string(),
+            selected_node_id: None,
+            layer_ui: json!({}),
+        })
+        .map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
 
-    let metadata = json!({
-        "name": project_name,
-        "createdAt": unix_timestamp(),
-        "format": "0.1.0",
-        "mainScene": "scenes/starter.strut.json"
-    });
+    let metadata = project_manifest_value(&project_name, unix_timestamp());
     fs::write(
-        project_path.join("strut.project.json"),
+        project_path.join(PROJECT_MANIFEST_FILE),
         serde_json::to_string_pretty(&metadata).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
 
     Ok(project_info(project_name, project_path))
+}
+
+#[tauri::command]
+fn save_project_snapshot(
+    project_path: String,
+    project_name: String,
+    document: strut_core::Document,
+    operation_batches: Vec<OperationBatchRecord>,
+    selection: Option<PersistedSelectionState>,
+) -> Result<ProjectSnapshot, String> {
+    let root = ensure_project_root(&project_path)?;
+    let project_name = sanitize_project_name(&project_name)?;
+    validate_operation_batches(&operation_batches)?;
+    strut_format::validate_document(&document).map_err(|error| error.to_string())?;
+
+    fs::create_dir_all(root.join("scenes")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(root.join("operations")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(root.join("ui")).map_err(|error| error.to_string())?;
+
+    let scene_path = root.join(MAIN_SCENE_FILE);
+    strut_format::write_strut_file(
+        &scene_path,
+        &strut_format::StrutPackage::current(document.clone()),
+    )
+    .map_err(|error| error.to_string())?;
+
+    fs::write(
+        root.join(OPERATION_BATCHES_FILE),
+        serde_json::to_string_pretty(&operation_batches).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    if let Some(selection_state) = &selection {
+        fs::write(
+            root.join(STUDIO_STATE_FILE),
+            serde_json::to_string_pretty(selection_state).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+
+    fs::write(
+        root.join(PROJECT_MANIFEST_FILE),
+        serde_json::to_string_pretty(&project_manifest_value(&project_name, unix_timestamp()))
+            .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(ProjectSnapshot {
+        project: project_info(project_name, root),
+        document,
+        operation_batches,
+        selection,
+        main_scene: MAIN_SCENE_FILE.to_string(),
+    })
+}
+
+#[tauri::command]
+fn load_project_snapshot(project_path: String) -> Result<ProjectSnapshot, String> {
+    let root = ensure_project_root(&project_path)?;
+    let manifest_path = root.join(PROJECT_MANIFEST_FILE);
+    let manifest = if manifest_path.exists() {
+        let raw = fs::read_to_string(&manifest_path).map_err(|error| error.to_string())?;
+        serde_json::from_str::<Value>(&raw).map_err(|error| error.to_string())?
+    } else {
+        json!({})
+    };
+    let project_name = manifest
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            root.file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "Strut Project".to_string());
+    let main_scene = manifest
+        .get("mainScene")
+        .and_then(Value::as_str)
+        .unwrap_or(MAIN_SCENE_FILE)
+        .to_string();
+    let document = read_project_document(&root, &main_scene)?;
+    let operation_batches = read_operation_batches(&root)?;
+    validate_operation_batches(&operation_batches)?;
+    let selection = read_selection_state(&root)?;
+
+    Ok(ProjectSnapshot {
+        project: project_info(project_name, root),
+        document,
+        operation_batches,
+        selection,
+        main_scene,
+    })
+}
+
+#[tauri::command]
+fn validate_scene_document(document: strut_core::Document) -> OperationValidationResult {
+    validation_result(strut_format::validate_document(&document).map_err(|error| error.to_string()))
+}
+
+#[tauri::command]
+fn validate_generation_plan_batch(
+    source_text: String,
+    source_type: String,
+    prompt: Option<String>,
+) -> Result<ValidatedGeneratedBatch, String> {
+    let planned = document_from_generation_plan_text(&source_text)?;
+    let operations = operation_values_from_generation_plan_text(&source_text);
+    let timestamp = timestamp_label();
+    let revision = document_revision_id(&planned.document);
+    let batch = OperationBatchRecord {
+        id: format!(
+            "batch-{}-{}-{}",
+            sanitize_token(&source_type),
+            revision,
+            planned.operation_count
+        ),
+        source_type,
+        status: "applied".to_string(),
+        validation_result: OperationValidationResult {
+            ok: true,
+            message: "Rust validated generation plan operations before persistence".to_string(),
+            validator: "strut-studio-rust".to_string(),
+            validated_at: timestamp.clone(),
+        },
+        document_revision_id: revision,
+        previous_document_revision_id: None,
+        prompt,
+        source_metadata: Some(json!({
+            "subjectClassification": planned.summary.subject_classification,
+            "subjectLabel": planned.summary.subject_label,
+            "operationCount": planned.operation_count
+        })),
+        operations,
+        created_at: timestamp.clone(),
+        updated_at: timestamp.clone(),
+        applied_at: Some(timestamp),
+        rejected_at: None,
+    };
+
+    Ok(ValidatedGeneratedBatch {
+        document: planned.document,
+        batch,
+        plan_summary: planned.summary,
+        operation_count: planned.operation_count,
+    })
 }
 
 #[tauri::command]
@@ -829,18 +1040,19 @@ fn project_info(name: String, path: PathBuf) -> ProjectInfo {
         path: path.display().to_string(),
         files: vec![
             ProjectFile {
-                name: "strut.project.json".to_string(),
-                path: path.join("strut.project.json").display().to_string(),
+                name: PROJECT_MANIFEST_FILE.to_string(),
+                path: path.join(PROJECT_MANIFEST_FILE).display().to_string(),
                 kind: "project".to_string(),
             },
             ProjectFile {
-                name: "starter.strut.json".to_string(),
-                path: path
-                    .join("scenes")
-                    .join("starter.strut.json")
-                    .display()
-                    .to_string(),
+                name: "main.strut".to_string(),
+                path: path.join(MAIN_SCENE_FILE).display().to_string(),
                 kind: "scene".to_string(),
+            },
+            ProjectFile {
+                name: "operation-batches.json".to_string(),
+                path: path.join(OPERATION_BATCHES_FILE).display().to_string(),
+                kind: "operations".to_string(),
             },
             ProjectFile {
                 name: "assets".to_string(),
@@ -854,6 +1066,186 @@ fn project_info(name: String, path: PathBuf) -> ProjectInfo {
             },
         ],
     }
+}
+
+fn project_manifest_value(name: &str, timestamp: u64) -> Value {
+    json!({
+        "name": name,
+        "createdAt": timestamp,
+        "updatedAt": timestamp,
+        "format": "0.2.0",
+        "mainScene": MAIN_SCENE_FILE,
+        "operationBatches": OPERATION_BATCHES_FILE,
+        "studioState": STUDIO_STATE_FILE
+    })
+}
+
+fn ensure_project_root(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("project path is required".to_string());
+    }
+    let root = PathBuf::from(trimmed);
+    if root.exists() && !root.is_dir() {
+        return Err(format!("Project path is not a folder: {}", root.display()));
+    }
+    Ok(root)
+}
+
+fn read_project_document(root: &Path, main_scene: &str) -> Result<strut_core::Document, String> {
+    let scene_path = root.join(main_scene);
+    if scene_path.exists()
+        && scene_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.eq_ignore_ascii_case("strut"))
+            .unwrap_or(false)
+    {
+        return strut_format::read_strut_file(&scene_path)
+            .map(|package| package.document)
+            .map_err(|error| error.to_string());
+    }
+
+    if scene_path.exists() {
+        return read_legacy_document_json(&scene_path);
+    }
+
+    let legacy_path = root.join(LEGACY_STARTER_SCENE_FILE);
+    if legacy_path.exists() {
+        return read_legacy_document_json(&legacy_path);
+    }
+
+    Err(format!(
+        "No Strut scene found. Expected {} or {}",
+        root.join(MAIN_SCENE_FILE).display(),
+        legacy_path.display()
+    ))
+}
+
+fn read_legacy_document_json(path: &Path) -> Result<strut_core::Document, String> {
+    let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let document =
+        serde_json::from_str::<strut_core::Document>(&raw).map_err(|error| error.to_string())?;
+    strut_format::validate_document(&document).map_err(|error| error.to_string())?;
+    Ok(document)
+}
+
+fn read_operation_batches(root: &Path) -> Result<Vec<OperationBatchRecord>, String> {
+    let path = root.join(OPERATION_BATCHES_FILE);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str::<Vec<OperationBatchRecord>>(&raw).map_err(|error| error.to_string())
+}
+
+fn read_selection_state(root: &Path) -> Result<Option<PersistedSelectionState>, String> {
+    let path = root.join(STUDIO_STATE_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str::<PersistedSelectionState>(&raw)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn validate_operation_batches(batches: &[OperationBatchRecord]) -> Result<(), String> {
+    let mut ids = HashSet::new();
+    for batch in batches {
+        if batch.id.trim().is_empty() {
+            return Err("operation batch id is required".to_string());
+        }
+        if !ids.insert(batch.id.as_str()) {
+            return Err(format!("duplicate operation batch id '{}'", batch.id));
+        }
+        if !matches!(
+            batch.source_type.as_str(),
+            "ai" | "sprite-python" | "manual" | "cli"
+        ) {
+            return Err(format!(
+                "operation batch '{}' has unsupported source type '{}'",
+                batch.id, batch.source_type
+            ));
+        }
+        if !matches!(
+            batch.status.as_str(),
+            "pending" | "applied" | "rejected" | "undone"
+        ) {
+            return Err(format!(
+                "operation batch '{}' has unsupported status '{}'",
+                batch.id, batch.status
+            ));
+        }
+        if batch.document_revision_id.trim().is_empty() {
+            return Err(format!(
+                "operation batch '{}' needs a document revision id",
+                batch.id
+            ));
+        }
+        if batch.created_at.trim().is_empty() || batch.updated_at.trim().is_empty() {
+            return Err(format!("operation batch '{}' needs timestamps", batch.id));
+        }
+        if batch.status == "applied" && !batch.validation_result.ok {
+            return Err(format!(
+                "operation batch '{}' cannot be applied with failed validation",
+                batch.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validation_result(result: Result<(), String>) -> OperationValidationResult {
+    let timestamp = timestamp_label();
+    match result {
+        Ok(()) => OperationValidationResult {
+            ok: true,
+            message: "document validated by Rust format rules".to_string(),
+            validator: "strut-studio-rust".to_string(),
+            validated_at: timestamp,
+        },
+        Err(error) => OperationValidationResult {
+            ok: false,
+            message: error,
+            validator: "strut-studio-rust".to_string(),
+            validated_at: timestamp,
+        },
+    }
+}
+
+fn operation_values_from_generation_plan_text(text: &str) -> Vec<Value> {
+    serde_json::from_str::<Value>(text.trim())
+        .ok()
+        .and_then(|value| value.get("operations").cloned())
+        .and_then(|operations| operations.as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn document_revision_id(document: &strut_core::Document) -> String {
+    format!(
+        "rev-{}-{}-{}",
+        sanitize_token(&document.name),
+        document.artboards.len(),
+        document.timelines.len()
+    )
+}
+
+fn sanitize_token(value: &str) -> String {
+    let token = value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+        .collect::<String>()
+        .to_lowercase();
+    if token.is_empty() {
+        "unknown".to_string()
+    } else {
+        token
+    }
+}
+
+fn timestamp_label() -> String {
+    unix_timestamp().to_string()
 }
 
 fn unix_timestamp() -> u64 {
@@ -3572,6 +3964,10 @@ pub fn run() {
             studio_status,
             default_project_location,
             create_project,
+            save_project_snapshot,
+            load_project_snapshot,
+            validate_scene_document,
+            validate_generation_plan_batch,
             open_project_folder,
             generate_character,
             local_agent_adapters,
@@ -3701,6 +4097,187 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn temp_project_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("strut-{name}-{}", unix_timestamp()))
+    }
+
+    fn valid_test_batch(document: &strut_core::Document) -> OperationBatchRecord {
+        OperationBatchRecord {
+            id: "batch-manual-fill".to_string(),
+            source_type: "manual".to_string(),
+            status: "applied".to_string(),
+            validation_result: OperationValidationResult {
+                ok: true,
+                message: "validated test operation".to_string(),
+                validator: "strut-studio-rust".to_string(),
+                validated_at: "1".to_string(),
+            },
+            document_revision_id: document_revision_id(document),
+            previous_document_revision_id: Some("rev-before".to_string()),
+            prompt: Some("make the button warmer".to_string()),
+            source_metadata: Some(json!({"chatMessageId": "message-1"})),
+            operations: vec![json!({
+                "id": "op-fill",
+                "type": "set_property",
+                "targetId": document.artboards[0].nodes[0].id.to_string(),
+                "property": "style.fill",
+                "value": "#d8f5e3"
+            })],
+            created_at: "1".to_string(),
+            updated_at: "2".to_string(),
+            applied_at: Some("2".to_string()),
+            rejected_at: None,
+        }
+    }
+
+    #[test]
+    fn project_snapshot_saves_loads_validated_scene_and_operation_batches() {
+        let root = temp_project_root("snapshot");
+        let document = strut_core::Document::sample_login_button();
+        let batch = valid_test_batch(&document);
+        let selection = PersistedSelectionState {
+            active_state: "hover".to_string(),
+            selected_node_id: Some(document.artboards[0].nodes[0].id.to_string()),
+            layer_ui: json!({"selected": {"visible": true, "locked": false}}),
+        };
+
+        let saved = save_project_snapshot(
+            root.display().to_string(),
+            "Snapshot Project".to_string(),
+            document.clone(),
+            vec![batch.clone()],
+            Some(selection.clone()),
+        )
+        .expect("snapshot should save");
+        assert!(PathBuf::from(&saved.project.path)
+            .join(MAIN_SCENE_FILE)
+            .exists());
+        assert!(PathBuf::from(&saved.project.path)
+            .join(OPERATION_BATCHES_FILE)
+            .exists());
+
+        let loaded =
+            load_project_snapshot(root.display().to_string()).expect("snapshot should load");
+        assert_eq!(loaded.document.name, document.name);
+        assert_eq!(loaded.operation_batches, vec![batch]);
+        assert_eq!(
+            loaded.selection.expect("selection").selected_node_id,
+            selection.selected_node_id
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_documents_and_batches_are_rejected_before_persistence() {
+        let root = temp_project_root("invalid");
+        let mut document = strut_core::Document::sample_login_button();
+        document.artboards.clear();
+        let validation = validate_scene_document(document.clone());
+        assert!(!validation.ok);
+        assert!(validation.message.contains("artboard"));
+
+        let mut batch = valid_test_batch(&strut_core::Document::sample_login_button());
+        batch.source_type = "python".to_string();
+        let error = save_project_snapshot(
+            root.display().to_string(),
+            "Invalid Project".to_string(),
+            document,
+            vec![batch],
+            None,
+        )
+        .expect_err("bad document and batch should reject");
+        assert!(error.contains("unsupported source type"));
+    }
+
+    #[test]
+    fn legacy_generated_local_state_document_json_loads_for_compatibility() {
+        let root = temp_project_root("legacy");
+        fs::create_dir_all(root.join("scenes")).expect("scenes dir");
+        let document = strut_core::Document::sample_login_button();
+        fs::write(
+            root.join(LEGACY_STARTER_SCENE_FILE),
+            serde_json::to_string_pretty(&document).expect("document json"),
+        )
+        .expect("legacy scene");
+        fs::write(
+            root.join(PROJECT_MANIFEST_FILE),
+            serde_json::to_string_pretty(&json!({
+                "name": "Legacy Project",
+                "mainScene": LEGACY_STARTER_SCENE_FILE
+            }))
+            .expect("manifest json"),
+        )
+        .expect("manifest");
+
+        let loaded =
+            load_project_snapshot(root.display().to_string()).expect("legacy project loads");
+        assert_eq!(loaded.document.name, "Login Button");
+        assert!(loaded.operation_batches.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sprite_python_batch_persists_only_after_rust_validation() {
+        let validated = validate_generation_plan_batch(
+            sprite_python_fixture("dice").to_string(),
+            "sprite-python".to_string(),
+            Some("rolling dice".to_string()),
+        )
+        .expect("sprite-python fixture validates");
+
+        assert_eq!(validated.batch.source_type, "sprite-python");
+        assert!(validated.batch.validation_result.ok);
+        assert_eq!(validated.batch.status, "applied");
+        assert!(validated.operation_count >= 10);
+        assert!(validated
+            .batch
+            .operations
+            .iter()
+            .any(|operation| operation.get("type").and_then(Value::as_str) == Some("create_node")));
+
+        let bad = validate_generation_plan_batch(
+            json!({
+                "plan": {
+                    "id": "bad-logo",
+                    "name": "Bad Logo",
+                    "subject": {"classification": "logo", "label": "Logo"},
+                    "parts": [
+                        phase3_part("Body", "Body", "body", json!({"kind":"ellipse","cx":480,"cy":270,"rx":80,"ry":80})),
+                        phase3_part("Head", "Head", "head", json!({"kind":"ellipse","cx":480,"cy":190,"rx":60,"ry":50})),
+                        phase3_part("Eyes", "Eyes", "eyes", json!({"kind":"path","d":"M460 190 L470 190"})),
+                        phase3_part("PrimaryMark", "PrimaryMark", "mark", json!({"kind":"path","d":"M420 240 L540 240"})),
+                        phase3_part("AccentStroke", "AccentStroke", "accent", json!({"kind":"path","d":"M420 270 L540 270"}))
+                    ],
+                    "motionRoles": [{"id": "primary", "purpose": "bad mascot anatomy", "partRefs": ["PrimaryMark"]}],
+                    "states": ["idle", "reveal"],
+                    "timelines": [{
+                        "id": "reveal",
+                        "name": "reveal",
+                        "state": "reveal",
+                        "durationMs": 1000,
+                        "tracks": [{
+                            "target": "PrimaryMark",
+                            "property": "opacity",
+                            "keyframes": [
+                                {"timeMs": 0, "value": 0, "easing": "linear"},
+                                {"timeMs": 1000, "value": 1, "easing": "linear"}
+                            ]
+                        }]
+                    }],
+                    "editability": {"editableParts": ["PrimaryMark"], "lockedParts": [], "notes": []}
+                },
+                "operations": []
+            })
+            .to_string(),
+            "sprite-python".to_string(),
+            None,
+        )
+        .expect_err("invalid sprite-python batch rejects");
+        assert!(bad.contains("mascot-only anatomy"));
     }
 
     #[test]
