@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "apps/studio/src-tauri",
   "crates/strut-agent",
+  "crates/strut-cli",
   "crates/strut-core",
   "crates/strut-format",
   "crates/strut-renderer",

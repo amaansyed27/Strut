@@ -9,7 +9,7 @@ from io import StringIO
 
 import pytest
 
-from strut_python import abstract_logo_reveal, loader_progress, mascot_idle, rolling_dice
+from strut_python import abstract_logo_reveal, loader_progress, mascot_idle, rolling_dice, ui_microinteraction
 from strut_python.cli import envelope_for
 
 
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures"
 
 
-@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot"])
+@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot", "ui"])
 def test_examples_emit_generation_plan_and_operations(example: str) -> None:
     envelope = envelope_for(example)
 
@@ -28,7 +28,7 @@ def test_examples_emit_generation_plan_and_operations(example: str) -> None:
     assert envelope["operations"][-1]["type"] == "emit_event"
 
 
-@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot"])
+@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot", "ui"])
 def test_examples_are_deterministic_against_fixtures(example: str) -> None:
     fixture = json.loads((FIXTURES / f"{example}.plan.json").read_text(encoding="utf-8"))
 
@@ -58,13 +58,14 @@ def test_mascot_example_uses_anatomy_only_when_subject_is_mascot() -> None:
         (abstract_logo_reveal, "logo"),
         (loader_progress, "loader"),
         (mascot_idle, "mascot"),
+        (ui_microinteraction, "ui"),
     ],
 )
 def test_builder_subject_classification(builder, expected: str) -> None:
     assert builder().to_envelope()["plan"]["subject"]["classification"] == expected
 
 
-@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot"])
+@pytest.mark.parametrize("example", ["dice", "logo", "loader", "mascot", "ui"])
 def test_example_scripts_print_json(example: str) -> None:
     script = ROOT / "examples" / f"{example}.py"
     stdout = StringIO()

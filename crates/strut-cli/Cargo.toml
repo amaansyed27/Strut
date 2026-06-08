@@ -1,0 +1,19 @@
+[package]
+name = "strut-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "strut"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+strut-core = { path = "../strut-core" }
+strut-format = { path = "../strut-format" }
+strut-renderer = { path = "../strut-renderer" }
+thiserror.workspace = true
+uuid.workspace = true
