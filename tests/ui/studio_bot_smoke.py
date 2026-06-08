@@ -406,7 +406,7 @@ def run_smoke() -> None:
                     transitions: [{ from: "idle", to: state, on: state, timeline: state }]
                   }],
                   bindings: [{ name: `${target}_fill`, target, property: "style.fill" }],
-                  events: [{ name: "generation_plan_validated", description: "Seeded Phase 3 fixture" }]
+                  events: [{ name: "generation_plan_validated", description: "Seeded Phase 3B sprite-python fixture after Rust validation" }]
                 });
                 const dice = documentFor("dice", "Rolling Dice", "settle", "DieBody", [
                   node("DieBody", "DieBody", "rect", "volume", { type: "rect", x: 378, y: 174, width: 210, height: 210, rx: 24 }, { fill: "#f5f7fb" }),
@@ -445,7 +445,7 @@ def run_smoke() -> None:
                   title,
                   projectId: "project-phase-3",
                   updated: "now",
-                  messages: [{ id: Date.now() + Math.random(), role: "assistant", text: `${title} generated through validated Phase 3 operations.` }],
+                    messages: [{ id: Date.now() + Math.random(), role: "assistant", text: `${title} generated through sprite-python and validated Strut operations.` }],
                   references: [],
                   document,
                   activeState,
@@ -457,7 +457,7 @@ def run_smoke() -> None:
                 window.localStorage.setItem("strut-studio-workspace-v4", JSON.stringify({
                   projects: [{
                     id: "project-phase-3",
-                    name: "Phase 3 Fixtures",
+                    name: "Phase 3B Sprite-Python Fixtures",
                     path: "D:\\\\StrutPhase3",
                     chats: [
                       chat("chat-dice", "Rolling dice", dice, "settle"),
@@ -503,7 +503,7 @@ def run_smoke() -> None:
             expect(page.get_by_role("button", name="Head ellipse")).to_be_visible()
             expect(page.get_by_role("button", name="Eyes path")).to_be_visible()
 
-            page.screenshot(path=str(output_dir / "studio-bot-smoke.png"), full_page=True)
+            page.screenshot(path=str(output_dir / "studio-phase-3b-sprite-python-smoke.png"), full_page=True)
             browser.close()
     finally:
         stop_process_tree(process)
