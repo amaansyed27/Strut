@@ -69,6 +69,7 @@ The core CLI workflow does not require the Studio UI. The app handoff protocol i
 - `docs/guides/agentic-cli-integration.md`
 - `docs/reports/phase-5-agentic-cli/phase-5-agentic-cli-report.md`
 - `docs/reports/phase-5-agentic-cli/phase-5-agentic-cli-report.docx`
+- `docs/reports/phase-5-agentic-cli/screenshots/exported-runtime-demo.png`
 
 ## Commits
 
@@ -96,15 +97,32 @@ Focused commands run during implementation:
 | `target\debug\strut.exe render --scene <temp>\scene.strut --state loading --out <temp>\proof.svg --json --no-open` | PASS, wrote deterministic SVG proof. |
 | `target\debug\strut.exe export react --scene <temp>\scene.strut --out <temp>\react-export --dry-run --json` | PASS. |
 
-Final broad verification should run before closing Phase 5.
+Final broad verification:
+
+| Command | Result |
+|---|---|
+| `cargo test --workspace` | PASS, workspace tests green with 1 ignored authenticated Gemini CLI test and existing Studio dead-code warnings. |
+| `npm --workspace @strut/studio run check` | PASS. |
+| `npm run check` | PASS, with existing Rust dead-code warnings during `cargo check`. |
+| `git diff --check` | PASS. |
+| Playwright exported-runtime demo harness | PASS, rendered exported scene data in Chromium and captured `screenshots/exported-runtime-demo.png`. |
 
 ## Browser QA
 
-Browser visual QA is not required for the core CLI implementation because no Studio UI was changed. Exported React files are static integration code; a browser demo remains a future sample-project hardening task.
+Browser plugin controls were not exposed in this thread, so browser QA used Playwright/Chromium. Result: PASS.
+
+Coverage:
+
+- Generated a sprite-python logo plan through the CLI.
+- Patched a copied `.strut` scene after Rust validation.
+- Rendered a deterministic SVG proof.
+- Exported React integration files.
+- Loaded exported `scene.json` in a local HTML harness and rendered the scene as SVG in Chromium.
+- Captured `screenshots/exported-runtime-demo.png`.
 
 ## Computer And Tauri QA
 
-Computer/Tauri QA was not required for core CLI commands. Phase 5 did not change Tauri UI behavior. App handoff remains documented but not implemented.
+Computer/Tauri QA was not required for core CLI commands. Phase 5 did not change Tauri UI behavior. App handoff remains documented but not implemented, so no native app handoff smoke was run.
 
 ## Remaining Risks
 
