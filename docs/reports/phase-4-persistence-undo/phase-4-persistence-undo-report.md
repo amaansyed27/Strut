@@ -6,7 +6,7 @@ Branch: `codex/phase-1-ai-editor-shell`
 
 ## Summary
 
-Phase 4 is implemented, review-fixed, and verified. Strut Studio now treats validated scene/project documents and operation batches as the durable source of truth for the editor workflow. Native Studio projects use canonical files:
+Phase 4 is implemented, final-review-fixed, and verified. Strut Studio now treats validated scene/project documents and operation batches as the durable source of truth for the editor workflow. Native Studio projects use canonical files:
 
 - `strut.project.json`
 - `scenes/main.strut`
@@ -24,6 +24,18 @@ This review pass addressed two Phase 4 persistence hardening findings without st
 - Sprite-python/generated operation batches still pass through Rust generation-plan validation, then their raw plan operations are cross-checked against the converted validated document before persistence.
 - Native project load now confines `mainScene` to a safe relative project-root path. Absolute paths, `..` traversal, root/prefix components, and canonicalized paths outside the project root are rejected before reading.
 - Focused Rust tests cover malformed operation payloads, missing targets, unsupported properties/types, empty applied batches, invalid replacement documents, valid sprite-python/generated batches, absolute/traversal `mainScene` paths, valid relative scene paths, and legacy missing-scene fallback.
+
+## Final Phase 4 Review Fix Pass
+
+This final review pass addressed the remaining generated-reference validation and DOCX evidence findings without starting Phase 5 or agentic CLI mode.
+
+- Generated operation references are now split by operation type.
+- Only `create_node` ids count as generated node refs for `group_nodes`, `add_keyframe`, and `bind_property`.
+- Only `add_timeline` ids/names count as generated timeline refs for `add_keyframe`.
+- Arbitrary operation ids, including unrelated `emit_event.id` values, no longer satisfy generated node or timeline references.
+- Focused Rust tests reject unrelated operation ids used as `add_keyframe` targets, `add_keyframe` timelines, `bind_property` targets, and `group_nodes` children.
+- Focused Rust tests confirm valid `create_node` ids and valid `add_timeline` ids/names are still accepted where generated references are allowed.
+- The DOCX report was regenerated with embedded before, Browser, and Tauri screenshots; media verification confirms screenshots are present under `word/media/`.
 
 ## Initial Dirty Files
 
@@ -73,6 +85,7 @@ Schema and native persistence:
 - `apps/studio/src-tauri/src/lib.rs`
   - Review fix: Rust-side operation payload validation against the current document.
   - Review fix: safe `mainScene` resolution confined to the project root.
+  - Final review fix: generated operation references are typed by operation kind so unrelated operation ids cannot masquerade as nodes or timelines.
 
 Studio UI:
 
@@ -85,6 +98,7 @@ Focused verification:
 - `tests/ui/studio_persistence_smoke.py`
 - `tests/ui/studio_tauri_persistence_smoke.py`
   - Review pass also added focused Rust unit tests in `apps/studio/src-tauri/src/lib.rs` for payload validation and path safety.
+  - Final review pass added focused Rust unit tests in `apps/studio/src-tauri/src/lib.rs` for generated-reference separation.
 
 Report artifacts:
 
@@ -114,6 +128,14 @@ Report artifacts:
   - Added focused Rust tests for malformed payloads, missing targets, unsupported properties/types, empty applied batches, invalid replacement documents, valid sprite-python/generated batches, absolute/traversal paths, valid relative paths, and legacy fallback.
 - `chore(report): refresh phase 4 review evidence`
   - Refreshes this Markdown/DOCX report and screenshot evidence after the review fix pass.
+- `ded9768 fix(studio): separate generated operation references`
+  - Split generated operation references by operation type.
+  - Restricted generated node refs to `create_node` ids.
+  - Restricted generated timeline refs to `add_timeline` ids/names.
+  - Added focused Rust tests for unrelated operation ids rejected as node/timeline refs and valid generated refs still accepted.
+- `chore(report): restore phase 4 visual evidence`
+  - Regenerates this DOCX report with embedded screenshot media.
+  - Updates this report with final review-fix verification evidence.
 
 ## Verification Commands
 
@@ -122,7 +144,7 @@ Report artifacts:
 | `python -m pytest packages/strut-python/tests` | PASS, 18 tests. |
 | `$env:PYTHONPATH='src'; python -m strut_python.cli loader --json --out $env:TEMP\strut-loader-plan.json` from `packages/strut-python` | PASS. |
 | `cargo fmt --all --check` | PASS. |
-| `cargo test -p strut-studio` | PASS, 32 passed, 1 ignored authenticated Gemini CLI test. |
+| `cargo test -p strut-studio` | PASS, 34 passed, 1 ignored authenticated Gemini CLI test. |
 | `cargo test --workspace` | PASS, workspace tests green, same 1 ignored authenticated Gemini CLI test. |
 | `npm --workspace @strut/studio run check` | PASS. |
 | `npm run check` | PASS, with existing Rust dead-code warnings during `cargo check`. |
@@ -137,6 +159,10 @@ Review-pass focused coverage in `cargo test -p strut-studio`:
 - Replacement operation batches validate both `nextDocument` and non-null `previousDocument` as full Strut documents.
 - Sprite-python/generated operation batches persist only after Rust generation-plan validation and Rust operation payload validation.
 - Project manifest `mainScene` rejects absolute and traversal paths, accepts valid relative paths, and preserves the legacy missing-scene fallback.
+- Final review fix: generated references reject unrelated operation ids as `add_keyframe` targets, `add_keyframe` timelines, `bind_property` targets, and `group_nodes` children.
+- Final review fix: valid `create_node` ids and `add_timeline` ids/names remain accepted as generated references where those operation types define them.
+
+Rust verification note: an initial parallel run of `cargo test -p strut-studio` overlapped with `cargo test --workspace` and hit a transient temp-project collision in timestamp-named test folders. The sequential rerun of `cargo test -p strut-studio` passed, and `cargo test --workspace` passed.
 
 Known warning note: `strut-studio` still emits existing warnings around legacy fallback helpers/fields such as `CHARACTER_DOCUMENT_SYSTEM_PROMPT`, `EditabilityPlan.notes`, `SceneOperation.parent`, and `document_repair_prompt`. These warnings predate Phase 4 behavior and do not fail verification.
 
@@ -197,6 +223,22 @@ Copied forward from the Phase 3B final state:
 - `screenshots/before-phase-3b/tauri-01-dice-selection.png`
 - `screenshots/before-phase-3b/tauri-02-loader-selection.png`
 
+## DOCX Embedded Media Verification
+
+The DOCX report was regenerated with embedded visual evidence from:
+
+- `screenshots/before-phase-3b/`
+- `screenshots/browser/`
+- `screenshots/tauri/`
+
+Verification command:
+
+```text
+python -c "from zipfile import ZipFile; media=[n for n in ZipFile('docs/reports/phase-4-persistence-undo/phase-4-persistence-undo-report.docx').namelist() if n.startswith('word/media/')]; print(len(media)); print('\n'.join(media))"
+```
+
+Result: PASS, 13 embedded media files under `word/media/`.
+
 ## Visual QA Notes
 
 - The Studio shell remains the same Phase 1/2 structure: sidebar, top project/status bar, AI edit rail, preview, layers, and inspector.
@@ -204,7 +246,8 @@ Copied forward from the Phase 3B final state:
 - Apply is disabled for invalid/unvalidated batches and enabled for validated pending batches.
 - Operation history records status and source type clearly.
 - Browser and Tauri screenshots show no obvious overlapping text, clipped controls, or blank preview regression.
-- DOCX render QA could not be completed because `soffice`/LibreOffice was not available on PATH in this environment. The DOCX was generated structurally from the same report content and screenshot list.
+- DOCX embedded-media verification passed with 13 screenshot files under `word/media/`.
+- DOCX page PNG/PDF render QA could not be completed because `soffice`/LibreOffice was not available on PATH in this environment.
 
 ## Remaining Risks
 
@@ -212,7 +255,7 @@ Copied forward from the Phase 3B final state:
 - Browser mode uses local validation and browser snapshot fallback because it cannot call native Tauri filesystem commands.
 - Native save/load currently requires an active project path; a richer file picker/open-project flow remains future UI work.
 - Rust now checks persisted revision ids are present and use the expected `rev-` marker, but it does not enforce exact equality with a Rust-computed revision because the React UI and Rust backend currently compute different Phase 4 revision shapes. A shared content-hash revision should replace this limitation before stricter multi-writer workflows.
-- Raw sprite-python/generated plan operations use pre-document semantic ids, so Rust validates those generated operation targets against the converted document's node names as well as stable ids. The converted `.strut` document itself remains the authoritative validated scene artifact.
+- Raw sprite-python/generated plan operations use pre-document semantic ids. Rust now accepts only typed generated refs from `create_node` and `add_timeline`, while the converted `.strut` document remains the authoritative validated scene artifact.
 - Existing Rust dead-code warnings remain from earlier fallback/provider code.
 
 ## Phase 5 Recommendation
