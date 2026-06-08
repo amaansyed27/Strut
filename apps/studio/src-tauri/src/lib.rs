@@ -3680,12 +3680,7 @@ mod tests {
                 vec!["Track", "ActiveSegment", "ProgressSweep"],
                 vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
             ),
-            (
-                "mascot",
-                "mascot",
-                vec!["Body", "Head", "Eyes"],
-                vec![],
-            ),
+            ("mascot", "mascot", vec!["Body", "Head", "Eyes"], vec![]),
         ] {
             let planned = document_from_generation_plan_text(sprite_python_fixture(fixture))
                 .expect("sprite-python fixture should validate");
