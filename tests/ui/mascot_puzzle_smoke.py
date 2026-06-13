@@ -16,8 +16,9 @@ PORT = int(os.environ.get("STRUT_MASCOT_PUZZLE_TEST_PORT", "1426"))
 URL = f"http://127.0.0.1:{PORT}/examples/mascot-puzzle/"
 
 
-def npm_command() -> str:
-    return "npm.cmd" if os.name == "nt" else "npm"
+def vite_command() -> list[str]:
+    vite_script = ROOT / "apps" / "studio" / "node_modules" / "vite" / "bin" / "vite.js"
+    return ["node", str(vite_script), "."]
 
 
 def wait_for_server(process: subprocess.Popen[str], timeout_seconds: int = 30) -> None:
@@ -43,7 +44,7 @@ def run_smoke() -> None:
     output_dir.mkdir(exist_ok=True)
 
     process = subprocess.Popen(
-        [npm_command(), "exec", "vite", "--", "--host", "127.0.0.1", "--port", str(PORT), "--strictPort"],
+        [*vite_command(), "--host", "127.0.0.1", "--port", str(PORT), "--strictPort"],
         cwd=ROOT,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,

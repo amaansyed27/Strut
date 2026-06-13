@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -15,8 +16,9 @@ PORT = int(os.environ.get("STRUT_RUNTIME_TEST_PORT", "1423"))
 URL = f"http://127.0.0.1:{PORT}/examples/runtime-bot/"
 
 
-def npm_command() -> str:
-    return "npm.cmd" if os.name == "nt" else "npm"
+def vite_command() -> list[str]:
+    vite_script = ROOT / "apps" / "studio" / "node_modules" / "vite" / "bin" / "vite.js"
+    return ["node", str(vite_script), "."]
 
 
 def wait_for_server(process: subprocess.Popen[str], timeout_seconds: int = 30) -> None:
@@ -42,7 +44,7 @@ def run_smoke() -> None:
     output_dir.mkdir(exist_ok=True)
 
     process = subprocess.Popen(
-        [npm_command(), "exec", "vite", "--", "--host", "127.0.0.1", "--port", str(PORT), "--strictPort"],
+        [*vite_command(), "--host", "127.0.0.1", "--port", str(PORT), "--strictPort"],
         cwd=ROOT,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -58,7 +60,7 @@ def run_smoke() -> None:
             page.goto(URL, wait_until="networkidle")
 
             expect(page.get_by_text("Runtime Bot")).to_be_visible()
-            expect(page.get_by_text("Minimal Bot loaded")).to_be_visible()
+            expect(page.locator("#status")).to_contain_text(re.compile(r"loaded - \d+ states"))
 
             preview = page.locator("[data-strut-bot]")
             expect(preview).to_be_visible()
