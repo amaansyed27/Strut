@@ -9,8 +9,15 @@ on:
 
 jobs:
   check:
-    name: Check workspace
-    runs-on: windows-latest
+    name: Check workspace (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,14 +25,31 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 25
+          node-version: 22
           cache: npm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Python test dependencies
+        run: python -m pip install pytest playwright
+
+      - name: Install Playwright browser
+        run: python -m playwright install chromium
 
       - name: TypeScript and Rust check
         run: npm run check
@@ -33,5 +57,29 @@ jobs:
       - name: Rust tests
         run: npm run test
 
+      - name: Python sprite tests
+        run: python -m pytest packages/strut-python/tests tests/test_release_gate.py
+
+      - name: Runtime build
+        run: npm run runtime:build
+
       - name: Studio frontend build
         run: npm --workspace @strut/studio run build
+
+      - name: Site build
+        run: npm --workspace @strut/site run build
+
+      - name: Site smoke
+        run: npm run test:site
+
+      - name: Runtime smoke
+        run: npm run test:runtime-ui
+
+      - name: Studio smoke
+        run: npm run test:ui
+
+      - name: Tauri bundle build
+        run: npm run studio:build
+
+      - name: Release gate
+        run: npm run release:gate
