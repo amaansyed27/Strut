@@ -39,6 +39,7 @@ Subject rules:
 
 Return compact JSON; do not explain, do not use markdown, do not return a whole document unless asked to repair an explicit fallback."##;
 
+#[allow(dead_code)]
 const CHARACTER_DOCUMENT_SYSTEM_PROMPT: &str = r##"You convert design prompts into editable Strut motion documents. Return only JSON in this shape: {"document": <StrutDocument>}.
 
 StrutDocument schema:
@@ -309,6 +310,7 @@ struct EditabilityPlan {
     #[serde(default)]
     locked_parts: Vec<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     notes: Vec<String>,
 }
 
@@ -356,6 +358,7 @@ enum SceneOperation {
         id: String,
         name: String,
         kind: String,
+        #[allow(dead_code)]
         parent: Option<String>,
         geometry: PlanGeometry,
         #[serde(default)]
@@ -2059,6 +2062,7 @@ fn response_preview(text: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn document_repair_prompt(
     original_prompt: &str,
     invalid_response: &str,

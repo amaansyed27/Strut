@@ -54,6 +54,19 @@ def check_studio_bundle(root: Path) -> dict[str, Any]:
     return {"id": "studio_bundle", **status(ok, detail)}
 
 
+def check_bundle_identifier(root: Path) -> dict[str, Any]:
+    config = read_json(root / "apps/studio/src-tauri/tauri.conf.json")
+    identifier = config.get("identifier", "")
+    parts = identifier.split(".")
+    ok = len(parts) >= 3 and all(parts) and not identifier.endswith(".app")
+    detail = (
+        f"bundle identifier {identifier} is release-safe"
+        if ok
+        else f"bundle identifier {identifier!r} must be reverse-DNS and must not end with .app"
+    )
+    return {"id": "bundle_identifier", **status(ok, detail), "identifier": identifier}
+
+
 def check_site_workspace(root: Path) -> dict[str, Any]:
     package = read_json(root / "package.json")
     site_package = root / "apps/site/package.json"
@@ -108,6 +121,7 @@ def collect_release_gate(root: Path) -> dict[str, Any]:
     checks = [
         check_version_consistency(root),
         check_studio_bundle(root),
+        check_bundle_identifier(root),
         check_site_workspace(root),
         check_ci_release_matrix(root),
         check_launch_smokes(root),

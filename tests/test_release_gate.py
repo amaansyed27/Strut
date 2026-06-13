@@ -28,6 +28,7 @@ def test_release_gate_reports_required_product_surfaces() -> None:
         "ci_release_matrix",
         "launch_smokes",
         "download_surface",
+        "bundle_identifier",
     }.issubset(check_ids)
     assert report["targetVersion"] == "1.0.0"
     assert report["currentVersion"]
