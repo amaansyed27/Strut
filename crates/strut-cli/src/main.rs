@@ -1185,7 +1185,9 @@ fn instruction_kind(instruction: &str) -> String {
         "loader"
     } else if lower.contains("mascot") || lower.contains("character") {
         "mascot"
-    } else if lower.contains("icon") || lower.contains("badge") {
+    } else if (lower.contains("icon") || lower.contains("badge"))
+        && !contains_compound_asset_cues(&lower)
+    {
         "icon"
     } else if lower.contains("button") || lower.contains("microinteraction") || lower.contains("ui")
     {
@@ -1196,6 +1198,14 @@ fn instruction_kind(instruction: &str) -> String {
         "custom"
     }
     .to_string()
+}
+
+fn contains_compound_asset_cues(lower: &str) -> bool {
+    let cues = [
+        " with ", "glassy", "crystal", "volcano", "lava", "smoke", "bird", "animal", "object",
+        "scene", "orb", "portal",
+    ];
+    cues.iter().any(|cue| lower.contains(cue))
 }
 
 fn fixture_envelope(kind: &str) -> CliResult<Value> {

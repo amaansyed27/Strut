@@ -91,6 +91,21 @@ def test_procedural_bird_asset_is_not_a_mascot_template() -> None:
     assert len(plan["timelines"]) >= 3
 
 
+def test_procedural_compound_subject_keeps_prompt_semantics() -> None:
+    envelope = envelope_for("custom", "make a glassy crystal volcano badge with lava shimmer and tiny smoke orbit, no face")
+    plan = envelope["plan"]
+    names = {part["name"] for part in plan["parts"]}
+    timeline_names = {timeline["name"] for timeline in plan["timelines"]}
+
+    assert plan["subject"]["classification"] == "dynamic_asset"
+    assert plan["subject"]["label"] == "Glassy Crystal Volcano Badge"
+    assert any(name.startswith("Glassy Crystal Volcano") for name in names)
+    assert any("Lava" in name for name in names)
+    assert any("Smoke" in name for name in names)
+    assert names.isdisjoint(FORBIDDEN_MASCOT_ANATOMY)
+    assert len(timeline_names) >= 3
+
+
 @pytest.mark.parametrize(
     ("builder", "expected"),
     [

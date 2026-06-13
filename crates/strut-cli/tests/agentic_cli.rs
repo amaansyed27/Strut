@@ -463,6 +463,36 @@ fn sprite_plan_supports_prompt_specific_procedural_assets() {
 }
 
 #[test]
+fn sprite_plan_keeps_compound_subjects_out_of_fixed_badge_fixture() {
+    let root = repo_root();
+    let plan = sprite_plan_json(
+        &root,
+        "make a glassy crystal volcano badge with lava shimmer and tiny smoke orbit, no face",
+    );
+
+    assert_eq!(
+        plan["planSummary"]["subjectClassification"],
+        "dynamic_asset"
+    );
+    assert_eq!(
+        plan["planSummary"]["subjectLabel"],
+        "Glassy Crystal Volcano Badge"
+    );
+    assert_eq!(
+        plan["document"]["name"],
+        "Glassy Crystal Volcano Badge Motion"
+    );
+
+    let names = part_names(&plan);
+    assert!(names
+        .iter()
+        .any(|name| name.starts_with("Glassy Crystal Volcano")));
+    assert!(names.iter().any(|name| name.contains("Lava")));
+    assert!(names.iter().any(|name| name.contains("Smoke")));
+    assert_no_mascot_anatomy(&names);
+}
+
+#[test]
 fn patch_rejects_tampered_top_level_document_without_mutating_scene() {
     let root = repo_root();
     let temp = temp_dir();

@@ -84,25 +84,64 @@ def procedural_asset(instruction: str) -> Scene:
             {"id": "energy", "purpose": "motion trail and lift without mascot-only anatomy", "partRefs": [f"{base}Trail", f"{base}Shadow"]},
         ]
     else:
+        detail_parts: list[Path] = []
+        if "lava" in lower or "volcano" in lower:
+            detail_parts.append(
+                Path(
+                    f"{base}Lava",
+                    f"{label} Lava Flow",
+                    "emissive lava shimmer",
+                    "M424 286 C456 254 484 300 512 270 C538 246 558 284 586 258",
+                    style=style(None, "#f97316", 8, 0.86),
+                )
+            )
+        if "smoke" in lower or "mist" in lower or "orbit" in lower:
+            detail_parts.append(
+                Path(
+                    f"{base}Smoke",
+                    f"{label} Smoke Orbit",
+                    "smoke orbit",
+                    "M350 246 C404 166 548 150 636 226 C586 218 536 228 486 260 C438 292 394 296 350 246 Z",
+                    style=style(None, "#94a3b8", 6, 0.42),
+                )
+            )
+        if not detail_parts:
+            detail_parts.append(
+                Path(
+                    f"{base}Accent",
+                    f"{label} Accent Stroke",
+                    "editable accent",
+                    "M386 336 C450 372 548 370 612 320",
+                    style=style(None, "#2563eb", 8),
+                )
+            )
+            detail_parts.append(
+                Path(
+                    f"{base}Trail",
+                    f"{label} Motion Trail",
+                    "motion arc",
+                    "M344 274 C394 206 560 166 646 230",
+                    style=style(None, "#99f6e4", 6, 0.45),
+                )
+            )
         sprites = [
             Path(f"{base}Core", f"{label} Core", "primary form", "M392 202 C452 144 552 158 602 238 C574 332 470 376 390 326 C354 282 356 236 392 202 Z", style=style("#d9f99d" if wants_heavy else "#e0f2fe", "#13231b", 5)),
             Path(f"{base}Facet", f"{label} Facet", "secondary plane", "M430 214 C482 190 542 206 564 252 C520 246 480 270 448 314 C430 278 420 244 430 214 Z", style=style("#a7f3d0", "#047857", 4, 0.9)),
-            Path(f"{base}Accent", f"{label} Accent Stroke", "editable accent", "M386 336 C450 372 548 370 612 320", style=style(None, "#2563eb", 8)),
+            *detail_parts,
             Path(f"{base}Spark", f"{label} Spark", "small signal", "M596 174 L608 206 L642 214 L610 226 L598 258 L586 226 L552 216 L584 206 Z", style=style("#fde68a", "#92400e", 3)),
-            Path(f"{base}Trail", f"{label} Motion Trail", "motion arc", "M344 274 C394 206 560 166 646 230", style=style(None, "#99f6e4", 6, 0.45)),
             Ellipse(f"{base}Shadow", f"{label} Shadow", "grounding shadow", 490, 420, 130, 18, style=style("#13231b", None, 0, 0.16)),
         ]
         classification = "dynamic_asset"
         timelines = [
             reveal(f"{base}Core", f"{base.lower()}-core-reveal"),
-            tiny_tilt(f"{base}Accent", "reveal", f"{base.lower()}-accent-drift"),
+            tiny_tilt(detail_parts[0].id, "reveal", f"{base.lower()}-detail-drift"),
             attention_nudge(f"{base}Spark", f"{base.lower()}-spark-nudge"),
         ]
         if wants_heavy:
             timelines.append(soft_bob(f"{base}Core", "idle", f"{base.lower()}-ambient-bob"))
         motion_roles = [
             {"id": "primary", "purpose": f"subject-aware motion for {label}", "partRefs": [f"{base}Core", f"{base}Facet"]},
-            {"id": "detail", "purpose": "editable accent, sparkle, and motion trail", "partRefs": [f"{base}Accent", f"{base}Spark", f"{base}Trail"]},
+            {"id": "detail", "purpose": "editable prompt-specific details, sparkle, and motion trail", "partRefs": [part.id for part in detail_parts] + [f"{base}Spark"]},
         ]
 
     return Scene(
@@ -111,7 +150,7 @@ def procedural_asset(instruction: str) -> Scene:
         subject_classification=classification,
         subject_label=label,
         sprites=sprites,
-        states=[State("idle"), State("reveal"), State("focus")],
+        states=[State("idle"), State("reveal"), State("focus"), State("hover")],
         timelines=timelines,
         motion_roles=motion_roles,
         bindings=[Binding(f"edit_{base.lower()}_fill", sprites[0].id, "fill")],
