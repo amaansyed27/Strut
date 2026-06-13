@@ -1,16 +1,14 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronRight,
   Cpu,
-  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
   Home,
   ImagePlus,
   Layers3,
-  Lock,
   MessageSquarePlus,
   Monitor,
   Moon,
@@ -22,16 +20,9 @@ import {
   Search,
   Send,
   Settings2,
-  Square,
   Sun,
-  Unlock,
   Trash2,
-  WandSparkles,
   X,
-  Eye,
-  EyeOff,
-  Check,
-  History,
   MoreHorizontal,
   Pin,
   Pencil,
@@ -129,7 +120,7 @@ type ProjectInfo = {
 };
 
 type ProviderMode = "local" | "byok";
-type ViewMode = "chat" | "preview" | "editor";
+type ViewMode = "chat" | "preview";
 type MainPanel = "chat" | "providers" | "settings";
 type ThemeMode = "system" | "light" | "dark";
 
@@ -201,9 +192,13 @@ type ChatAnswer = {
 type ReferenceAttachment = {
   id: string;
   name: string;
+  kind?: "image" | "layer";
   mimeType: string;
-  dataUrl: string;
+  dataUrl?: string;
   size: number;
+  nodeId?: string;
+  nodeKind?: string;
+  nodeRole?: string;
 };
 
 type ChatMessage = {
@@ -411,17 +406,21 @@ function normalizeAttachments(value: unknown): ReferenceAttachment[] {
 
   return value
     .filter((attachment) => attachment && typeof attachment === "object")
-    .map((attachment) => {
+    .map((attachment): ReferenceAttachment => {
       const candidate = attachment as Partial<ReferenceAttachment>;
       return {
         id: typeof candidate.id === "string" && candidate.id ? candidate.id : `ref-${Date.now()}-${Math.random()}`,
         name: typeof candidate.name === "string" ? candidate.name : "reference image",
+        kind: candidate.kind === "layer" ? "layer" : "image",
         mimeType: typeof candidate.mimeType === "string" ? candidate.mimeType : "image/png",
         dataUrl: typeof candidate.dataUrl === "string" ? candidate.dataUrl : "",
         size: typeof candidate.size === "number" ? candidate.size : 0,
+        nodeId: typeof candidate.nodeId === "string" ? candidate.nodeId : undefined,
+        nodeKind: typeof candidate.nodeKind === "string" ? candidate.nodeKind : undefined,
+        nodeRole: typeof candidate.nodeRole === "string" ? candidate.nodeRole : undefined,
       };
     })
-    .filter((attachment) => attachment.dataUrl.startsWith("data:image/"));
+    .filter((attachment) => attachment.kind === "layer" || attachment.dataUrl?.startsWith("data:image/"));
 }
 
 function normalizeMessages(value: unknown): ChatMessage[] {
@@ -693,6 +692,7 @@ function fileToAttachment(file: File): Promise<ReferenceAttachment> {
       resolve({
         id: `ref-${Date.now()}-${Math.round(Math.random() * 10000)}`,
         name: file.name,
+        kind: "image",
         mimeType: file.type || "image/png",
         dataUrl,
         size: file.size,
@@ -700,6 +700,45 @@ function fileToAttachment(file: File): Promise<ReferenceAttachment> {
     };
     reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
     reader.readAsDataURL(file);
+  });
+}
+
+function layerToAttachment(layer: StrutNode): ReferenceAttachment {
+  return {
+    id: `layer-${layer.id}`,
+    name: layer.name,
+    kind: "layer",
+    mimeType: "application/x-strut-layer",
+    size: 0,
+    nodeId: layer.id,
+    nodeKind: layer.kind,
+    nodeRole: layer.role,
+  };
+}
+
+function layerReferencePrompt(attachments: ReferenceAttachment[]) {
+  const layerAttachments = attachments.filter((attachment) => attachment.kind === "layer");
+  if (!layerAttachments.length) {
+    return "";
+  }
+  return `\n\nTarget layers selected from the scene: ${layerAttachments
+    .map((attachment) =>
+      `${attachment.name} (${attachment.nodeId ?? "unknown id"}, ${attachment.nodeKind ?? "layer"}${
+        attachment.nodeRole ? `, role: ${attachment.nodeRole}` : ""
+      })`,
+    )
+    .join("; ")}. Use these as edit context.`;
+}
+
+function uniqueAttachments(attachments: ReferenceAttachment[]) {
+  const seen = new Set<string>();
+  return attachments.filter((attachment) => {
+    const key = attachment.kind === "layer" ? `layer:${attachment.nodeId ?? attachment.name}` : `image:${attachment.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
   });
 }
 
@@ -790,9 +829,9 @@ function ChatMessageView({ compact = false, message }: { compact?: boolean; mess
         {message.attachments?.length ? (
           <span className="message-attachments">
             {message.attachments.map((attachment) => (
-              <span className="message-attachment" key={attachment.id}>
-                <img src={attachment.dataUrl} alt="" />
-                <em>{attachment.name}</em>
+              <span className={`message-attachment ${attachment.kind === "layer" ? "layer-attachment" : ""}`} key={attachment.id}>
+                {attachment.kind === "layer" ? <Layers3 size={13} /> : <img src={attachment.dataUrl} alt="" />}
+                <em>{attachment.kind === "layer" ? `Layer: ${attachment.name}` : attachment.name}</em>
               </span>
             ))}
           </span>
@@ -808,46 +847,6 @@ function flattenNodes(nodes: StrutNode[]): StrutNode[] {
 
 function layerUiFor(layerUi: Record<string, LayerUiState>, nodeId: string): LayerUiState {
   return layerUi[nodeId] ?? { visible: true, locked: false };
-}
-
-function nodeTimelineMembership(document: StrutDocument | null, nodeId: string) {
-  if (!document) {
-    return [];
-  }
-  return document.timelines.flatMap((timeline) =>
-    (timeline.tracks ?? [])
-      .filter((track) => track.target === nodeId)
-      .map((track) => ({ timeline: timeline.name, property: track.property })),
-  );
-}
-
-function inferOperationType(intent: string): OperationPreview["operationType"] {
-  const value = intent.toLowerCase();
-  if (/(move|position|shift|rotate|scale|bigger|smaller|transform)/.test(value)) {
-    return "transform.patch";
-  }
-  if (/(timing|animate|motion|speed|bounce|wave|loop|timeline)/.test(value)) {
-    return "timeline.patch";
-  }
-  return "style.patch";
-}
-
-function inferAffectedProperties(intent: string, operationType: OperationPreview["operationType"]) {
-  const value = intent.toLowerCase();
-  const properties = new Set<string>();
-  if (/(color|fill)/.test(value)) properties.add("style.fill");
-  if (/stroke|outline/.test(value)) properties.add("style.stroke");
-  if (/opacity|transparent|fade/.test(value)) properties.add("style.opacity");
-  if (/\b(move|position|shift|translate)\b/.test(value)) properties.add("transform.translate");
-  if (/rotate|tilt/.test(value)) properties.add("transform.rotate");
-  if (/scale|bigger|smaller|size/.test(value)) properties.add("transform.scale");
-  if (/timing|speed|duration/.test(value)) properties.add("timeline.duration");
-  if (/animate|motion|bounce|wave|loop/.test(value)) properties.add("timeline.tracks");
-
-  if (properties.size === 0) {
-    properties.add(operationType === "style.patch" ? "style" : operationType === "transform.patch" ? "transform" : "timeline");
-  }
-  return Array.from(properties);
 }
 
 function nowStamp() {
@@ -967,16 +966,6 @@ function findNodeById(nodes: StrutNode[], nodeId: string): StrutNode | null {
   return null;
 }
 
-function getNodeProperty(node: StrutNode, property: string): unknown {
-  if (property.startsWith("style.")) {
-    return node.style?.[property.slice(6) as keyof NonNullable<StrutNode["style"]>];
-  }
-  if (property.startsWith("transform.")) {
-    return node.transform?.[property.slice(10) as keyof NonNullable<StrutNode["transform"]>];
-  }
-  return undefined;
-}
-
 function setNodeProperty(node: StrutNode, property: string, value: unknown): StrutNode {
   if (property.startsWith("style.")) {
     const key = property.slice(6) as keyof NonNullable<StrutNode["style"]>;
@@ -1087,44 +1076,6 @@ function applyOperationBatch(document: StrutDocument | null, batch: OperationBat
   return nextDocument;
 }
 
-function operationForIntent(selectedLayer: StrutNode, intent: string, operationType: OperationPreview["operationType"]): SetPropertyOperation {
-  const lower = intent.toLowerCase();
-  let property = "style.fill";
-  let value: unknown = "#d8f5e3";
-
-  if (operationType === "transform.patch") {
-    if (/rotate|tilt/.test(lower)) {
-      property = "transform.rotate";
-      value = (selectedLayer.transform?.rotate ?? 0) + 6;
-    } else if (/\b(move|shift|position|translate|up|down)\b/.test(lower)) {
-      property = "transform.translate_y";
-      value = (selectedLayer.transform?.translate_y ?? 0) - 10;
-    } else {
-      property = "transform.scale_x";
-      value = Number(((selectedLayer.transform?.scale_x ?? 1) + 0.08).toFixed(2));
-    }
-  } else if (operationType === "timeline.patch") {
-    property = "transform.translate_y";
-    value = (selectedLayer.transform?.translate_y ?? 0) - 6;
-  } else if (/stroke|outline/.test(lower)) {
-    property = "style.stroke";
-    value = "#0f766e";
-  } else if (/opacity|transparent|fade/.test(lower)) {
-    property = "style.opacity";
-    value = 0.72;
-  }
-
-  return {
-    id: `op-${slugToken(property)}-${Date.now()}`,
-    type: "set_property",
-    targetId: selectedLayer.id,
-    targetName: selectedLayer.name,
-    property,
-    previousValue: getNodeProperty(selectedLayer, property),
-    value,
-  };
-}
-
 function createGenerationBatch(
   result: GeneratedCharacter,
   previousDocument: StrutDocument | null,
@@ -1203,16 +1154,6 @@ function documentSummary(document: StrutDocument | null) {
   const layerCount = artboard ? flattenNodes(artboard.nodes).length : 0;
   const states = document.state_machines[0]?.states.join(", ") || "no states";
   return `${document.name}; ${layerCount} editable layers; states: ${states}`;
-}
-
-function projectFiles(project: ProjectRecord): ProjectFile[] {
-  return [
-    { name: "strut.project.json", path: `${project.path}\\strut.project.json`, kind: "project" },
-    { name: "main.strut", path: `${project.path}\\scenes\\main.strut`, kind: "scene" },
-    { name: "operation-batches.json", path: `${project.path}\\operations\\operation-batches.json`, kind: "operations" },
-    { name: "assets", path: `${project.path}\\assets`, kind: "folder" },
-    { name: "exports", path: `${project.path}\\exports`, kind: "folder" },
-  ];
 }
 
 function CharacterPreview({
@@ -1641,8 +1582,6 @@ function App() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Strut Project");
   const [projectLocation, setProjectLocation] = useState("");
-  const [partsVisible, setPartsVisible] = useState(true);
-  const [activeTool, setActiveTool] = useState("select");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("local");
@@ -1659,6 +1598,7 @@ function App() {
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenuState>(null);
   const [topbarMenu, setTopbarMenu] = useState<SidebarMenuState>(null);
   const [composerToolsOpen, setComposerToolsOpen] = useState(true);
+  const [layersRailCollapsed, setLayersRailCollapsed] = useState(false);
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status")
@@ -1716,20 +1656,17 @@ function App() {
   const projectPreview = latestPreviewForProject(activeProject, activeChatId);
   const currentDocument = projectPreview?.document ?? null;
   const currentActiveState = projectPreview?.activeState ?? "wave";
-  const files = activeProject ? projectFiles(activeProject) : [];
   const activeArtboard = currentDocument?.artboards[0] ?? emptyArtboard;
   const activeMachine = currentDocument?.state_machines[0] ?? emptyMachine;
   const layers = useMemo(() => flattenNodes(activeArtboard.nodes), [activeArtboard.nodes]);
   const selectedNodeId = activeChat?.selectedNodeId ?? null;
   const layerUi = activeChat?.layerUi ?? {};
-  const pendingOperation = activeChat?.pendingOperation ?? null;
   const operationBatches = activeChat?.operationBatches ?? activeChat?.operationHistory ?? [];
-  const operationHistory = operationBatches;
+  const persistedLayerReferences = activeChat?.references.filter((reference) => reference.kind === "layer") ?? [];
+  const composerReferences = uniqueAttachments([...persistedLayerReferences, ...pendingReferences]);
   const undoStack = activeChat?.undoStack ?? [];
   const redoStack = activeChat?.redoStack ?? [];
   const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
-  const selectedTargetLabel = selectedLayer?.name ?? "No selection";
-  const selectedTimelineMembership = selectedLayer ? nodeTimelineMembership(currentDocument, selectedLayer.id) : [];
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0] ?? browserLocalAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const activeProviderLabel = providerMode === "local" ? activeLocalAdapter.name : activeByokProvider.name;
@@ -1738,7 +1675,6 @@ function App() {
   const viewModes: ViewModeOption[] = [
     { id: "chat", Icon: MessageSquarePlus, label: "Chat only" },
     { id: "preview", Icon: PanelRight, label: "Chat + preview" },
-    { id: "editor", Icon: Layers3, label: "Editor" },
   ];
 
   const filteredProjects = projects
@@ -1820,160 +1756,6 @@ function App() {
 
   function setSelectedNode(nodeId: string | null) {
     updateCurrentChat((chat) => ({ ...chat, selectedNodeId: nodeId, updated: nowStamp() }));
-  }
-
-  function toggleLayerVisibility(nodeId: string) {
-    updateCurrentChat((chat) => {
-      const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
-      return {
-        ...chat,
-        updated: nowStamp(),
-        layerUi: {
-          ...(chat.layerUi ?? {}),
-          [nodeId]: { ...currentState, visible: !currentState.visible },
-        },
-        selectedNodeId: currentState.visible && chat.selectedNodeId === nodeId ? null : chat.selectedNodeId,
-      };
-    });
-  }
-
-  function toggleLayerLock(nodeId: string) {
-    updateCurrentChat((chat) => {
-      const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
-      return {
-        ...chat,
-        updated: nowStamp(),
-        layerUi: {
-          ...(chat.layerUi ?? {}),
-          [nodeId]: { ...currentState, locked: !currentState.locked },
-        },
-      };
-    });
-  }
-
-  function stageOperationPreview() {
-    if (!selectedLayer || !currentDocument) {
-      setActivity("Select a visible semantic part before staging an edit preview");
-      return;
-    }
-    const intent = prompt.trim() || `Edit ${selectedLayer.name}`;
-    const operationType = inferOperationType(intent);
-    const operation = operationForIntent(selectedLayer, intent, operationType);
-    const timestamp = nowStamp();
-    const draft: OperationBatch = {
-      id: `batch-manual-${selectedLayer.id}-${Date.now()}`,
-      targetId: selectedLayer.id,
-      targetName: selectedLayer.name,
-      intent,
-      operationType,
-      affectedProperties: inferAffectedProperties(intent, operationType),
-      createdAt: timestamp,
-      sourceType: "manual",
-      status: "pending",
-      validationResult: {
-        ok: false,
-        message: "Validation has not run",
-        validator: "strut-studio-browser",
-        validatedAt: timestamp,
-      },
-      previousDocumentRevisionId: documentRevisionId(currentDocument),
-      documentRevisionId: documentRevisionId(currentDocument),
-      prompt: intent,
-      sourceMetadata: { selectedNodeId: selectedLayer.id, selectedNodeName: selectedLayer.name },
-      operations: [operation],
-      updatedAt: timestamp,
-      appliedAt: null,
-      rejectedAt: null,
-    };
-    const preview: OperationBatch = {
-      ...draft,
-      validationResult: validateOperationBatch(currentDocument, draft),
-    };
-    updateCurrentChat((chat) => ({
-      ...chat,
-      pendingOperation: preview,
-      operationBatches: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)],
-      operationHistory: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)].slice(0, 12),
-      updated: nowStamp(),
-    }));
-    setActivity(preview.validationResult.ok ? `Validated operation batch staged for ${selectedLayer.name}` : preview.validationResult.message);
-  }
-
-  function applyPendingOperation() {
-    if (!pendingOperation) {
-      setActivity("No operation batch is staged");
-      return;
-    }
-    const validation = validateOperationBatch(currentDocument, pendingOperation);
-    if (!validation.ok) {
-      const rejected = { ...pendingOperation, validationResult: validation, updatedAt: nowStamp() };
-      updateCurrentChat((chat) => ({
-        ...chat,
-        pendingOperation: rejected,
-        operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
-        operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
-        updated: nowStamp(),
-      }));
-      setActivity(validation.message);
-      return;
-    }
-    const nextDocument = applyOperationBatch(currentDocument, { ...pendingOperation, validationResult: validation }, "apply");
-    if (!nextDocument) {
-      setActivity("Operation batch could not apply because no document is open");
-      return;
-    }
-    const timestamp = nowStamp();
-    const applied: OperationBatch = {
-      ...pendingOperation,
-      status: "applied",
-      validationResult: validation,
-      previousDocumentRevisionId: documentRevisionId(currentDocument),
-      documentRevisionId: documentRevisionId(nextDocument),
-      updatedAt: timestamp,
-      appliedAt: timestamp,
-      rejectedAt: null,
-    };
-    updateCurrentChat((chat) => ({
-      ...chat,
-      document: nextDocument,
-      pendingOperation: null,
-      operationBatches: [applied, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== applied.id)],
-      operationHistory: [applied, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== applied.id)].slice(0, 12),
-      undoStack: [applied.id, ...(chat.undoStack ?? [])],
-      redoStack: [],
-      updated: nowStamp(),
-      messages: [
-        ...chat.messages,
-        { id: Date.now() + Math.random(), role: "assistant", text: `Applied validated batch ${applied.id} to ${applied.targetName}.`, operationBatchId: applied.id },
-      ],
-    }));
-    setActivity(`Applied validated batch ${applied.id}`);
-  }
-
-  function rejectPendingOperation() {
-    if (!pendingOperation) {
-      setActivity("No operation batch is staged");
-      return;
-    }
-    const timestamp = nowStamp();
-    const rejected: OperationBatch = {
-      ...pendingOperation,
-      status: "rejected",
-      updatedAt: timestamp,
-      rejectedAt: timestamp,
-    };
-    updateCurrentChat((chat) => ({
-      ...chat,
-      pendingOperation: null,
-      operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
-      operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
-      updated: nowStamp(),
-      messages: [
-        ...chat.messages,
-        { id: Date.now() + Math.random(), role: "assistant", text: `Rejected batch ${rejected.id}; no document mutation was applied.`, operationBatchId: rejected.id },
-      ],
-    }));
-    setActivity(`Rejected batch ${rejected.id}`);
   }
 
   function undoLastBatch() {
@@ -2080,7 +1862,7 @@ function App() {
     updateCurrentChat((chat) => ({
       ...chat,
       updated: nowStamp(),
-      references: [...chat.references, ...attachments],
+      references: uniqueAttachments([...chat.references, ...attachments]),
       messages: [...chat.messages, { id: Date.now() + Math.random(), role: "user", text, attachments }],
     }));
   }
@@ -2204,6 +1986,27 @@ function App() {
 
   function removePendingReference(id: string) {
     setPendingReferences((current) => current.filter((reference) => reference.id !== id));
+    updateCurrentChat((chat) => ({
+      ...chat,
+      updated: nowStamp(),
+      references: chat.references.filter((reference) => reference.id !== id),
+    }));
+  }
+
+  function attachLayerReference(layer: StrutNode) {
+    const attachment = layerToAttachment(layer);
+    setSelectedNode(layer.id);
+    setPendingReferences((current) =>
+      current.some((reference) => reference.kind === "layer" && reference.nodeId === layer.id)
+        ? current
+        : [...current, attachment],
+    );
+    updateCurrentChat((chat) => ({
+      ...chat,
+      updated: nowStamp(),
+      references: uniqueAttachments([...chat.references, attachment]),
+    }));
+    setActivity(`Attached layer ${layer.name} to the next prompt`);
   }
 
   async function createProject() {
@@ -2424,7 +2227,7 @@ function App() {
 
   async function runGeneration() {
     const trimmed = prompt.trim();
-    if (!trimmed && pendingReferences.length === 0) {
+    if (!trimmed && composerReferences.length === 0) {
       return;
     }
     if (!activeProjectId || !activeChatId) {
@@ -2432,16 +2235,19 @@ function App() {
       setActivity("Start a chat first");
       return;
     }
-    const references = pendingReferences;
+    const references = composerReferences;
+    const imageReferences = references.filter((reference) => reference.kind !== "layer" && reference.dataUrl?.startsWith("data:image/"));
 
     if (promptIntent(trimmed, references.length > 0) === "chat") {
-      appendUserMessage(trimmed, []);
+      const chatPrompt = `${trimmed}${layerReferencePrompt(references)}`;
+      appendUserMessage(trimmed, references);
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
         title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || "Chat") : chat.title,
         updated: nowStamp(),
       }));
       setPrompt("");
+      setPendingReferences([]);
       setActivity("Thinking");
       if (!desktopRuntime) {
         appendMessage("assistant", localChatFallback(trimmed));
@@ -2450,7 +2256,7 @@ function App() {
       }
       try {
         const answer = await invoke<ChatAnswer>("chat_with_provider", {
-          prompt: trimmed,
+          prompt: chatPrompt,
           provider: providerPayload(),
           context: generationContext(),
         });
@@ -2463,7 +2269,7 @@ function App() {
       return;
     }
 
-    const generationPrompt = trimmed || "Use the attached reference image to create an editable Strut motion document.";
+    const generationPrompt = `${trimmed || "Use the attached reference image to create an editable Strut motion document."}${layerReferencePrompt(references)}`;
     appendUserMessage(trimmed || "Use the attached reference image.", references);
     updateChat(activeProjectId, activeChatId, (chat) => ({
       ...chat,
@@ -2477,7 +2283,7 @@ function App() {
       if (!desktopRuntime) {
         throw new Error("Desktop app required for real generation. Run the Tauri app and connect a local CLI, Ollama, or BYOK provider.");
       }
-      const args = { prompt: generationPrompt, provider: providerPayload(), references, context: generationContext() };
+      const args = { prompt: generationPrompt, provider: providerPayload(), references: imageReferences, context: generationContext() };
       const result = await invoke<GeneratedCharacter>("generate_character", args);
       const generationBatch = createGenerationBatch(result, currentDocument, generationPrompt, "ai");
       updateChat(activeProjectId, activeChatId, (chat) => ({
@@ -2956,22 +2762,6 @@ function App() {
                   </div>
                 </div>
               </section>
-              <section className="settings-section">
-                <div>
-                  <h2>Editor</h2>
-                  <p>Default panels and viewport behavior.</p>
-                </div>
-                <div className="settings-controls compact">
-                  <label className="toggle-row">
-                    <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
-                    <span>Show scene layers in editor</span>
-                  </label>
-                  <label className="toggle-row">
-                    <input defaultChecked type="checkbox" />
-                    <span>Preview motion when switching states</span>
-                  </label>
-                </div>
-              </section>
             </div>
           </section>
         ) : null}
@@ -2985,8 +2775,8 @@ function App() {
           />
         ) : null}
 
-        {mainPanel === "chat" && activeChat && viewMode !== "editor" ? (
-          <section className={viewMode === "preview" ? "chat-layout with-preview" : "chat-layout"}>
+        {mainPanel === "chat" && activeChat ? (
+          <section className={viewMode === "preview" ? `chat-layout with-preview ${layersRailCollapsed ? "layers-collapsed" : ""}` : "chat-layout"}>
             <div className="chat-panel">
               <div className="message-stack">
                 {activeChat.messages.length === 0 ? (
@@ -2998,12 +2788,12 @@ function App() {
                 {activeChat.messages.map((message) => <ChatMessageView key={message.id} message={message} />)}
               </div>
               <div className="composer">
-                {pendingReferences.length ? (
+                {composerReferences.length ? (
                   <div className="reference-tray">
-                    {pendingReferences.map((reference) => (
-                      <div className="reference-chip" key={reference.id}>
-                        <img src={reference.dataUrl} alt="" />
-                        <span>{reference.name}</span>
+                    {composerReferences.map((reference) => (
+                      <div className={`reference-chip ${reference.kind === "layer" ? "layer-reference-chip" : ""}`} key={reference.id}>
+                        {reference.kind === "layer" ? <Layers3 size={14} /> : <img src={reference.dataUrl} alt="" />}
+                        <span>{reference.kind === "layer" ? `Layer: ${reference.name}` : reference.name}</span>
                         <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => removePendingReference(reference.id)}>
                           <X size={13} />
                         </button>
@@ -3068,108 +2858,18 @@ function App() {
               </div>
             </div>
             {viewMode === "preview" ? (
-              <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
+              <>
+                <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
+                <LayerRail
+                  collapsed={layersRailCollapsed}
+                  layers={layers}
+                  onAttachLayer={attachLayerReference}
+                  onToggleCollapsed={() => setLayersRailCollapsed((isCollapsed) => !isCollapsed)}
+                  pendingReferences={composerReferences}
+                  selectedNodeId={selectedNodeId}
+                />
+              </>
             ) : null}
-          </section>
-        ) : null}
-
-        {mainPanel === "chat" && activeChat && viewMode === "editor" ? (
-          <section className="editor-layout" aria-label="AI editor shell">
-            <div className="editor-toolbar">
-              {["select", "shape", "path", "bind", "animate"].map((tool) => (
-                <button className={activeTool === tool ? "active" : ""} key={tool} type="button" onClick={() => setActiveTool(tool)}>
-                  {tool === "select" ? <Square size={15} /> : <WandSparkles size={15} />}
-                  {titleCase(tool)}
-                </button>
-              ))}
-              <label>
-                <input checked={partsVisible} type="checkbox" onChange={(event) => setPartsVisible(event.currentTarget.checked)} />
-                Parts
-              </label>
-            </div>
-            <div className="ai-editor-shell">
-              <AiEditRail
-                activeChat={activeChat}
-                activeProviderLabel={activeProviderLabel}
-                canStageOperation={Boolean(selectedLayer)}
-                composerToolsOpen={composerToolsOpen}
-                fileInputRef={fileInputRef}
-                onAttachReferenceImages={(filesToAttach) => void attachReferenceImages(filesToAttach)}
-                onApplyPendingOperation={applyPendingOperation}
-                onReload={() => void loadActiveProject()}
-                onSave={() => void saveActiveProject()}
-                onRemovePendingReference={removePendingReference}
-                onRejectPendingOperation={rejectPendingOperation}
-                onOpenProviders={() => setMainPanel("providers")}
-                onRunGeneration={() => void runGeneration()}
-                onStageOperationPreview={stageOperationPreview}
-                onToggleComposerTools={() => setComposerToolsOpen((isOpen) => !isOpen)}
-                onUndo={undoLastBatch}
-                onRedo={redoLastBatch}
-                operationHistory={operationHistory}
-                pendingOperation={pendingOperation}
-                pendingReferences={pendingReferences}
-                prompt={prompt}
-                selectedLayer={selectedLayer}
-                selectedTargetLabel={selectedTargetLabel}
-                setPrompt={setPrompt}
-                canReload={Boolean(activeProject)}
-                canSave={Boolean(activeProject && currentDocument)}
-                canUndo={Boolean(undoStack.length)}
-                canRedo={Boolean(redoStack.length)}
-              />
-
-              <div className="editor-main">
-                <div className="preview-workspace">
-                  <PreviewPane
-                    activeMachine={activeMachine}
-                    activeState={currentActiveState}
-                    document={currentDocument}
-                    layerUi={layerUi}
-                    onSelectNode={setSelectedNode}
-                    selectedNodeId={selectedNodeId}
-                    selectedTargetLabel={selectedTargetLabel}
-                    setActiveState={setCurrentActiveState}
-                    showSelectionAffordances
-                  />
-                </div>
-                <aside className="editor-inspector" aria-label="Project files and scene layers">
-                  <div className="context-section">
-                    <strong>Project files</strong>
-                    <div className="file-list">
-                      {files.map((file) => (
-                        <button key={file.path} type="button">
-                          <FileText size={14} />
-                          <span>{file.name}</span>
-                          <em>{file.kind}</em>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="context-section">
-                    <div className="panel-title">
-                      <strong>Scene layers</strong>
-                      <em>{activeArtboard.name}</em>
-                    </div>
-                    {partsVisible ? (
-                      <LayerList
-                        layers={layers}
-                        layerUi={layerUi}
-                        onSelect={setSelectedNode}
-                        onToggleLock={toggleLayerLock}
-                        onToggleVisibility={toggleLayerVisibility}
-                        selectedNodeId={selectedNodeId}
-                      />
-                    ) : <p className="panel-empty">Parts hidden</p>}
-                  </div>
-                  <SelectedPartInspector
-                    layerUi={selectedLayer ? layerUiFor(layerUi, selectedLayer.id) : { visible: false, locked: false }}
-                    selectedLayer={selectedLayer}
-                    timelineMembership={selectedTimelineMembership}
-                  />
-                </aside>
-              </div>
-            </div>
           </section>
         ) : null}
       </section>
@@ -3226,357 +2926,72 @@ function HomePanel({
   );
 }
 
-function AiEditRail({
-  activeChat,
-  activeProviderLabel,
-  canRedo,
-  canReload,
-  canSave,
-  canStageOperation,
-  canUndo,
-  composerToolsOpen,
-  fileInputRef,
-  onApplyPendingOperation,
-  onAttachReferenceImages,
-  onReload,
-  onRemovePendingReference,
-  onRejectPendingOperation,
-  onOpenProviders,
-  onRedo,
-  onRunGeneration,
-  onSave,
-  onStageOperationPreview,
-  onToggleComposerTools,
-  onUndo,
-  operationHistory,
-  pendingOperation,
-  pendingReferences,
-  prompt,
-  selectedLayer,
-  selectedTargetLabel,
-  setPrompt,
-}: {
-  activeChat: ChatThread;
-  activeProviderLabel: string;
-  canRedo: boolean;
-  canReload: boolean;
-  canSave: boolean;
-  canStageOperation: boolean;
-  canUndo: boolean;
-  composerToolsOpen: boolean;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onApplyPendingOperation: () => void;
-  onAttachReferenceImages: (files: FileList | null) => void;
-  onReload: () => void;
-  onRemovePendingReference: (id: string) => void;
-  onRejectPendingOperation: () => void;
-  onOpenProviders: () => void;
-  onRedo: () => void;
-  onRunGeneration: () => void;
-  onSave: () => void;
-  onStageOperationPreview: () => void;
-  onToggleComposerTools: () => void;
-  onUndo: () => void;
-  operationHistory: OperationBatch[];
-  pendingOperation: OperationBatch | null;
-  pendingReferences: ReferenceAttachment[];
-  prompt: string;
-  selectedLayer: StrutNode | null;
-  selectedTargetLabel: string;
-  setPrompt: (value: string) => void;
-}) {
-  return (
-    <aside className="ai-edit-rail" aria-label="AI edit rail">
-      <div className="rail-heading">
-        <span>AI edit mode</span>
-        <strong>{activeChat.title}</strong>
-        <p>Target a semantic part, describe a change, and inspect the proposed operation before any scene mutation exists.</p>
-      </div>
-
-      <div className="selection-card" data-testid="selection-context">
-        <span>Selected target</span>
-        <strong>{selectedTargetLabel}</strong>
-        <p>
-          {selectedLayer
-            ? `AI edit context includes ${selectedLayer.name}, ${selectedLayer.kind}, and its semantic id ${selectedLayer.id}.`
-            : "Select a visible preview part or layer before staging an edit preview."}
-        </p>
-        <button disabled={!canStageOperation} type="button" onClick={onStageOperationPreview}>
-          <WandSparkles size={15} />
-          Ask AI to edit selection
-        </button>
-      </div>
-
-      <div className="operation-placeholder" aria-label="Operation preview placeholder" data-testid="operation-preview">
-        <span>Pending operation</span>
-        {pendingOperation ? (
-          <div className="operation-preview-card">
-            <strong>{pendingOperation.operationType}</strong>
-            <dl>
-              <div>
-                <dt>Target</dt>
-                <dd>{pendingOperation.targetName}</dd>
-              </div>
-              <div>
-                <dt>Target id</dt>
-                <dd>{pendingOperation.targetId}</dd>
-              </div>
-              <div>
-                <dt>Intent</dt>
-                <dd>{pendingOperation.intent}</dd>
-              </div>
-              <div>
-                <dt>Affected</dt>
-                <dd>{pendingOperation.affectedProperties.join(", ")}</dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd>{pendingOperation.status}</dd>
-              </div>
-              <div>
-                <dt>Validation</dt>
-                <dd>{pendingOperation.validationResult.message}</dd>
-              </div>
-            </dl>
-          </div>
-        ) : (
-          <>
-            <strong>No operation staged</strong>
-            <p>Validated operation batches can be applied, rejected, undone, redone, saved, and reopened with the Strut scene.</p>
-          </>
-        )}
-        <div>
-          <button disabled={!pendingOperation?.validationResult.ok} type="button" onClick={onApplyPendingOperation}>
-            <Check size={14} />
-            Apply operation
-          </button>
-          <button disabled={!pendingOperation} type="button" onClick={onRejectPendingOperation}>
-            <X size={14} />
-            Reject
-          </button>
-        </div>
-        {operationHistory.length ? (
-          <div className="operation-history">
-            <span><History size={13} /> Operation history</span>
-            {operationHistory.slice(0, 6).map((operation) => (
-              <em key={operation.id}>{operation.targetName}: {operation.status} / {operation.sourceType}</em>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="rail-transcript">
-        {activeChat.messages.length ? (
-          activeChat.messages.map((message) => <ChatMessageView compact key={message.id} message={message} />)
-        ) : (
-          <div className="rail-empty">
-            <strong>No edit history yet</strong>
-            <span>Ask for a motion draft, then refine a layer or state from here.</span>
-          </div>
-        )}
-      </div>
-
-      <div className="composer compact-composer">
-        {pendingReferences.length ? (
-          <div className="reference-tray">
-            {pendingReferences.map((reference) => (
-              <div className="reference-chip" key={reference.id}>
-                <img src={reference.dataUrl} alt="" />
-                <span>{reference.name}</span>
-                <button aria-label={`Remove reference ${reference.name}`} type="button" onClick={() => onRemovePendingReference(reference.id)}>
-                  <X size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        <div className="composer-toolbar" aria-label="Composer tools">
-          <button aria-expanded={composerToolsOpen} type="button" onClick={onToggleComposerTools}>
-            <MoreHorizontal size={15} />
-            Tools
-          </button>
-          {composerToolsOpen ? (
-            <div className="composer-tool-actions">
-              <button aria-label="Reload" disabled={!canReload} title="Reload project" type="button" onClick={onReload}>
-                <RefreshCw size={15} />
-              </button>
-              <button aria-label="Save project" disabled={!canSave} title="Save project" type="button" onClick={onSave}>
-                <Save size={15} />
-              </button>
-              <button aria-label="Undo" disabled={!canUndo} title="Undo" type="button" onClick={onUndo}>
-                <RotateCcw size={15} />
-              </button>
-              <button aria-label="Redo" disabled={!canRedo} title="Redo" type="button" onClick={onRedo}>
-                <RotateCw size={15} />
-              </button>
-              <button aria-label={`Provider ${activeProviderLabel}`} className="provider-composer-button" type="button" onClick={onOpenProviders}>
-                <Cpu size={15} />
-                {activeProviderLabel}
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <textarea
-          aria-label="Motion prompt"
-          value={prompt}
-          onChange={(event) => setPrompt(event.currentTarget.value)}
-          placeholder={selectedLayer ? `Ask Strut to edit ${selectedLayer.name}` : "Select a semantic part, then describe the edit"}
-        />
-        <div className="composer-controls">
-          <div className="composer-left">
-            <input
-              ref={fileInputRef}
-              aria-label="Attach reference images"
-              className="reference-input"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-              multiple
-              onChange={(event) => onAttachReferenceImages(event.currentTarget.files)}
-            />
-            <button aria-label="Attach reference images" type="button" onClick={() => fileInputRef.current?.click()}>
-              <ImagePlus size={16} />
-              Reference
-            </button>
-          </div>
-          <button aria-label="Generate" type="button" onClick={onRunGeneration}>
-            <Send size={17} />
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function LayerList({
+function LayerRail({
+  collapsed,
   layers,
-  layerUi,
-  onSelect,
-  onToggleLock,
-  onToggleVisibility,
+  onAttachLayer,
+  onToggleCollapsed,
+  pendingReferences,
   selectedNodeId,
 }: {
+  collapsed: boolean;
   layers: StrutNode[];
-  layerUi: Record<string, LayerUiState>;
-  onSelect: (nodeId: string | null) => void;
-  onToggleLock: (nodeId: string) => void;
-  onToggleVisibility: (nodeId: string) => void;
+  onAttachLayer: (layer: StrutNode) => void;
+  onToggleCollapsed: () => void;
+  pendingReferences: ReferenceAttachment[];
   selectedNodeId: string | null;
 }) {
-  if (!layers.length) {
-    return <p className="panel-empty">No editable layers yet.</p>;
-  }
+  const attachedLayerIds = new Set(
+    pendingReferences
+      .filter((reference) => reference.kind === "layer")
+      .map((reference) => reference.nodeId)
+      .filter(Boolean),
+  );
 
   return (
-    <div className="layer-list">
-      {layers.map((layer) => {
-        const ui = layerUiFor(layerUi, layer.id);
-        return (
-          <div className={`layer-row ${selectedNodeId === layer.id ? "active" : ""}`} key={layer.id}>
-            <button
-              aria-pressed={selectedNodeId === layer.id}
-              className="layer-select"
-              type="button"
-              onClick={() => onSelect(selectedNodeId === layer.id ? null : layer.id)}
-            >
-              <span>{layer.name}</span>
-              <em>{layer.kind}</em>
-            </button>
-            <button
-              aria-label={`${ui.visible ? "Hide" : "Show"} ${layer.name}`}
-              aria-pressed={ui.visible}
-              className="layer-icon-button"
-              type="button"
-              onClick={() => onToggleVisibility(layer.id)}
-            >
-              {ui.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-            </button>
-            <button
-              aria-label={`${ui.locked ? "Unlock" : "Lock"} ${layer.name}`}
-              aria-pressed={ui.locked}
-              className="layer-icon-button"
-              type="button"
-              onClick={() => onToggleLock(layer.id)}
-            >
-              {ui.locked ? <Lock size={14} /> : <Unlock size={14} />}
-            </button>
+    <aside className={`layers-rail ${collapsed ? "collapsed" : ""}`} aria-label="Scene layers rail">
+      <button
+        aria-label={collapsed ? "Expand layers" : "Collapse layers"}
+        className="layers-rail-toggle"
+        type="button"
+        onClick={onToggleCollapsed}
+      >
+        <Layers3 size={16} />
+        {collapsed ? null : <span>Layers</span>}
+      </button>
+      {collapsed ? null : (
+        <>
+          <div className="layers-rail-heading">
+            <strong>Scene layers</strong>
+            <em>{layers.length ? `${layers.length} AI-named` : "No scene"}</em>
           </div>
-        );
-      })}
-    </div>
+          {layers.length ? (
+            <div className="layer-attach-list">
+              {layers.map((layer) => {
+                const isAttached = attachedLayerIds.has(layer.id);
+                return (
+                  <button
+                    aria-label={`Attach layer ${layer.name} ${layer.kind}`}
+                    aria-pressed={isAttached}
+                    className={`${selectedNodeId === layer.id ? "active" : ""} ${isAttached ? "attached" : ""}`}
+                    key={layer.id}
+                    type="button"
+                    onClick={() => onAttachLayer(layer)}
+                  >
+                    <span>{layer.name}</span>
+                    <em>{layer.role ?? layer.kind}</em>
+                    {isAttached ? <strong>Attached</strong> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="panel-empty">No editable layers yet.</p>
+          )}
+        </>
+      )}
+    </aside>
   );
-}
-
-function SelectedPartInspector({
-  layerUi,
-  selectedLayer,
-  timelineMembership,
-}: {
-  layerUi: LayerUiState;
-  selectedLayer: StrutNode | null;
-  timelineMembership: Array<{ timeline: string; property: string }>;
-}) {
-  if (!selectedLayer) {
-    return (
-      <section className="selected-part-inspector" aria-label="Selected part inspector" data-testid="selected-part-inspector">
-        <strong>Selected part</strong>
-        <p className="panel-empty">No part selected. Select a visible preview object or layer to inspect semantic identity, transform, style, and timeline targets.</p>
-      </section>
-    );
-  }
-
-  const transform = selectedLayer.transform ?? {};
-  const style = selectedLayer.style ?? {};
-
-  return (
-    <section className="selected-part-inspector" aria-label="Selected part inspector" data-testid="selected-part-inspector">
-      <div className="panel-title">
-        <strong>Selected part</strong>
-        <em>{selectedLayer.id}</em>
-      </div>
-      <div className="inspector-grid">
-        <InspectorField label="Name" value={selectedLayer.name} />
-        <InspectorField label="Kind" value={selectedLayer.kind} />
-        <InspectorField label="Role" value={selectedLayer.role ?? "Not defined"} />
-        <InspectorField label="Visible" value={layerUi.visible ? "Visible" : "Hidden"} />
-        <InspectorField label="Lock" value={layerUi.locked ? "Locked" : "Unlocked"} />
-        <InspectorField label="Translate X" value={formatNumber(transform.translate_x, 0)} />
-        <InspectorField label="Translate Y" value={formatNumber(transform.translate_y, 0)} />
-        <InspectorField label="Rotate" value={`${formatNumber(transform.rotate, 0)} deg`} />
-        <InspectorField label="Scale X" value={formatNumber(transform.scale_x, 1)} />
-        <InspectorField label="Scale Y" value={formatNumber(transform.scale_y, 1)} />
-        <InspectorField label="Fill" value={style.fill ?? "None"} swatch={style.fill ?? undefined} />
-        <InspectorField label="Stroke" value={style.stroke ?? "None"} swatch={style.stroke ?? undefined} />
-        <InspectorField label="Stroke width" value={formatNumber(style.stroke_width, 0)} />
-        <InspectorField label="Opacity" value={formatNumber(style.opacity, 1)} />
-      </div>
-      <div className="timeline-membership">
-        <span>Timeline membership</span>
-        {timelineMembership.length ? (
-          timelineMembership.map((item) => (
-            <em key={`${item.timeline}-${item.property}`}>{item.timeline} targets {item.property}</em>
-          ))
-        ) : (
-          <em>No timeline tracks target this part.</em>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function InspectorField({ label, swatch, value }: { label: string; swatch?: string; value: string }) {
-  return (
-    <div className="inspector-field">
-      <span>{label}</span>
-      <strong>
-        {swatch ? <i aria-hidden="true" style={{ background: swatch }} /> : null}
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-function formatNumber(value: number | undefined, fallback: number) {
-  return Number.isFinite(value) ? String(value) : String(fallback);
 }
 
 function PreviewPane({

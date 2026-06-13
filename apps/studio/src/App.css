@@ -889,8 +889,12 @@ textarea:focus-visible {
 }
 
 .chat-layout.with-preview {
-  grid-template-columns: minmax(0, 1fr) minmax(400px, 560px);
+  grid-template-columns: minmax(460px, 1fr) minmax(320px, 460px) minmax(220px, 280px);
   gap: 0;
+}
+
+.chat-layout.with-preview.layers-collapsed {
+  grid-template-columns: minmax(520px, 1fr) minmax(320px, 500px) 58px;
 }
 
 .chat-panel {
@@ -1051,6 +1055,14 @@ textarea:focus-visible {
   background: var(--panel);
 }
 
+.message-attachment.layer-attachment {
+  width: auto;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+}
+
 .message-attachment img {
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -1118,6 +1130,17 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+}
+
+.reference-chip.layer-reference-chip {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+}
+
+.reference-chip.layer-reference-chip svg {
+  color: var(--accent-text);
 }
 
 .reference-chip img {
@@ -1407,6 +1430,99 @@ textarea:focus-visible {
   border-top: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
+}
+
+.layers-rail {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px 14px;
+  border-left: 1px solid var(--line);
+  background: var(--sidebar-bg);
+}
+
+.layers-rail.collapsed {
+  justify-items: center;
+  padding-inline: 10px;
+}
+
+.layers-rail-toggle {
+  min-height: 34px;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.layers-rail.collapsed .layers-rail-toggle {
+  width: 36px;
+  justify-content: center;
+  padding: 0;
+}
+
+.layers-rail-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.layers-rail-heading strong {
+  font-size: 14px;
+}
+
+.layers-rail-heading em,
+.layer-attach-list em,
+.layer-attach-list strong {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.layer-attach-list {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.layer-attach-list button {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 8px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.layer-attach-list button:hover,
+.layer-attach-list button.active,
+.layer-attach-list button.attached {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
+
+.layer-attach-list span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-attach-list strong {
+  color: var(--accent-text);
+  font-weight: 700;
 }
 
 .preview-bg {

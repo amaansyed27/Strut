@@ -50,40 +50,42 @@ def run_smoke() -> None:
             page.evaluate("window.localStorage.clear()")
             seed_phase6_workspace(page)
             page.reload(wait_until="networkidle")
-            page.get_by_role("button", name="Editor", exact=True).click()
+            expect(page.get_by_role("button", name="Editor", exact=True)).not_to_be_visible()
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
 
             gallery = [
-                ("Rolling dice", "Rolling Dice Motion / Rolling Dice Motion", "DieBody rect", "volume", "dice"),
-                ("Abstract logo", "Abstract Logo Motion / Abstract Logo Motion", "PrimaryMark path", "main vector mark", "logo"),
-                ("Loader", "Progress Loader Motion / Progress Loader Motion", "ActiveSegment path", "active arc", "loader"),
-                ("Mascot", "Helpful Mascot Motion / Helpful Mascot Motion", "Body ellipse", "body", "mascot"),
-                ("UI microinteraction", "Button Microinteraction Motion / Button Microinteraction Motion", "ButtonSurface rect", "control surface", "ui"),
-                ("Icon badge", "Icon Badge Motion / Icon Badge Motion", "BadgePlate ellipse", "badge base", "icon-badge"),
+                ("Rolling dice", "Rolling Dice Motion / Rolling Dice Motion", "DieBody", "rect", "volume", "dice"),
+                ("Abstract logo", "Abstract Logo Motion / Abstract Logo Motion", "PrimaryMark", "path", "main vector mark", "logo"),
+                ("Loader", "Progress Loader Motion / Progress Loader Motion", "ActiveSegment", "path", "active arc", "loader"),
+                ("Mascot", "Helpful Mascot Motion / Helpful Mascot Motion", "Body", "ellipse", "body", "mascot"),
+                ("UI microinteraction", "Button Microinteraction Motion / Button Microinteraction Motion", "ButtonSurface", "rect", "control surface", "ui"),
+                ("Icon badge", "Icon Badge Motion / Icon Badge Motion", "BadgePlate", "ellipse", "badge base", "icon-badge"),
             ]
 
-            for title, heading, layer_name, role, slug in gallery:
+            for title, heading, layer_name, layer_kind, role, slug in gallery:
                 page.get_by_role("button", name=f"{title} now").click()
                 expect(page.get_by_text(heading)).to_be_visible()
-                expect(page.get_by_role("button", name=layer_name)).to_be_visible()
-                page.get_by_role("button", name=layer_name).click()
-                expect(page.get_by_test_id("selection-context")).to_contain_text(layer_name.split()[0])
-                expect(page.get_by_test_id("selected-part-inspector")).to_contain_text(role)
-                expect(page.get_by_role("button", name="Head ellipse")).not_to_be_visible() if slug != "mascot" else expect(page.get_by_role("button", name="Head ellipse")).to_be_visible()
+                layer_button = page.get_by_role("button", name=f"Attach layer {layer_name} {layer_kind}")
+                expect(layer_button).to_be_visible()
+                expect(layer_button).to_contain_text(role)
+                layer_button.click()
+                expect(page.get_by_text(f"Layer: {layer_name}")).to_be_visible()
+                expect(page.get_by_role("button", name="Attach layer Head ellipse")).not_to_be_visible() if slug != "mascot" else expect(page.get_by_role("button", name="Attach layer Head ellipse")).to_be_visible()
                 page.screenshot(path=str(OUTPUT_DIR / f"studio-phase6-{slug}.png"), full_page=True)
 
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("BadgePlate")
-            expect(page.get_by_text("Scene layers")).to_be_visible()
+            expect(page.get_by_text("Layer: BadgePlate")).to_be_visible()
+            expect(page.get_by_label("Scene layers rail")).to_be_visible()
             page.screenshot(path=str(OUTPUT_DIR / "studio-phase6-selection-layers-inspector.png"), full_page=True)
 
             page.get_by_role("button", name="Settings", exact=True).click()
             page.get_by_role("radio", name="Light").click()
-            page.get_by_role("button", name="Editor", exact=True).click()
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
             expect(page.locator("html")).to_have_attribute("data-theme", "light")
             page.screenshot(path=str(OUTPUT_DIR / "studio-phase6-light-theme.png"), full_page=True)
 
             page.get_by_role("button", name="Settings", exact=True).click()
             page.get_by_role("radio", name="Dark").click()
-            page.get_by_role("button", name="Editor", exact=True).click()
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
             expect(page.locator("html")).to_have_attribute("data-theme", "dark")
             page.screenshot(path=str(OUTPUT_DIR / "studio-phase6-dark-theme.png"), full_page=True)
 

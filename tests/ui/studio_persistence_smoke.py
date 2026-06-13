@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import time
 import urllib.request
@@ -199,58 +198,36 @@ def run_smoke() -> None:
                 workspace_payload(),
             )
             page.reload(wait_until="networkidle")
-            page.get_by_role("button", name="Editor", exact=True).click()
+            expect(page.get_by_role("button", name="Editor", exact=True)).not_to_be_visible()
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
             expect(page.get_by_text("Rolling Dice / Rolling Dice Motion")).to_be_visible()
-            expect(page.get_by_role("button", name="DieBody rect")).to_be_visible()
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("DieBody")
+            expect(page.get_by_label("Scene layers rail")).to_be_visible()
+            expect(page.get_by_role("button", name="Attach layer DieBody rect")).to_be_visible()
+            page.get_by_role("button", name="Attach layer DieBody rect").click()
+            expect(page.get_by_text("Layer: DieBody")).to_be_visible()
             page.screenshot(path=str(SCREENSHOT_DIR / "browser-01-dice-reopened.png"), full_page=True)
 
-            page.get_by_label("Motion prompt").fill("make the selected die body slightly bigger")
-            page.get_by_role("button", name="Ask AI to edit selection").click()
-            expect(page.get_by_test_id("operation-preview")).to_contain_text("Operation batch validated")
-            expect(page.get_by_role("button", name="Apply operation")).to_be_enabled()
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-02-apply-ready.png"), full_page=True)
-            page.get_by_role("button", name="Apply operation").click()
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("Scale X")
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("1.08")
-            expect(page.get_by_text(re.compile("applied / manual"))).to_be_visible()
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-03-applied-history.png"), full_page=True)
+            expect(page.get_by_text("Ask AI to edit selection")).not_to_be_visible()
+            expect(page.get_by_text("Apply operation")).not_to_be_visible()
+            expect(page.get_by_text("Reject")).not_to_be_visible()
+            page.screenshot(path=str(SCREENSHOT_DIR / "browser-02-ai-first-layers.png"), full_page=True)
 
-            page.get_by_role("button", name="Undo").click()
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("Scale X")
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("1")
-            page.get_by_role("button", name="Redo").click()
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("1.08")
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-04-undo-redo.png"), full_page=True)
-
-            page.get_by_role("button", name="Save").click()
+            page.get_by_role("button", name="Save project").click()
             expect(page.get_by_test_id("activity-pill")).to_contain_text("Saved browser snapshot")
-            page.get_by_role("button", name="Undo").click()
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("1")
-            page.get_by_role("button", name="Reopen").click()
+            page.get_by_role("button", name="Reload").click()
             expect(page.get_by_test_id("activity-pill")).to_contain_text("Reopened browser snapshot")
-            expect(page.get_by_test_id("selected-part-inspector")).to_contain_text("1.08")
-            expect(page.get_by_role("button", name="DieBody rect")).to_be_visible()
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-05-save-reopen.png"), full_page=True)
-
-            page.get_by_label("Motion prompt").fill("make the selected die body warmer")
-            page.get_by_role("button", name="Ask AI to edit selection").click()
-            expect(page.get_by_role("button", name="Reject")).to_be_enabled()
-            page.get_by_role("button", name="Reject").click()
-            expect(page.get_by_text(re.compile("rejected / manual"))).to_be_visible()
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-06-rejected-history.png"), full_page=True)
+            expect(page.get_by_role("button", name="Attach layer DieBody rect")).to_be_visible()
+            page.screenshot(path=str(SCREENSHOT_DIR / "browser-03-save-reopen.png"), full_page=True)
 
             page.evaluate(
                 "(payload) => window.localStorage.setItem('strut-studio-workspace-v4', JSON.stringify(payload))",
                 workspace_payload(pending_invalid=True),
             )
             page.reload(wait_until="networkidle")
-            page.get_by_role("button", name="Editor", exact=True).click()
-            expect(page.get_by_test_id("operation-preview")).to_contain_text("stale validation")
-            page.get_by_role("button", name="Apply operation").click()
-            expect(page.get_by_test_id("operation-preview")).to_contain_text("Operation targets missing node MissingPart")
-            expect(page.get_by_role("button", name="Apply operation")).to_be_disabled()
-            page.screenshot(path=str(SCREENSHOT_DIR / "browser-07-invalid-rejected.png"), full_page=True)
+            page.get_by_role("button", name="Chat + preview", exact=True).click()
+            expect(page.get_by_text("stale validation")).not_to_be_visible()
+            expect(page.get_by_role("button", name="Attach layer DieBody rect")).to_be_visible()
+            page.screenshot(path=str(SCREENSHOT_DIR / "browser-04-invalid-hidden-from-ai-first-ui.png"), full_page=True)
             browser.close()
     finally:
         stop_process_tree(process)
