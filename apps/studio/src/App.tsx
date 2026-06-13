@@ -123,6 +123,7 @@ type ProviderMode = "local" | "byok";
 type ViewMode = "chat" | "preview";
 type MainPanel = "chat" | "providers" | "settings";
 type ThemeMode = "system" | "light" | "dark";
+type RunState = "idle" | "thinking" | "generating";
 
 type LocalAdapter = {
   id: string;
@@ -1592,6 +1593,7 @@ function App() {
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
   const [providerModel, setProviderModel] = useState(byokProviders[0].model);
   const [activity, setActivity] = useState("Select a real local CLI, Ollama, or BYOK provider");
+  const [runState, setRunState] = useState<RunState>("idle");
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.themeMode);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => new Set());
   const [clockTick, setClockTick] = useState(Date.now());
@@ -2230,6 +2232,9 @@ function App() {
     if (!trimmed && composerReferences.length === 0) {
       return;
     }
+    if (runState !== "idle") {
+      return;
+    }
     if (!activeProjectId || !activeChatId) {
       newChat();
       setActivity("Start a chat first");
@@ -2249,9 +2254,11 @@ function App() {
       setPrompt("");
       setPendingReferences([]);
       setActivity("Thinking");
+      setRunState("thinking");
       if (!desktopRuntime) {
         appendMessage("assistant", localChatFallback(trimmed));
         setActivity("Answered in chat mode");
+        setRunState("idle");
         return;
       }
       try {
@@ -2265,6 +2272,8 @@ function App() {
       } catch (error) {
         appendMessage("assistant", `${localChatFallback(trimmed)}\n\n_Provider chat was unavailable: ${String(error)}_`);
         setActivity("Answered locally; provider chat unavailable");
+      } finally {
+        setRunState("idle");
       }
       return;
     }
@@ -2278,6 +2287,7 @@ function App() {
     }));
     setPendingReferences([]);
     setActivity("Generating");
+    setRunState("generating");
 
     try {
       if (!desktopRuntime) {
@@ -2312,6 +2322,8 @@ function App() {
     } catch (error) {
       setActivity(String(error));
       appendMessage("assistant", `**Generation stopped**\n\nProvider: ${activeProviderLabel}\n\n${String(error)}`);
+    } finally {
+      setRunState("idle");
     }
   }
 
@@ -2619,42 +2631,45 @@ function App() {
           <section className="provider-page">
             <div className="page-heading">
               <h1>Providers</h1>
-              <p>Connect local CLIs, local models, or BYOK APIs. Browser preview cannot run real provider checks.</p>
+              <p>Select the model or coding agent Strut should use for chat and generation.</p>
             </div>
-            <div className="provider-summary" data-testid="selected-provider-summary">
-              <span>Selected provider</span>
-              <strong>{activeProviderLabel}</strong>
-              <em>{activeProviderType} / {activeProviderDetail}</em>
-            </div>
-            <div className="provider-tabs" role="group" aria-label="Provider source">
-              {["local", "byok"].map((mode) => (
-                <button
-                  aria-pressed={providerMode === mode}
-                  className={providerMode === mode ? "active" : ""}
-                  key={mode}
-                  type="button"
-                  onClick={() => setProviderMode(mode as ProviderMode)}
-                >
-                  {mode === "local" ? "Local CLI" : "BYOK"}
-                </button>
-              ))}
+            <div className="provider-header-card">
+              <div className="provider-summary" data-testid="selected-provider-summary">
+                <span>Selected</span>
+                <strong>{activeProviderLabel}</strong>
+                <em>{activeProviderType}</em>
+                <p>{activeProviderDetail}</p>
+              </div>
+              <div className="provider-tabs" role="group" aria-label="Provider source">
+                {["local", "byok"].map((mode) => (
+                  <button
+                    aria-pressed={providerMode === mode}
+                    className={providerMode === mode ? "active" : ""}
+                    key={mode}
+                    type="button"
+                    onClick={() => setProviderMode(mode as ProviderMode)}
+                  >
+                    {mode === "local" ? "Local" : "BYOK"}
+                  </button>
+                ))}
+              </div>
             </div>
             {providerMode === "local" ? (
-              <div className="provider-list">
+              <div className="provider-list" aria-label="Local providers">
                 {localAdapters.map((adapter) => (
                   <button
                     aria-pressed={selectedLocalAdapterId === adapter.id}
-                    className={selectedLocalAdapterId === adapter.id ? "active" : ""}
+                    className={`${selectedLocalAdapterId === adapter.id ? "active" : ""} ${adapter.installed ? "installed" : "missing"}`}
                     key={adapter.id}
                     type="button"
                     onClick={() => setSelectedLocalAdapterId(adapter.id)}
                   >
-                    <span>
+                    <span className="provider-row-main">
                       <strong>{adapter.name}</strong>
                       <em>{adapter.kind}</em>
                     </span>
-                    <span>
-                      {selectedLocalAdapterId === adapter.id ? <strong>Selected</strong> : null}
+                    <span className="provider-row-meta">
+                      <strong>{selectedLocalAdapterId === adapter.id ? "Selected" : adapter.installed ? "Ready" : "Not found"}</strong>
                       <em>{adapter.detail}</em>
                     </span>
                   </button>
@@ -2833,6 +2848,13 @@ function App() {
                       </button>
                     </div>
                   ) : null}
+                  {runState !== "idle" ? (
+                    <div className="generation-loader" role="status" aria-live="polite">
+                      <span aria-hidden="true" />
+                      <strong>{activeProviderLabel}</strong>
+                      <em>{runState === "thinking" ? "thinking" : "generating"}</em>
+                    </div>
+                  ) : null}
                 </div>
                 <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene" />
                 <div className="composer-controls">
@@ -2851,7 +2873,7 @@ function App() {
                       Reference
                     </button>
                   </div>
-                  <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
+                  <button aria-label="Generate" disabled={runState !== "idle"} type="button" onClick={() => void runGeneration()}>
                     <Send size={17} />
                   </button>
                 </div>

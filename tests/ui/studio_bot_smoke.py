@@ -144,7 +144,8 @@ def run_smoke() -> None:
             expect(gemini_cli).to_be_visible()
             gemini_cli.click()
             expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Gemini CLI")
-            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Selected provider")
+            expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Selected")
+            expect(page.locator(".provider-list")).to_have_css("overflow-y", "auto")
             page.get_by_role("button", name="Test selected provider").click()
             expect(activity).to_contain_text("Desktop app required for real provider checks")
 
@@ -157,7 +158,7 @@ def run_smoke() -> None:
             expect(activity).to_contain_text("Desktop app required for provider config")
             page.get_by_role("button", name="Test selected provider").click()
             expect(activity).to_contain_text("Desktop app required for real provider checks")
-            page.get_by_role("button", name="Local CLI").click()
+            page.get_by_role("button", name="Local").click()
             gemini_cli.click()
             expect(page.get_by_test_id("selected-provider-summary")).to_contain_text("Gemini CLI")
 

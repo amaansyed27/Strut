@@ -1908,17 +1908,18 @@ textarea:focus-visible {
 
 .provider-list button {
   width: 100%;
-  min-height: 58px;
+  min-height: 54px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
-  gap: 14px;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
-  padding: 11px 12px;
+  padding: 10px 12px;
   color: var(--ink);
   text-align: left;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+  box-shadow: none;
 }
 
 .provider-list button.active {
@@ -1933,7 +1934,31 @@ textarea:focus-visible {
   gap: 3px;
 }
 
-.provider-list button span:last-child {
+.provider-row-main {
+  position: relative;
+  padding-left: 14px;
+}
+
+.provider-row-main::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.provider-list button.installed .provider-row-main::before {
+  background: var(--accent);
+}
+
+.provider-list button.missing .provider-row-main::before {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.provider-row-meta {
   justify-items: end;
   text-align: right;
 }
@@ -1944,10 +1969,14 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.provider-list button span:last-child strong {
+.provider-row-meta strong {
   color: var(--accent-strong);
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.provider-row-meta em {
+  max-width: 100%;
 }
 
 .file-list button {
@@ -2048,13 +2077,44 @@ textarea:focus-visible {
   gap: 18px;
 }
 
-.provider-summary {
-  max-width: 620px;
+.provider-page {
+  width: min(860px, calc(100% - 48px));
+  max-height: calc(100vh - 110px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-self: start;
+  overflow: hidden;
+  padding: 22px 24px 18px;
+}
+
+.provider-page .page-heading {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px;
+}
+
+.provider-page .page-heading h1,
+.provider-page .page-heading p {
+  margin: 0;
+}
+
+.provider-header-card {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 2px;
+  background: var(--paper-glass);
+}
+
+.provider-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px 14px;
-  padding: 14px 16px;
+  min-width: 0;
+  padding: 12px 14px;
   border: 1px solid var(--selection);
   border-radius: 8px;
   background: color-mix(in srgb, var(--selection) 12%, var(--panel));
@@ -2068,14 +2128,28 @@ textarea:focus-visible {
 }
 
 .provider-summary strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-summary em {
-  grid-column: 2;
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
+}
+
+.provider-summary p {
+  grid-column: 2 / -1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-tabs {
@@ -2110,7 +2184,10 @@ textarea:focus-visible {
 }
 
 .provider-list {
-  max-width: 780px;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 4px 6px 0;
+  scrollbar-width: thin;
 }
 
 .byok-form {
@@ -2385,6 +2462,39 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.generation-loader {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  padding: 0 10px;
+  color: var(--accent-text);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+}
+
+.generation-loader span {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in srgb, var(--accent-text) 24%, transparent);
+  border-top-color: var(--accent-text);
+  border-radius: 999px;
+  animation: provider-spin 780ms linear infinite;
+}
+
+.generation-loader strong,
+.generation-loader em {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.generation-loader em {
+  color: var(--muted);
+  font-style: normal;
 }
 
 .composer-tool-actions button[aria-label="Reload"],
@@ -2865,5 +2975,11 @@ textarea:focus-visible {
   }
   50% {
     transform: translateY(-12px);
+  }
+}
+
+@keyframes provider-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
