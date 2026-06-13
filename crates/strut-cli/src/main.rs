@@ -1190,8 +1190,10 @@ fn instruction_kind(instruction: &str) -> String {
     } else if lower.contains("button") || lower.contains("microinteraction") || lower.contains("ui")
     {
         "ui"
-    } else {
+    } else if lower.contains("dice") || lower.contains("die ") || lower.contains("rolling") {
         "dice"
+    } else {
+        "custom"
     }
     .to_string()
 }
@@ -1215,6 +1217,8 @@ fn sprite_python_envelope(instruction: &str) -> CliResult<(Value, String, Vec<St
         .arg("-m")
         .arg("strut_python.cli")
         .arg(&kind)
+        .arg("--instruction")
+        .arg(instruction)
         .arg("--json")
         .current_dir(&package_dir)
         .env("PYTHONPATH", package_dir.join("src"))
@@ -2308,8 +2312,8 @@ fn escape_xml(value: &str) -> String {
 
 fn react_export_files(document: &Document) -> Vec<(PathBuf, String)> {
     let scene_json = serde_json::to_string_pretty(document).expect("document serializes");
-    let component = format!(
-        r#"import scene from "./scene.json";
+    let component_template = r#"import type { ReactNode } from "react";
+import scene from "./scene.json";
 
 type StrutNode = {{
   id: string;
@@ -2321,14 +2325,129 @@ type StrutNode = {{
   children?: StrutNode[];
 }};
 
+type StrutKeyframe = {{ time_ms: number; value: {{ type: string; value: number }}; easing?: string }};
+type StrutTrack = {{ target: string; property: string; keyframes: StrutKeyframe[] }};
+type StrutTimeline = {{ name: string; duration_ms: number; tracks: StrutTrack[] }};
+type StrutTransition = {{ to: string; timeline: string }};
+type StrutStateMachine = {{ transitions?: StrutTransition[] }};
+type StrutScene = {{
+  name: string;
+  artboards: Array<{{ width: number; height: number; nodes: StrutNode[] }}>;
+  timelines?: StrutTimeline[];
+  state_machines?: StrutStateMachine[];
+}};
+
+const strutScene = scene as StrutScene;
+const defaultTitle = __STRUT_TITLE_JSON__;
+
 function paint(value: string | null | undefined) {{
   return value ?? "none";
 }}
 
-function renderNode(node: StrutNode): React.ReactNode {{
+function cssIdent(value: string) {{
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}}
+
+function numericKeyframes(track: StrutTrack) {{
+  return (track.keyframes ?? []).filter((keyframe) => keyframe.value?.type === "number");
+}}
+
+function valueAt(track: StrutTrack | undefined, time: number, fallback: number) {{
+  const frames = track ? numericKeyframes(track).sort((a, b) => a.time_ms - b.time_ms) : [];
+  if (!frames.length) return fallback;
+  if (time <= frames[0].time_ms) return frames[0].value.value;
+  const last = frames[frames.length - 1];
+  if (time >= last.time_ms) return last.value.value;
+  for (let index = 0; index < frames.length - 1; index += 1) {{
+    const left = frames[index];
+    const right = frames[index + 1];
+    if (time >= left.time_ms && time <= right.time_ms) {{
+      const span = Math.max(1, right.time_ms - left.time_ms);
+      const progress = (time - left.time_ms) / span;
+      return left.value.value + (right.value.value - left.value.value) * progress;
+    }}
+  }}
+  return fallback;
+}}
+
+function groupTracks(timeline: StrutTimeline) {{
+  const groups = new Map<string, StrutTrack[]>();
+  for (const track of timeline.tracks ?? []) {{
+    if (!numericKeyframes(track).length) continue;
+    groups.set(track.target, [...(groups.get(track.target) ?? []), track]);
+  }}
+  return groups;
+}}
+
+function transformCss(tracks: StrutTrack[], timeline: StrutTimeline, target: string) {{
+  const transformTracks = tracks.filter((track) => ["translation.x", "translation.y", "rotation", "scale.x", "scale.y"].includes(track.property));
+  if (!transformTracks.length) return "";
+  const times = Array.from(new Set([0, timeline.duration_ms, ...transformTracks.flatMap((track) => numericKeyframes(track).map((frame) => frame.time_ms))])).sort((a, b) => a - b);
+  const frames = times
+    .map((time) => {{
+      const percent = Math.max(0, Math.min(100, (time / Math.max(1, timeline.duration_ms)) * 100));
+      const tx = valueAt(transformTracks.find((track) => track.property === "translation.x"), time, 0);
+      const ty = valueAt(transformTracks.find((track) => track.property === "translation.y"), time, 0);
+      const rotate = valueAt(transformTracks.find((track) => track.property === "rotation"), time, 0);
+      const sx = valueAt(transformTracks.find((track) => track.property === "scale.x"), time, 1);
+      const sy = valueAt(transformTracks.find((track) => track.property === "scale.y"), time, 1);
+      return `${{percent}}% {{ transform: translate(${{tx.toFixed(2)}}px, ${{ty.toFixed(2)}}px) rotate(${{rotate.toFixed(2)}}deg) scale(${{sx.toFixed(3)}}, ${{sy.toFixed(3)}}); }}`;
+    }})
+    .join("\n");
+  return `@keyframes strut-${{cssIdent(timeline.name)}}-${{cssIdent(target)}}-transform {{\n${{frames}}\n}}\n`;
+}}
+
+function scalarCss(track: StrutTrack, timeline: StrutTimeline) {{
+  if (track.property !== "opacity") return "";
+  const frames = numericKeyframes(track)
+    .sort((a, b) => a.time_ms - b.time_ms)
+    .map((keyframe) => `${{Math.max(0, Math.min(100, (keyframe.time_ms / Math.max(1, timeline.duration_ms)) * 100))}}% {{ opacity: ${{keyframe.value.value.toFixed(3)}}; }}`)
+    .join("\n");
+  return `@keyframes strut-${{cssIdent(timeline.name)}}-${{cssIdent(track.target)}}-${{cssIdent(track.property)}} {{\n${{frames}}\n}}\n`;
+}}
+
+function activeTimelines(state: string, playAll: boolean) {{
+  const timelines = strutScene.timelines ?? [];
+  if (playAll) return timelines;
+  const names = new Set<string>([state]);
+  for (const machine of strutScene.state_machines ?? []) {{
+    for (const transition of machine.transitions ?? []) {{
+      if (transition.to === state) names.add(transition.timeline);
+    }}
+  }}
+  return timelines.filter((timeline) => names.has(timeline.name) || timeline.name.startsWith(state));
+}}
+
+function animationCss(state: string, playAll: boolean) {{
+  const rules: string[] = [];
+  for (const timeline of activeTimelines(state, playAll)) {{
+    for (const [target, tracks] of groupTracks(timeline)) {{
+      const animations: string[] = [];
+      const transformRule = transformCss(tracks, timeline, target);
+      if (transformRule) {{
+        rules.push(transformRule);
+        animations.push(`strut-${{cssIdent(timeline.name)}}-${{cssIdent(target)}}-transform ${{timeline.duration_ms}}ms ease-in-out infinite`);
+      }}
+      for (const track of tracks) {{
+        const scalarRule = scalarCss(track, timeline);
+        if (scalarRule) {{
+          rules.push(scalarRule);
+          animations.push(`strut-${{cssIdent(timeline.name)}}-${{cssIdent(track.target)}}-${{cssIdent(track.property)}} ${{timeline.duration_ms}}ms ease-in-out infinite`);
+        }}
+      }}
+      if (animations.length) {{
+        rules.push(`[data-strut-id="${{target}}"] {{ transform-box: fill-box; transform-origin: center; animation: ${{animations.join(", ")}}; }}`);
+      }}
+    }}
+  }}
+  return rules.join("\n");
+}}
+
+function renderNode(node: StrutNode): ReactNode {{
   const style = node.style ?? {{}};
   const common = {{
     key: node.id,
+    "data-strut-id": node.id,
     fill: paint(style.fill),
     stroke: paint(style.stroke),
     strokeWidth: style.stroke_width ?? 0,
@@ -2354,21 +2473,27 @@ function renderNode(node: StrutNode): React.ReactNode {{
   return <g key={{node.id}}>{{node.children?.map(renderNode)}}</g>;
 }}
 
-export function StrutAnimation({{ state = "idle", title = "{}" }}: {{ state?: string; title?: string }}) {{
-  const artboard = scene.artboards[0];
+export function StrutAnimation({{ state = "idle", title = defaultTitle, playAll = true }}: {{ state?: string; title?: string; playAll?: boolean }}) {{
+  const artboard = strutScene.artboards[0];
   return (
     <svg viewBox={{`0 0 ${{artboard.width}} ${{artboard.height}}`}} role="img" aria-label={{title}} data-strut-state={{state}}>
+      <style>{{animationCss(state, playAll)}}</style>
       {{artboard.nodes.map(renderNode)}}
     </svg>
   );
 }}
 
 export default StrutAnimation;
-"#,
-        document.name.replace('"', "\\\"")
-    );
+"#;
+    let component = component_template
+        .replace(
+            "__STRUT_TITLE_JSON__",
+            &serde_json::to_string(&document.name).expect("title serializes"),
+        )
+        .replace("{{", "{")
+        .replace("}}", "}");
     let readme = format!(
-        "# Strut React Export\n\nGenerated from `{}`.\n\n```tsx\nimport {{ StrutAnimation }} from \"./StrutAnimation\";\n\nexport function Example() {{\n  return <StrutAnimation state=\"idle\" />;\n}}\n```\n\nThe component renders the validated `.strut` document as static SVG markup. Runtime timeline playback is a future runtime integration layer.\n",
+        "# Strut React Export\n\nGenerated from `{}`.\n\n```tsx\nimport {{ StrutAnimation }} from \"./StrutAnimation\";\n\nexport function Example() {{\n  return <StrutAnimation state=\"idle\" playAll />;\n}}\n```\n\nThe component renders the validated `.strut` document as SVG and maps numeric Strut timeline tracks to CSS keyframe playback. Coding agents can edit `scene.json`, re-run `strut verify`, and keep the React wrapper unchanged.\n",
         document.name
     );
     vec![

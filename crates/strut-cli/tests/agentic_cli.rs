@@ -259,7 +259,7 @@ fn phase6_gallery_runs_full_cli_project_flow_for_all_examples() {
             "mascot",
             "make a low energy companion mascot idle animation",
             "mascot",
-            "Helpful Mascot Motion",
+            "Companion Mascot Motion",
             "idle",
         ),
         (
@@ -423,10 +423,43 @@ fn phase6_gallery_runs_full_cli_project_flow_for_all_examples() {
         let component_source = fs::read_to_string(component).expect("component");
         assert!(component_source.contains("export function StrutAnimation"));
         assert!(component_source.contains("data-strut-node"));
+        assert!(component_source.contains("data-strut-id"));
+        assert!(component_source.contains("function animationCss"));
+        assert!(component_source.contains("@keyframes strut-"));
+        assert!(component_source.contains("playAll = true"));
         assert!(fs::read_to_string(readme)
             .expect("readme")
-            .contains("<StrutAnimation state=\"idle\" />"));
+            .contains("<StrutAnimation state=\"idle\" playAll />"));
     }
+}
+
+#[test]
+fn sprite_plan_supports_prompt_specific_procedural_assets() {
+    let root = repo_root();
+    let plan = sprite_plan_json(&root, "animate a twitter bird taking flight");
+
+    assert_eq!(plan["planSummary"]["subjectClassification"], "bird_icon");
+    assert_eq!(
+        plan["planSummary"]["subjectLabel"],
+        "Twitter Bird Taking Flight"
+    );
+    assert_eq!(
+        plan["document"]["name"],
+        "Twitter Bird Taking Flight Motion"
+    );
+    assert_eq!(plan["batch"]["operations"][0]["type"], "replace_document");
+
+    let names = part_names(&plan);
+    assert!(names
+        .iter()
+        .any(|name| name == "Twitter Bird Taking Flight Body"));
+    assert!(names
+        .iter()
+        .any(|name| name == "Twitter Bird Taking Flight Wing"));
+    assert!(names
+        .iter()
+        .any(|name| name == "Twitter Bird Taking Flight Motion Trail"));
+    assert_no_mascot_anatomy(&names);
 }
 
 #[test]
