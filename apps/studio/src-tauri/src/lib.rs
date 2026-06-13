@@ -994,14 +994,6 @@ fn save_byok_provider(config: ByokProviderConfig) -> Result<ProviderOperationRes
 fn local_adapter_definitions() -> Vec<LocalAdapterDefinition> {
     vec![
         LocalAdapterDefinition {
-            id: "strut-sprite",
-            name: "Strut Sprite",
-            kind: "local-engine",
-            commands: &["python"],
-            version_args: &["--version"],
-            generation: LocalGenerationKind::SpritePython,
-        },
-        LocalAdapterDefinition {
             id: "ollama",
             name: "Ollama",
             kind: "local-model",
@@ -5681,7 +5673,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(ids.contains(&"codex"));
-        assert!(ids.contains(&"strut-sprite"));
+        assert!(!ids.contains(&"strut-sprite"));
         assert!(ids.contains(&"gemini-cli"));
         assert!(ids.contains(&"claude-code"));
         assert!(ids.contains(&"copilot-cli"));
@@ -5690,6 +5682,9 @@ mod tests {
         assert!(ids.contains(&"cursor-agent"));
         assert!(ids.contains(&"qwen"));
         assert!(ids.contains(&"qoder"));
+        assert!(adapters
+            .iter()
+            .all(|adapter| adapter.kind != "local-engine"));
     }
 
     #[test]

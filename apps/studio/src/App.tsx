@@ -369,7 +369,6 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
 const initialProjects: ProjectRecord[] = [];
 
 const browserLocalAdapters: LocalAdapter[] = [
-  { id: "strut-sprite", name: "Strut Sprite", kind: "local-engine", command: "python", installed: false, detail: "desktop check required" },
   { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
   { id: "codex", name: "Codex", kind: "local-agent", command: "codex", installed: false, detail: "desktop check required" },
   { id: "gemini-cli", name: "Gemini CLI", kind: "local-agent", command: "gemini", installed: false, detail: "desktop check required" },
@@ -1648,7 +1647,7 @@ function App() {
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("local");
   const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(browserLocalAdapters);
-  const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("strut-sprite");
+  const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("codex");
   const [selectedByokProviderId, setSelectedByokProviderId] = useState("openai");
   const [apiKey, setApiKey] = useState("");
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
@@ -1684,6 +1683,16 @@ function App() {
     const timer = window.setInterval(() => setClockTick(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (localAdapters.some((adapter) => adapter.id === selectedLocalAdapterId)) {
+      return;
+    }
+    const preferred = localAdapters.find((adapter) => adapter.id === "codex") ?? localAdapters[0];
+    if (preferred) {
+      setSelectedLocalAdapterId(preferred.id);
+    }
+  }, [localAdapters, selectedLocalAdapterId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2026,7 +2035,7 @@ function App() {
 
   function providerPayload(): GenerationProvider {
     if (providerMode === "local") {
-      return { mode: "local", localAdapterId: selectedLocalAdapterId };
+      return { mode: "local", localAdapterId: activeLocalAdapter.id };
     }
     return {
       mode: "byok",
@@ -2266,7 +2275,7 @@ function App() {
     try {
       const result =
         providerMode === "local"
-          ? await invoke<ProviderOperationResult>("test_local_adapter", { adapterId: selectedLocalAdapterId })
+          ? await invoke<ProviderOperationResult>("test_local_adapter", { adapterId: activeLocalAdapter.id })
           : await invoke<ProviderOperationResult>("test_byok_provider", { config: providerPayload().byok });
       setActivity(result.status);
     } catch (error) {

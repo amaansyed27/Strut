@@ -139,6 +139,7 @@ def run_smoke() -> None:
 
             page.get_by_role("button", name="Providers", exact=True).click()
             expect(page.get_by_role("heading", name="Providers")).to_be_visible()
+            expect(page.get_by_text("Strut Sprite", exact=True)).not_to_be_visible()
             gemini_cli = page.get_by_role("button").filter(has_text="Gemini CLI").first
             expect(gemini_cli).to_be_visible()
             gemini_cli.click()
