@@ -91,3 +91,38 @@ def attention_nudge(target: str, timeline_id: str = "attention-nudge") -> Timeli
         tracks=[track(target, "translation.x", [Keyframe(0, 0.0), Keyframe(170, 5.0, "ease_out"), Keyframe(340, -2.0), Keyframe(520, 0.0)])],
     )
 
+
+def blink(target: str, timeline_id: str = "soft-blink", timeline_name: str = "soft_blink") -> Timeline:
+    return Timeline(
+        id=timeline_id,
+        name=timeline_name,
+        state="blink",
+        duration_ms=360,
+        tracks=[track(target, "scale.y", [Keyframe(0, 1.0), Keyframe(150, 0.18, "ease_out"), Keyframe(360, 1.0)])],
+    )
+
+
+def glance(target: str, timeline_id: str = "curious-glance") -> Timeline:
+    return Timeline(
+        id=timeline_id,
+        name="curious_glance",
+        state="focus",
+        duration_ms=1100,
+        tracks=[
+            track(target, "translation.x", [Keyframe(0, 0.0), Keyframe(460, 7.0, "ease_out"), Keyframe(1100, 0.0)]),
+            track(target, "translation.y", [Keyframe(0, 0.0), Keyframe(460, -2.0, "ease_out"), Keyframe(1100, 0.0)]),
+        ],
+    )
+
+
+def wing_wave(target: str, timeline_id: str = "gentle-wave") -> Timeline:
+    return Timeline(
+        id=timeline_id,
+        name="gentle_wave",
+        state="wave",
+        duration_ms=980,
+        tracks=[
+            track(target, "rotation", [Keyframe(0, -3.0), Keyframe(280, 7.0, "ease_out"), Keyframe(620, -5.0), Keyframe(980, 0.0)]),
+            track(target, "translation.y", [Keyframe(0, 0.0), Keyframe(280, -5.0, "ease_out"), Keyframe(980, 0.0)]),
+        ],
+    )

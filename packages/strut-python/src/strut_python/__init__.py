@@ -1,6 +1,6 @@
 """Sprite/vector authoring helpers for Strut generation envelopes."""
 
-from .builders import abstract_logo_reveal, icon_badge, loader_progress, mascot_idle, rolling_dice, ui_microinteraction
+from .builders import abstract_logo_reveal, icon_badge, loader_progress, mascot_idle, procedural_asset, rolling_dice, ui_microinteraction
 from .model import (
     Binding,
     Ellipse,
@@ -31,6 +31,7 @@ __all__ = [
     "icon_badge",
     "loader_progress",
     "mascot_idle",
+    "procedural_asset",
     "rolling_dice",
     "ui_microinteraction",
 ]

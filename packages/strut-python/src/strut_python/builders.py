@@ -1,7 +1,122 @@
 from __future__ import annotations
 
+import re
+
 from .model import Binding, Ellipse, Path, Rect, Scene, State, Text, style
-from .motion import attention_nudge, idle_breathe, progress_sweep, pulse, reveal, settle, soft_bob, tiny_tilt
+from .motion import attention_nudge, blink, glance, idle_breathe, progress_sweep, pulse, reveal, settle, soft_bob, tiny_tilt, wing_wave
+
+
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "animate",
+    "animation",
+    "asset",
+    "calm",
+    "cinematic",
+    "create",
+    "for",
+    "gentle",
+    "icon",
+    "idle",
+    "in",
+    "into",
+    "make",
+    "motion",
+    "of",
+    "soft",
+    "static",
+    "style",
+    "the",
+    "with",
+}
+
+
+def _words(instruction: str) -> list[str]:
+    return [word for word in re.findall(r"[a-zA-Z][a-zA-Z0-9]*", instruction.lower()) if word not in STOPWORDS]
+
+
+def _pascal(words: list[str], fallback: str = "DynamicAsset") -> str:
+    clean = [word[:18] for word in words if word]
+    if not clean:
+        return fallback
+    return "".join(word.capitalize() for word in clean[:3])
+
+
+def _label(words: list[str], fallback: str = "Dynamic Asset") -> str:
+    if not words:
+        return fallback
+    return " ".join(word.capitalize() for word in words[:4])
+
+
+def procedural_asset(instruction: str) -> Scene:
+    """Build a subject-aware sprite plan when no named fixture fits.
+
+    This is intentionally deterministic so coding agents can reproduce and patch
+    it, but the part names and motion roles come from the prompt instead of a
+    fixed mascot/body template.
+    """
+
+    lower = instruction.lower()
+    words = _words(instruction)
+    base = _pascal(words)
+    label = _label(words)
+    wants_heavy = any(token in lower for token in ["lively", "immersive", "cinematic", "character", "companion", "sprite", "story"])
+
+    if "bird" in lower or "twitter" in lower:
+        sprites = [
+            Path(f"{base}Body", f"{label} Body", "primary silhouette", "M376 282 C430 202 540 202 596 274 C540 262 502 286 470 350 C430 330 396 308 376 282 Z", style=style("#7dd3fc", "#0f172a", 5)),
+            Path(f"{base}Wing", f"{label} Wing", "lift wing", "M450 280 C496 220 574 218 626 262 C560 266 518 304 486 354 Z", style=style("#38bdf8", "#075985", 4)),
+            Path(f"{base}Tail", f"{label} Tail", "tail feathers", "M388 286 L328 248 L354 318 Z", style=style("#bae6fd", "#075985", 4)),
+            Path(f"{base}Beak", f"{label} Beak", "direction point", "M596 274 L646 254 L606 300 Z", style=style("#fbbf24", "#92400e", 3)),
+            Path(f"{base}Trail", f"{label} Motion Trail", "flight trail", "M320 342 C382 376 514 386 638 340", style=style(None, "#a7f3d0", 6, 0.5)),
+            Ellipse(f"{base}Shadow", f"{label} Shadow", "soft shadow", 480, 424, 132, 16, style=style("#0f172a", None, 0, 0.18)),
+        ]
+        classification = "bird_icon"
+        timelines = [
+            soft_bob(f"{base}Body", "idle", f"{base.lower()}-flight-bob"),
+            tiny_tilt(f"{base}Wing", "idle", f"{base.lower()}-wing-lift"),
+            reveal(f"{base}Trail", f"{base.lower()}-trail-reveal"),
+        ]
+        motion_roles = [
+            {"id": "primary", "purpose": "subject-specific flight silhouette", "partRefs": [f"{base}Body", f"{base}Wing"]},
+            {"id": "energy", "purpose": "motion trail and lift without mascot-only anatomy", "partRefs": [f"{base}Trail", f"{base}Shadow"]},
+        ]
+    else:
+        sprites = [
+            Path(f"{base}Core", f"{label} Core", "primary form", "M392 202 C452 144 552 158 602 238 C574 332 470 376 390 326 C354 282 356 236 392 202 Z", style=style("#d9f99d" if wants_heavy else "#e0f2fe", "#13231b", 5)),
+            Path(f"{base}Facet", f"{label} Facet", "secondary plane", "M430 214 C482 190 542 206 564 252 C520 246 480 270 448 314 C430 278 420 244 430 214 Z", style=style("#a7f3d0", "#047857", 4, 0.9)),
+            Path(f"{base}Accent", f"{label} Accent Stroke", "editable accent", "M386 336 C450 372 548 370 612 320", style=style(None, "#2563eb", 8)),
+            Path(f"{base}Spark", f"{label} Spark", "small signal", "M596 174 L608 206 L642 214 L610 226 L598 258 L586 226 L552 216 L584 206 Z", style=style("#fde68a", "#92400e", 3)),
+            Path(f"{base}Trail", f"{label} Motion Trail", "motion arc", "M344 274 C394 206 560 166 646 230", style=style(None, "#99f6e4", 6, 0.45)),
+            Ellipse(f"{base}Shadow", f"{label} Shadow", "grounding shadow", 490, 420, 130, 18, style=style("#13231b", None, 0, 0.16)),
+        ]
+        classification = "dynamic_asset"
+        timelines = [
+            reveal(f"{base}Core", f"{base.lower()}-core-reveal"),
+            tiny_tilt(f"{base}Accent", "reveal", f"{base.lower()}-accent-drift"),
+            attention_nudge(f"{base}Spark", f"{base.lower()}-spark-nudge"),
+        ]
+        if wants_heavy:
+            timelines.append(soft_bob(f"{base}Core", "idle", f"{base.lower()}-ambient-bob"))
+        motion_roles = [
+            {"id": "primary", "purpose": f"subject-aware motion for {label}", "partRefs": [f"{base}Core", f"{base}Facet"]},
+            {"id": "detail", "purpose": "editable accent, sparkle, and motion trail", "partRefs": [f"{base}Accent", f"{base}Spark", f"{base}Trail"]},
+        ]
+
+    return Scene(
+        id=f"sprite-python-{base.lower()}-plan",
+        name=f"{label} Motion",
+        subject_classification=classification,
+        subject_label=label,
+        sprites=sprites,
+        states=[State("idle"), State("reveal"), State("focus")],
+        timelines=timelines,
+        motion_roles=motion_roles,
+        bindings=[Binding(f"edit_{base.lower()}_fill", sprites[0].id, "fill")],
+        notes=[f"sprite-python procedural builder from instruction: {instruction[:140]}"],
+    )
 
 
 def rolling_dice() -> Scene:
@@ -75,24 +190,44 @@ def loader_progress() -> Scene:
 
 def mascot_idle() -> Scene:
     sprites = [
-        Ellipse("Body", "Body", "body", 480, 306, 92, 118, style=style("#a7f3d0", "#064e3b", 6)),
-        Ellipse("Head", "Head", "head", 480, 190, 82, 68, style=style("#ecfdf5", "#064e3b", 6)),
-        Path("Eyes", "Eyes", "eyes", "M446 186 q10 -16 20 0 M494 186 q10 -16 20 0", style=style(None, "#064e3b", 8)),
-        Path("Arms", "Arms", "arms", "M394 292 C350 310 344 352 382 364 M566 292 C610 310 616 352 578 364", style=style(None, "#047857", 10)),
-        Ellipse("AccentBadge", "AccentBadge", "accent", 512, 316, 16, 16, style=style("#34d399", "#064e3b", 3)),
-        Ellipse("GroundShadow", "GroundShadow", "shadow", 480, 438, 108, 16, style=style("#064e3b", None, 0, 0.2)),
+        Ellipse("Body", "Body", "soft body volume", 480, 312, 94, 118, style=style("#a7f3d0", "#064e3b", 6)),
+        Ellipse("BellyPatch", "BellyPatch", "warm belly patch", 480, 332, 58, 76, style=style("#ecfdf5", "#047857", 4, 0.92)),
+        Ellipse("Head", "Head", "head", 480, 190, 86, 70, style=style("#ecfdf5", "#064e3b", 6)),
+        Path("FaceMask", "FaceMask", "face mask", "M420 188 C438 148 522 148 540 188 C526 220 434 220 420 188 Z", style=style("#d1fae5", "#047857", 3)),
+        Ellipse("LeftEye", "LeftEye", "left eye", 452, 188, 10, 13, style=style("#064e3b", "#064e3b", 2)),
+        Ellipse("RightEye", "RightEye", "right eye", 508, 188, 10, 13, style=style("#064e3b", "#064e3b", 2)),
+        Path("EyeGlints", "EyeGlints", "eye glints", "M448 184 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M504 184 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0", style=style(None, "#ffffff", 2)),
+        Path("BeakSmile", "BeakSmile", "tiny beak smile", "M470 206 L480 216 L490 206 M456 224 Q480 238 504 224", style=style(None, "#92400e", 5)),
+        Path("LeftWing", "LeftWing", "left wing", "M394 292 C350 310 344 352 382 364 C412 356 422 324 410 296 Z", style=style("#6ee7b7", "#047857", 5)),
+        Path("RightWing", "RightWing", "right wing", "M566 292 C610 310 616 352 578 364 C548 356 538 324 550 296 Z", style=style("#6ee7b7", "#047857", 5)),
+        Path("Feet", "Feet", "small feet", "M436 430 q22 16 44 0 M480 430 q22 16 44 0", style=style(None, "#92400e", 7)),
+        Ellipse("AccentBadge", "AccentBadge", "agent status badge", 512, 316, 16, 16, style=style("#34d399", "#064e3b", 3)),
+        Path("AmbientHalo", "AmbientHalo", "low energy halo", "M386 246 C412 118 552 118 584 246", style=style(None, "#8be9fd", 5, 0.42)),
+        Ellipse("GroundShadow", "GroundShadow", "soft grounding shadow", 480, 438, 118, 16, style=style("#064e3b", None, 0, 0.2)),
     ]
     return Scene(
         id="sprite-python-mascot-plan",
-        name="Helpful Mascot Motion",
+        name="Companion Mascot Motion",
         subject_classification="mascot",
-        subject_label="Helpful Mascot",
+        subject_label="Companion Mascot",
         sprites=sprites,
-        states=[State("idle"), State("hover")],
-        timelines=[idle_breathe("Body"), soft_bob("Head"), attention_nudge("Arms")],
-        motion_roles=[{"id": "primary", "purpose": "quiet mascot idle motion", "partRefs": ["Body", "Head", "Eyes"]}],
+        states=[State("idle"), State("hover"), State("blink"), State("focus"), State("wave")],
+        timelines=[
+            idle_breathe("Body"),
+            soft_bob("Head"),
+            blink("LeftEye", "left-soft-blink", "left_soft_blink"),
+            blink("RightEye", "right-soft-blink", "right_soft_blink"),
+            glance("FaceMask"),
+            wing_wave("RightWing"),
+            attention_nudge("AccentBadge"),
+        ],
+        motion_roles=[
+            {"id": "primary", "purpose": "quiet companion idle motion with soft breathing", "partRefs": ["Body", "Head", "BellyPatch"]},
+            {"id": "attention", "purpose": "subtle blink and glance that feels alive without distraction", "partRefs": ["LeftEye", "RightEye", "FaceMask"]},
+            {"id": "greeting", "purpose": "gentle wing wave for low-energy acknowledgement", "partRefs": ["RightWing", "AmbientHalo"]},
+        ],
         bindings=[Binding("edit_body_fill", "Body", "fill")],
-        notes=["sprite-python mascot builder; anatomy is present because subject is mascot"],
+        notes=["sprite-python companion mascot builder; anatomy is present because subject is mascot"],
     )
 
 
