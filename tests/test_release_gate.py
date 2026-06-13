@@ -44,10 +44,10 @@ def test_release_gate_has_release_scripts_and_ci_matrix() -> None:
     assert checks["ci_release_matrix"]["ok"]
 
 
-def test_release_gate_blocks_until_version_is_release_ready() -> None:
+def test_release_gate_is_ready_for_v1() -> None:
     release_gate = load_release_gate()
 
     report = release_gate.collect_release_gate(ROOT)
-    blockers = "\n".join(report["blockers"])
 
-    assert "version" in blockers.lower()
+    assert report["ready"], "\n".join(report["blockers"])
+    assert report["currentVersion"] == "1.0.0"

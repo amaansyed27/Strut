@@ -1,6 +1,6 @@
 {
   "name": "@strut/react",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "React runtime wrapper for Strut animation components.",
   "license": "Apache-2.0",
   "type": "module",
@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@strut/runtime-web": "0.1.0"
+    "@strut/runtime-web": "1.0.0"
   },
   "peerDependencies": {
     "react": ">=18"
