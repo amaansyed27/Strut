@@ -59,8 +59,22 @@ Make the composition, named layers, palette, and motion match the request. Strut
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalGenerationKind {
     OllamaHttp,
+    SpritePython,
     StdinPrompt,
     AcpOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequestIntent {
+    Conversation,
+    Generate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenerationStrategy {
+    SimpleSvg,
+    SpritePython,
+    ProviderPlan,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +168,13 @@ struct GeneratedCharacter {
     message: String,
     plan_summary: Option<GenerationPlanSummary>,
     operation_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAnswer {
+    source: String,
+    message: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -707,6 +728,12 @@ async fn generate_character(
     context: Option<GenerationContext>,
 ) -> Result<GeneratedCharacter, String> {
     let references = references.unwrap_or_default();
+    if references.is_empty() && classify_request_intent(&prompt) == RequestIntent::Conversation {
+        return Err(
+            "This looks like chat or brainstorming, not an animation request. Ask Strut to generate, animate, create, or make a specific motion when you want a scene."
+                .to_string(),
+        );
+    }
     let contextual_prompt = contextual_generation_prompt(&prompt, context.as_ref())?;
     let provider = provider.ok_or_else(|| {
         "Select a real local CLI, Ollama, or BYOK provider before generating. Built-in fallback generation has been removed.".to_string()
@@ -731,18 +758,72 @@ async fn generate_character(
             let adapter_id = provider
                 .local_adapter_id
                 .ok_or_else(|| "Select a local CLI or Ollama adapter".to_string())?;
-            let document =
-                generate_document_with_local_adapter(&adapter_id, &contextual_prompt, &references)
-                    .await?;
+            let (document, source, message) = match generate_document_with_local_adapter(
+                &adapter_id,
+                &contextual_prompt,
+                &references,
+            )
+            .await
+            {
+                Ok(document) => (
+                    document,
+                    adapter_id,
+                    reference_message("Generated through local provider", &references),
+                ),
+                Err(error) if references.is_empty() => {
+                    let document = generate_document_with_sprite_python(&prompt)?;
+                    (
+                        document,
+                        "strut-sprite".to_string(),
+                        format!(
+                            "Generated through validated Strut Sprite fallback after provider was unavailable: {error}"
+                        ),
+                    )
+                }
+                Err(error) => return Err(error),
+            };
             Ok(GeneratedCharacter {
-                source: adapter_id,
-                message: reference_message("Generated through local provider", &references),
+                source,
+                message,
                 plan_summary: Some(document.summary),
                 operation_count: Some(document.operation_count),
                 document: document.document,
             })
         }
         _ => Err("Unknown generation provider mode".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn chat_with_provider(
+    prompt: String,
+    provider: Option<GenerationProvider>,
+    context: Option<GenerationContext>,
+) -> Result<ChatAnswer, String> {
+    let provider = provider.ok_or_else(|| "Select a provider before chatting".to_string())?;
+    let chat_prompt = chat_system_prompt(&prompt, context.as_ref())?;
+    match provider.mode.as_str() {
+        "byok" => {
+            let config = provider
+                .byok
+                .ok_or_else(|| "BYOK provider config missing".to_string())?;
+            let message = byok_generate_text(&chat_prompt, &config, &[]).await?;
+            Ok(ChatAnswer {
+                source: config.provider_id,
+                message: message.trim().to_string(),
+            })
+        }
+        "local" => {
+            let adapter_id = provider
+                .local_adapter_id
+                .ok_or_else(|| "Select a local CLI or Ollama adapter".to_string())?;
+            let message = chat_with_local_adapter(&adapter_id, &chat_prompt).await?;
+            Ok(ChatAnswer {
+                source: adapter_id,
+                message,
+            })
+        }
+        _ => Err("Unknown provider mode".to_string()),
     }
 }
 
@@ -756,6 +837,11 @@ fn local_agent_adapters() -> Vec<AgentAdapterStatus> {
             let detail = match (&resolved, definition.generation) {
                 (Some(path), LocalGenerationKind::AcpOnly) => format!(
                     "{} detected at {}; ACP generation is not implemented yet",
+                    definition.commands[0],
+                    path.display()
+                ),
+                (Some(path), LocalGenerationKind::SpritePython) => format!(
+                    "built-in sprite-python engine available through {} at {}",
                     definition.commands[0],
                     path.display()
                 ),
@@ -904,6 +990,14 @@ fn save_byok_provider(config: ByokProviderConfig) -> Result<ProviderOperationRes
 
 fn local_adapter_definitions() -> Vec<LocalAdapterDefinition> {
     vec![
+        LocalAdapterDefinition {
+            id: "strut-sprite",
+            name: "Strut Sprite",
+            kind: "local-engine",
+            commands: &["python"],
+            version_args: &["--version"],
+            generation: LocalGenerationKind::SpritePython,
+        },
         LocalAdapterDefinition {
             id: "ollama",
             name: "Ollama",
@@ -1981,15 +2075,17 @@ fn generation_plan_repair_prompt(
     invalid_response: &str,
     parse_error: &str,
 ) -> String {
+    let strategy = generation_strategy_instruction(classify_generation_strategy(original_prompt));
     format!(
-        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nThe previous response could not be converted by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}. Keep the requested subject, use subject-specific semantic parts, include named states/timelines, and leave operations empty if unsure so Strut can derive validated operations. Do not explain, do not use markdown, do not return mascot anatomy unless the subject is a mascot.",
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nThe previous response could not be converted by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}. Keep the requested subject, use subject-specific semantic parts, include named states/timelines, and leave operations empty if unsure so Strut can derive validated operations. Do not explain, do not use markdown, do not return mascot anatomy unless the subject is a mascot.",
         response_preview(invalid_response)
     )
 }
 
 fn compact_plan_prompt(original_prompt: &str, previous_error: &str) -> String {
+    let strategy = generation_strategy_instruction(classify_generation_strategy(original_prompt));
     format!(
-        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nConvert this motion design request into a compact Strut generation plan.\nOriginal request: {original_prompt}\nPrevious attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}.\nRules: include 6 to 10 visually distinct parts that match the requested subject. Use absolute artboard coordinates. Include states, timelines, tracks, and editable constraints. The motion must be calm and low-energy: subtle bob, tiny tilt, focused scan, restrained settle, soft reveal, progress sweep, or similar. Do not explain."
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nConvert this motion design request into a compact Strut generation plan.\nOriginal request: {original_prompt}\nPrevious attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}.\nRules: include 6 to 14 visually distinct parts that match the requested subject. Use absolute artboard coordinates. Include states, timelines, tracks, and editable constraints. The motion must be calm and low-energy: subtle bob, tiny tilt, focused scan, restrained settle, soft reveal, progress sweep, or similar. Do not explain."
     )
 }
 
@@ -2035,6 +2131,17 @@ fn run_local_cli_command(
     timeout: Duration,
 ) -> Result<CommandRun, String> {
     let args = local_generation_args(definition, reference_dir);
+    let env = local_generation_env(definition);
+    run_command_with_stdin(command, &args, &env, None, input, timeout)
+}
+
+fn run_local_cli_chat_command(
+    definition: &LocalAdapterDefinition,
+    command: &Path,
+    input: &str,
+    timeout: Duration,
+) -> Result<CommandRun, String> {
+    let args = local_chat_args(definition);
     let env = local_generation_env(definition);
     run_command_with_stdin(command, &args, &env, None, input, timeout)
 }
@@ -2129,6 +2236,63 @@ fn local_generation_args(
             "stream-json".to_string(),
             "--prompt".to_string(),
             "Generate exactly the requested JSON from stdin.".to_string(),
+        ],
+        "claude-code" => vec![
+            "-p".to_string(),
+            "--input-format".to_string(),
+            "text".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--verbose".to_string(),
+            "--permission-mode".to_string(),
+            "bypassPermissions".to_string(),
+        ],
+        "opencode" => vec![
+            "run".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "--dangerously-skip-permissions".to_string(),
+        ],
+        "cursor-agent" => vec![
+            "--print".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--stream-partial-output".to_string(),
+            "--force".to_string(),
+            "--trust".to_string(),
+        ],
+        "qwen" => vec!["--yolo".to_string()],
+        "qoder" => vec![
+            "-p".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--yolo".to_string(),
+        ],
+        "copilot-cli" => vec![
+            "--allow-all-tools".to_string(),
+            "--output-format".to_string(),
+            "json".to_string(),
+        ],
+        _ => definition
+            .version_args
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+    }
+}
+
+fn local_chat_args(definition: &LocalAdapterDefinition) -> Vec<String> {
+    match definition.id {
+        "codex" => vec![
+            "exec".to_string(),
+            "--json".to_string(),
+            "--skip-git-repo-check".to_string(),
+        ],
+        "gemini-cli" => vec![
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--prompt".to_string(),
+            "Answer the Strut user's message from stdin in concise markdown. Do not emit JSON unless asked.".to_string(),
         ],
         "claude-code" => vec![
             "-p".to_string(),
@@ -2329,11 +2493,14 @@ fn contextual_generation_prompt(
     prompt: &str,
     context: Option<&GenerationContext>,
 ) -> Result<String, String> {
+    let strategy = generation_strategy_instruction(classify_generation_strategy(prompt));
     let Some(context) = context else {
-        return Ok(prompt.to_string());
+        return Ok(format!("{strategy}\n\nUser request:\n{}", prompt.trim()));
     };
 
     let mut text = String::new();
+    text.push_str(strategy);
+    text.push_str("\n\n");
     text.push_str("Strut workspace context:\n");
     if let Some(project_name) = context
         .project_name
@@ -2407,8 +2574,9 @@ fn local_character_prompt(
     references: &[ReferenceImageInput],
     reference_files: Option<&WrittenReferenceFiles>,
 ) -> String {
+    let strategy = generation_strategy_instruction(classify_generation_strategy(prompt));
     let mut text = format!(
-        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\nUser request:\n{}",
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nUser request:\n{}",
         prompt_with_reference_context(prompt, references)
     );
     if let Some(files) = reference_files {
@@ -2487,6 +2655,108 @@ fn reference_message(base: &str, references: &[ReferenceImageInput]) -> String {
     }
 }
 
+fn classify_request_intent(prompt: &str) -> RequestIntent {
+    let value = prompt.trim().to_lowercase();
+    if value.is_empty() {
+        return RequestIntent::Conversation;
+    }
+    let generation_words = [
+        "generate", "create", "make", "build", "animate", "motion", "loader", "logo", "mascot",
+        "icon", "badge", "dice", "svg", "scene", "export", "draw", "design",
+    ];
+    if generation_words.iter().any(|word| value.contains(word)) {
+        return RequestIntent::Generate;
+    }
+    let conversation_words = [
+        "who are you",
+        "what are you",
+        "explain",
+        "brainstorm",
+        "ideate",
+        "should i",
+        "how would",
+        "what do you think",
+        "help me think",
+        "plan",
+    ];
+    if value.ends_with('?') || conversation_words.iter().any(|word| value.contains(word)) {
+        return RequestIntent::Conversation;
+    }
+    RequestIntent::Conversation
+}
+
+fn classify_generation_strategy(prompt: &str) -> GenerationStrategy {
+    let value = prompt.to_lowercase();
+    let heavy_words = [
+        "mascot",
+        "character",
+        "companion",
+        "cinematic",
+        "immersive",
+        "storyboard",
+        "scene",
+        "gesture",
+        "expressive",
+        "duolingo",
+        "codex pet",
+        "sprite",
+        "complex",
+    ];
+    if heavy_words.iter().any(|word| value.contains(word)) {
+        return GenerationStrategy::SpritePython;
+    }
+    let simple_words = [
+        "svg",
+        "logo",
+        "icon",
+        "badge",
+        "loader",
+        "progress",
+        "button",
+        "microinteraction",
+        "ui",
+        "mark",
+    ];
+    if simple_words.iter().any(|word| value.contains(word)) {
+        return GenerationStrategy::SimpleSvg;
+    }
+    GenerationStrategy::ProviderPlan
+}
+
+fn generation_strategy_instruction(strategy: GenerationStrategy) -> &'static str {
+    match strategy {
+        GenerationStrategy::SimpleSvg => {
+            "Engine strategy: SIMPLE_SVG_VECTOR. Build this as editable SVG/vector-style Strut parts: paths, rects, ellipses, text, masks, strokes, and restrained keyframes. Keep it lightweight and do not use mascot anatomy unless explicitly requested."
+        }
+        GenerationStrategy::SpritePython => {
+            "Engine strategy: SPRITE_PYTHON_HEAVY. Build this as a sprite-python style semantic rig: more layered editable sprites, named motion roles, readable timelines, and low-energy lifelike motion. Do not use a fixed template; choose subject-specific parts."
+        }
+        GenerationStrategy::ProviderPlan => {
+            "Engine strategy: PROVIDER_DYNAMIC_PLAN. Choose the simplest dynamic representation that fits the prompt, with subject-specific semantic parts and validated operations. Avoid fixed templates."
+        }
+    }
+}
+
+fn chat_system_prompt(prompt: &str, context: Option<&GenerationContext>) -> Result<String, String> {
+    let mut text = String::from(
+        "You are Strut's AI design partner inside an animation editor. Answer normal questions directly in concise markdown. If the user is brainstorming, help them think through animation/edit directions. Do not emit JSON unless explicitly asked. Do not claim a scene was generated.",
+    );
+    if let Some(context) = context {
+        if let Some(project_name) = &context.project_name {
+            text.push_str(&format!("\nProject: {project_name}"));
+        }
+        if let Some(chat_title) = &context.active_chat_title {
+            text.push_str(&format!("\nChat: {chat_title}"));
+        }
+        if let Some(summary) = &context.current_document_summary {
+            text.push_str(&format!("\nCurrent scene: {summary}"));
+        }
+    }
+    text.push_str("\n\nUser message:\n");
+    text.push_str(prompt.trim());
+    Ok(text)
+}
+
 async fn generate_document_with_byok(
     prompt: &str,
     config: &ByokProviderConfig,
@@ -2543,6 +2813,13 @@ async fn generate_document_with_local_adapter(
 
     if definition.generation == LocalGenerationKind::OllamaHttp {
         return generate_document_with_ollama(prompt, references).await;
+    }
+
+    if definition.generation == LocalGenerationKind::SpritePython {
+        if !references.is_empty() {
+            return Err("Strut Sprite cannot inspect reference images yet; use Gemini CLI, Ollama vision-capable routing, or a BYOK provider for image references.".to_string());
+        }
+        return generate_document_with_sprite_python(prompt);
     }
 
     if definition.generation == LocalGenerationKind::AcpOnly {
@@ -2656,6 +2933,108 @@ async fn generate_document_with_local_adapter(
             }
         }
     }
+}
+
+fn generate_document_with_sprite_python(prompt: &str) -> Result<PlannedDocument, String> {
+    let package_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../packages/strut-python")
+        .canonicalize()
+        .map_err(|error| format!("sprite-python package was not found: {error}"))?;
+    let example = sprite_python_example_for_prompt(prompt);
+    let output = Command::new("python")
+        .arg("-m")
+        .arg("strut_python.cli")
+        .arg(&example)
+        .arg("--instruction")
+        .arg(prompt)
+        .arg("--json")
+        .current_dir(&package_dir)
+        .env("PYTHONPATH", package_dir.join("src"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("sprite-python failed to start: {error}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "sprite-python exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    document_from_generation_plan_text(&stdout).map_err(|error| {
+        format!("sprite-python emitted a plan that failed Rust validation: {error}")
+    })
+}
+
+fn sprite_python_example_for_prompt(prompt: &str) -> String {
+    let lower = prompt.to_lowercase();
+    if lower.contains("logo") {
+        "logo"
+    } else if lower.contains("loader") || lower.contains("progress") || lower.contains("loading") {
+        "loader"
+    } else if lower.contains("mascot")
+        || lower.contains("character")
+        || lower.contains("duolingo")
+        || lower.contains("codex pet")
+    {
+        "mascot"
+    } else if lower.contains("icon") || lower.contains("badge") {
+        "icon"
+    } else if lower.contains("button") || lower.contains("microinteraction") || lower.contains("ui")
+    {
+        "ui"
+    } else if lower.contains("dice") || lower.contains("die ") || lower.contains("rolling") {
+        "dice"
+    } else {
+        "custom"
+    }
+    .to_string()
+}
+
+async fn chat_with_local_adapter(adapter_id: &str, prompt: &str) -> Result<String, String> {
+    let definition = local_adapter_definitions()
+        .into_iter()
+        .find(|definition| definition.id == adapter_id)
+        .ok_or_else(|| format!("{adapter_id} is not registered"))?;
+
+    if definition.generation == LocalGenerationKind::OllamaHttp {
+        return chat_with_ollama(prompt).await;
+    }
+
+    if definition.generation == LocalGenerationKind::SpritePython {
+        return Ok("I can help ideate motion and generate deterministic sprite-python plans locally. Ask for a specific asset, mascot, logo, UI state, icon, or animation when you want me to create a validated Strut scene.".to_string());
+    }
+
+    if definition.generation == LocalGenerationKind::AcpOnly {
+        return Err(format!(
+            "{} uses an ACP-style runtime. Strut detects it, but chat is disabled until ACP transport support lands.",
+            definition.name
+        ));
+    }
+
+    let command = resolve_adapter_command(&definition).ok_or_else(|| {
+        format!(
+            "{} was not found on PATH or common tool directories",
+            definition.commands.join(" / ")
+        )
+    })?;
+    let output =
+        run_local_cli_chat_command(&definition, &command, prompt, Duration::from_secs(120))?;
+    if !output.ok {
+        return Err(command_output_preview(&output.stdout, &output.stderr));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let message = cli_assistant_text(&stdout);
+    let message = if message.trim().is_empty() {
+        response_preview(&format!("{stdout}\n{stderr}"))
+    } else {
+        message
+    };
+    Ok(message.trim().to_string())
 }
 
 async fn generate_document_with_ollama(
@@ -3222,6 +3601,31 @@ fn normalize_none_string(value: Option<&mut Value>) {
             }
         }
     }
+}
+
+async fn chat_with_ollama(prompt: &str) -> Result<String, String> {
+    let client = http_client()?;
+    let response = client
+        .post("http://127.0.0.1:11434/api/generate")
+        .json(&json!({
+            "model": "llama3.2",
+            "prompt": prompt,
+            "stream": false
+        }))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(http_error_preview(status.as_u16(), &body.to_string()));
+    }
+    body.get("response")
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Ollama response did not include a chat response".to_string())
 }
 
 fn parse_provider_response_document(text: &str) -> Result<PlannedDocument, String> {
@@ -4575,6 +4979,7 @@ pub fn run() {
             validate_generation_plan_batch,
             open_project_folder,
             generate_character,
+            chat_with_provider,
             local_agent_adapters,
             test_local_adapter,
             test_byok_provider,
@@ -4683,7 +5088,19 @@ mod tests {
                 vec!["Track", "ActiveSegment", "ProgressSweep"],
                 vec!["Body", "Head", "Eyes", "Arms", "Face", "Smile"],
             ),
-            ("mascot", "mascot", vec!["Body", "Head", "Eyes"], vec![]),
+            (
+                "mascot",
+                "mascot",
+                vec![
+                    "Body",
+                    "Head",
+                    "LeftEye",
+                    "RightEye",
+                    "LeftWing",
+                    "RightWing",
+                ],
+                vec![],
+            ),
             (
                 "ui",
                 "ui",
@@ -4716,6 +5133,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sprite_python_custom_generation_validates_through_rust() {
+        let planned = generate_document_with_sprite_python("animate a twitter bird taking flight")
+            .expect("custom sprite-python plan validates");
+        let names = semantic_layer_names(&planned.document);
+
+        assert_eq!(planned.summary.subject_classification, "bird_icon");
+        assert_eq!(planned.summary.subject_label, "Twitter Bird Taking Flight");
+        assert!(names
+            .iter()
+            .any(|name| name == "Twitter Bird Taking Flight Wing"));
+        assert!(names.iter().all(
+            |name| !["Body", "Head", "Eyes", "Arms", "Face", "Smile"].contains(&name.as_str())
+        ));
     }
 
     fn temp_project_root(name: &str) -> PathBuf {
@@ -5244,6 +5677,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(ids.contains(&"codex"));
+        assert!(ids.contains(&"strut-sprite"));
         assert!(ids.contains(&"gemini-cli"));
         assert!(ids.contains(&"claude-code"));
         assert!(ids.contains(&"copilot-cli"));
@@ -5762,6 +6196,36 @@ mod tests {
     fn provider_config_path_is_local() {
         let path = provider_config_path().expect("config path");
         assert!(path.ends_with("byok.json"));
+    }
+
+    #[test]
+    fn plain_questions_route_to_chat_not_generation() {
+        assert_eq!(
+            classify_request_intent("who are you?"),
+            RequestIntent::Conversation
+        );
+        assert_eq!(
+            classify_request_intent("brainstorm three directions before editing"),
+            RequestIntent::Conversation
+        );
+        assert_eq!(
+            classify_request_intent("generate a calm loader animation"),
+            RequestIntent::Generate
+        );
+    }
+
+    #[test]
+    fn dynamic_engine_strategy_separates_svg_and_sprite_work() {
+        assert_eq!(
+            classify_generation_strategy("make a simple svg logo reveal"),
+            GenerationStrategy::SimpleSvg
+        );
+        assert_eq!(
+            classify_generation_strategy(
+                "create a cinematic mascot with expressive idle animation"
+            ),
+            GenerationStrategy::SpritePython
+        );
     }
 
     #[test]

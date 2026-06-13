@@ -32,6 +32,10 @@ import {
   EyeOff,
   Check,
   History,
+  MoreHorizontal,
+  Pin,
+  Pencil,
+  RefreshCw,
   RotateCcw,
   RotateCw,
 } from "lucide-react";
@@ -189,6 +193,11 @@ type GeneratedCharacter = {
   operationCount?: number | null;
 };
 
+type ChatAnswer = {
+  source: string;
+  message: string;
+};
+
 type ReferenceAttachment = {
   id: string;
   name: string;
@@ -210,6 +219,7 @@ type ChatThread = {
   title: string;
   projectId: string;
   updated: string;
+  pinned?: boolean;
   messages: ChatMessage[];
   references: ReferenceAttachment[];
   document: StrutDocument | null;
@@ -297,8 +307,14 @@ type ProjectRecord = {
   id: string;
   name: string;
   path: string;
+  pinned?: boolean;
   chats: ChatThread[];
 };
+
+type SidebarMenuState =
+  | { kind: "project"; projectId: string }
+  | { kind: "chat"; projectId: string; chatId: string }
+  | null;
 
 type ViewModeOption = {
   id: ViewMode;
@@ -335,7 +351,7 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
     id: `chat-${Date.now()}-${Math.round(Math.random() * 10000)}`,
     title,
     projectId,
-    updated: "now",
+    updated: nowStamp(),
     messages,
     references: [],
     document: null,
@@ -353,6 +369,7 @@ function createChat(projectId: string, title: string, messages: ChatMessage[] = 
 const initialProjects: ProjectRecord[] = [];
 
 const browserLocalAdapters: LocalAdapter[] = [
+  { id: "strut-sprite", name: "Strut Sprite", kind: "local-engine", command: "python", installed: false, detail: "desktop check required" },
   { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
   { id: "codex", name: "Codex", kind: "local-agent", command: "codex", installed: false, detail: "desktop check required" },
   { id: "gemini-cli", name: "Gemini CLI", kind: "local-agent", command: "gemini", installed: false, detail: "desktop check required" },
@@ -601,6 +618,7 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
                 title: typeof chatCandidate.title === "string" && chatCandidate.title ? chatCandidate.title : "Untitled chat",
                 projectId: id,
                 updated: typeof chatCandidate.updated === "string" ? chatCandidate.updated : "now",
+                pinned: typeof chatCandidate.pinned === "boolean" ? chatCandidate.pinned : false,
                 messages: normalizeMessages(chatCandidate.messages),
                 references: normalizeAttachments(chatCandidate.references),
                 document: isStrutDocument(chatCandidate.document) ? chatCandidate.document : null,
@@ -620,6 +638,7 @@ function normalizeProjects(value: unknown): ProjectRecord[] {
         id,
         name: typeof candidate.name === "string" && candidate.name ? candidate.name : "Untitled project",
         path: typeof candidate.path === "string" ? candidate.path : "D:\\Strut Projects",
+        pinned: typeof candidate.pinned === "boolean" ? candidate.pinned : false,
         chats,
       };
     });
@@ -834,6 +853,93 @@ function inferAffectedProperties(intent: string, operationType: OperationPreview
 
 function nowStamp() {
   return new Date().toISOString();
+}
+
+function relativeTimeLabel(value: string, nowMs = Date.now()) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return value === "now" ? "now" : value;
+  }
+  const seconds = Math.max(0, Math.floor((nowMs - parsed) / 1000));
+  if (seconds < 60) {
+    return "now";
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days}d`;
+  }
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) {
+    return `${weeks}w`;
+  }
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    return `${Math.max(1, months)}mo`;
+  }
+  return `${Math.max(1, Math.floor(days / 365))}y`;
+}
+
+function promptIntent(value: string, hasReferences = false): "chat" | "generate" {
+  const prompt = value.trim().toLowerCase();
+  if (hasReferences && prompt.length === 0) {
+    return "generate";
+  }
+  const generationWords = [
+    "generate",
+    "create",
+    "make",
+    "build",
+    "animate",
+    "motion",
+    "loader",
+    "logo",
+    "mascot",
+    "icon",
+    "badge",
+    "dice",
+    "svg",
+    "scene",
+    "draw",
+    "design",
+  ];
+  if (generationWords.some((word) => prompt.includes(word))) {
+    return "generate";
+  }
+  const chatWords = [
+    "who are you",
+    "what are you",
+    "explain",
+    "brainstorm",
+    "ideate",
+    "should i",
+    "how would",
+    "what do you think",
+    "help me think",
+    "plan",
+  ];
+  if (prompt.endsWith("?") || chatWords.some((word) => prompt.includes(word))) {
+    return "chat";
+  }
+  return "chat";
+}
+
+function localChatFallback(prompt: string) {
+  const value = prompt.trim().toLowerCase();
+  if (value.includes("who are you") || value.includes("what are you")) {
+    return "I'm Strut's animation design assistant. I can chat through ideas, help plan edits, and when you ask for motion, turn the direction into validated editable Strut scenes.";
+  }
+  if (value.includes("brainstorm") || value.includes("ideate")) {
+    return "Let's brainstorm before generating. A good Strut animation direction usually needs three choices: the subject, the emotional pace, and the editable parts you want to control. Tell me the object or UI moment, and I can suggest a few motion routes.";
+  }
+  return "I can talk through the idea first. Ask me for direction, critique, or options; when you're ready to create motion, use words like generate, animate, create, or make.";
 }
 
 function documentRevisionId(document: StrutDocument | null) {
@@ -1524,7 +1630,7 @@ function cssIdent(value: string) {
 function App() {
   const [initialWorkspace] = useState<WorkspaceState>(() => loadWorkspaceState());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [status, setStatus] = useState<StudioStatus | null>(null);
+  const [, setStatus] = useState<StudioStatus | null>(null);
   const [desktopRuntime, setDesktopRuntime] = useState(true);
   const [projects, setProjects] = useState<ProjectRecord[]>(initialWorkspace.projects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(initialWorkspace.activeProjectId);
@@ -1542,13 +1648,18 @@ function App() {
   const [pendingReferences, setPendingReferences] = useState<ReferenceAttachment[]>([]);
   const [providerMode, setProviderMode] = useState<ProviderMode>("local");
   const [localAdapters, setLocalAdapters] = useState<LocalAdapter[]>(browserLocalAdapters);
-  const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("ollama");
+  const [selectedLocalAdapterId, setSelectedLocalAdapterId] = useState("strut-sprite");
   const [selectedByokProviderId, setSelectedByokProviderId] = useState("openai");
   const [apiKey, setApiKey] = useState("");
   const [providerEndpoint, setProviderEndpoint] = useState(byokProviders[0].endpoint);
   const [providerModel, setProviderModel] = useState(byokProviders[0].model);
   const [activity, setActivity] = useState("Select a real local CLI, Ollama, or BYOK provider");
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.themeMode);
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => new Set());
+  const [clockTick, setClockTick] = useState(Date.now());
+  const [sidebarMenu, setSidebarMenu] = useState<SidebarMenuState>(null);
+  const [topbarMenu, setTopbarMenu] = useState<SidebarMenuState>(null);
+  const [composerToolsOpen, setComposerToolsOpen] = useState(true);
 
   useEffect(() => {
     invoke<StudioStatus>("studio_status")
@@ -1567,6 +1678,11 @@ function App() {
         setProjectLocation("D:\\Strut Projects");
       });
     invoke<LocalAdapter[]>("local_agent_adapters").then(setLocalAdapters).catch(() => setDesktopRuntime(false));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -1624,6 +1740,68 @@ function App() {
       ),
     }))
     .filter((project) => project.chats.length > 0 || project.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const pinnedProjects = projects.filter((project) => project.pinned);
+  const pinnedChats = projects.flatMap((project) =>
+    project.chats.filter((chat) => chat.pinned).map((chat) => ({ project, chat })),
+  );
+
+  function toggleProjectCollapsed(projectId: string) {
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }
+
+  function toggleProjectPinned(projectId: string) {
+    setProjects((current) =>
+      current.map((project) => (project.id === projectId ? { ...project, pinned: !project.pinned } : project)),
+    );
+    setSidebarMenu(null);
+    setTopbarMenu(null);
+  }
+
+  function toggleChatPinned(projectId: string, chatId: string) {
+    updateChat(projectId, chatId, (chat) => ({ ...chat, pinned: !chat.pinned, updated: nowStamp() }));
+    setSidebarMenu(null);
+    setTopbarMenu(null);
+  }
+
+  function renameProject(projectId: string) {
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      return;
+    }
+    const nextName = window.prompt("Rename project", project.name)?.trim();
+    if (!nextName || nextName === project.name) {
+      setSidebarMenu(null);
+      setTopbarMenu(null);
+      return;
+    }
+    setProjects((current) => current.map((item) => (item.id === projectId ? { ...item, name: nextName } : item)));
+    setSidebarMenu(null);
+    setTopbarMenu(null);
+  }
+
+  function renameChat(projectId: string, chatId: string) {
+    const chat = projects.find((project) => project.id === projectId)?.chats.find((item) => item.id === chatId);
+    if (!chat) {
+      return;
+    }
+    const nextTitle = window.prompt("Rename chat", chat.title)?.trim();
+    if (!nextTitle || nextTitle === chat.title) {
+      setSidebarMenu(null);
+      setTopbarMenu(null);
+      return;
+    }
+    updateChat(projectId, chatId, (item) => ({ ...item, title: nextTitle, updated: nowStamp() }));
+    setSidebarMenu(null);
+    setTopbarMenu(null);
+  }
 
   useEffect(() => {
     if (selectedNodeId && !layers.some((layer) => layer.id === selectedNodeId)) {
@@ -1632,7 +1810,7 @@ function App() {
   }, [layers, selectedNodeId]);
 
   function setSelectedNode(nodeId: string | null) {
-    updateCurrentChat((chat) => ({ ...chat, selectedNodeId: nodeId, updated: "now" }));
+    updateCurrentChat((chat) => ({ ...chat, selectedNodeId: nodeId, updated: nowStamp() }));
   }
 
   function toggleLayerVisibility(nodeId: string) {
@@ -1640,7 +1818,7 @@ function App() {
       const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
       return {
         ...chat,
-        updated: "now",
+        updated: nowStamp(),
         layerUi: {
           ...(chat.layerUi ?? {}),
           [nodeId]: { ...currentState, visible: !currentState.visible },
@@ -1655,7 +1833,7 @@ function App() {
       const currentState = layerUiFor(chat.layerUi ?? {}, nodeId);
       return {
         ...chat,
-        updated: "now",
+        updated: nowStamp(),
         layerUi: {
           ...(chat.layerUi ?? {}),
           [nodeId]: { ...currentState, locked: !currentState.locked },
@@ -1707,7 +1885,7 @@ function App() {
       pendingOperation: preview,
       operationBatches: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)],
       operationHistory: [preview, ...(chat.operationBatches ?? chat.operationHistory ?? []).filter((batch) => batch.id !== preview.id)].slice(0, 12),
-      updated: "now",
+      updated: nowStamp(),
     }));
     setActivity(preview.validationResult.ok ? `Validated operation batch staged for ${selectedLayer.name}` : preview.validationResult.message);
   }
@@ -1725,7 +1903,7 @@ function App() {
         pendingOperation: rejected,
         operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
         operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
-        updated: "now",
+        updated: nowStamp(),
       }));
       setActivity(validation.message);
       return;
@@ -1754,7 +1932,7 @@ function App() {
       operationHistory: [applied, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== applied.id)].slice(0, 12),
       undoStack: [applied.id, ...(chat.undoStack ?? [])],
       redoStack: [],
-      updated: "now",
+      updated: nowStamp(),
       messages: [
         ...chat.messages,
         { id: Date.now() + Math.random(), role: "assistant", text: `Applied validated batch ${applied.id} to ${applied.targetName}.`, operationBatchId: applied.id },
@@ -1780,7 +1958,7 @@ function App() {
       pendingOperation: null,
       operationBatches: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)],
       operationHistory: [rejected, ...(chat.operationBatches ?? []).filter((batch) => batch.id !== rejected.id)].slice(0, 12),
-      updated: "now",
+      updated: nowStamp(),
       messages: [
         ...chat.messages,
         { id: Date.now() + Math.random(), role: "assistant", text: `Rejected batch ${rejected.id}; no document mutation was applied.`, operationBatchId: rejected.id },
@@ -1810,7 +1988,7 @@ function App() {
       operationHistory: [undone, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)].slice(0, 12),
       undoStack: (chat.undoStack ?? []).filter((id) => id !== batch.id),
       redoStack: [batch.id, ...(chat.redoStack ?? [])],
-      updated: "now",
+      updated: nowStamp(),
     }));
     setActivity(`Undid batch ${batch.id}`);
   }
@@ -1841,7 +2019,7 @@ function App() {
       operationHistory: [updated, ...(chat.operationBatches ?? []).filter((item) => item.id !== batch.id)].slice(0, 12),
       undoStack: [batch.id, ...(chat.undoStack ?? [])],
       redoStack: (chat.redoStack ?? []).filter((id) => id !== batch.id),
-      updated: "now",
+      updated: nowStamp(),
     }));
     setActivity(`Redid batch ${batch.id}`);
   }
@@ -1884,7 +2062,7 @@ function App() {
   function appendMessage(role: ChatMessage["role"], text: string, operationBatchId?: string) {
     updateCurrentChat((chat) => ({
       ...chat,
-      updated: "now",
+      updated: nowStamp(),
       messages: [...chat.messages, { id: Date.now() + Math.random(), role, text, operationBatchId }],
     }));
   }
@@ -1892,7 +2070,7 @@ function App() {
   function appendUserMessage(text: string, attachments: ReferenceAttachment[]) {
     updateCurrentChat((chat) => ({
       ...chat,
-      updated: "now",
+      updated: nowStamp(),
       references: [...chat.references, ...attachments],
       messages: [...chat.messages, { id: Date.now() + Math.random(), role: "user", text, attachments }],
     }));
@@ -1937,6 +2115,8 @@ function App() {
     if (activeProjectId === projectId && activeChatId === chatId) {
       setActiveChatId(null);
     }
+    setSidebarMenu(null);
+    setTopbarMenu(null);
   }
 
   function removeProject(projectId: string) {
@@ -1945,6 +2125,8 @@ function App() {
       setActiveProjectId(null);
       setActiveChatId(null);
     }
+    setSidebarMenu(null);
+    setTopbarMenu(null);
   }
 
   function setCurrentActiveState(state: string) {
@@ -1955,7 +2137,7 @@ function App() {
     if (!ownerChatId) {
       return;
     }
-    updateChat(activeProjectId, ownerChatId, (chat) => ({ ...chat, activeState: state, updated: "now" }));
+    updateChat(activeProjectId, ownerChatId, (chat) => ({ ...chat, activeState: state, updated: nowStamp() }));
   }
 
   function generationContext(): GenerationContext {
@@ -2092,20 +2274,25 @@ function App() {
     }
   }
 
-  async function openActiveProjectFolder() {
-    if (!activeProject) {
+  async function openProjectFolder(project = activeProject) {
+    if (!project) {
       setActivity("Select a project first");
       return;
     }
     if (!desktopRuntime) {
       setActivity("Desktop app required to open project folder");
+      setSidebarMenu(null);
+      setTopbarMenu(null);
       return;
     }
     try {
-      await invoke("open_project_folder", { path: activeProject.path });
-      setActivity(`Opened ${activeProject.name}`);
+      await invoke("open_project_folder", { path: project.path });
+      setActivity(`Opened ${project.name}`);
     } catch (error) {
       setActivity(String(error));
+    } finally {
+      setSidebarMenu(null);
+      setTopbarMenu(null);
     }
   }
 
@@ -2194,7 +2381,7 @@ function App() {
         id: activeId,
         title: activeChat?.title ?? "Loaded scene",
         projectId: activeProject.id,
-        updated: "now",
+        updated: nowStamp(),
         document: snapshot.document,
         activeState: snapshot.selection?.activeState ?? snapshot.document.state_machines[0]?.states[0] ?? "idle",
         selectedNodeId: snapshot.selection?.selectedNodeId ?? null,
@@ -2237,12 +2424,42 @@ function App() {
       return;
     }
     const references = pendingReferences;
+
+    if (promptIntent(trimmed, references.length > 0) === "chat") {
+      appendUserMessage(trimmed, []);
+      updateChat(activeProjectId, activeChatId, (chat) => ({
+        ...chat,
+        title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || "Chat") : chat.title,
+        updated: nowStamp(),
+      }));
+      setPrompt("");
+      setActivity("Thinking");
+      if (!desktopRuntime) {
+        appendMessage("assistant", localChatFallback(trimmed));
+        setActivity("Answered in chat mode");
+        return;
+      }
+      try {
+        const answer = await invoke<ChatAnswer>("chat_with_provider", {
+          prompt: trimmed,
+          provider: providerPayload(),
+          context: generationContext(),
+        });
+        appendMessage("assistant", answer.message || localChatFallback(trimmed));
+        setActivity(`Answered through ${answer.source}`);
+      } catch (error) {
+        appendMessage("assistant", `${localChatFallback(trimmed)}\n\n_Provider chat was unavailable: ${String(error)}_`);
+        setActivity("Answered locally; provider chat unavailable");
+      }
+      return;
+    }
+
     const generationPrompt = trimmed || "Use the attached reference image to create an editable Strut motion document.";
     appendUserMessage(trimmed || "Use the attached reference image.", references);
     updateChat(activeProjectId, activeChatId, (chat) => ({
       ...chat,
       title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference motion") : chat.title,
-      updated: "now",
+      updated: nowStamp(),
     }));
     setPendingReferences([]);
     setActivity("Generating");
@@ -2257,7 +2474,7 @@ function App() {
       updateChat(activeProjectId, activeChatId, (chat) => ({
         ...chat,
         title: chat.title === "New motion chat" || chat.title === "New character chat" || chat.title === "Project brief" ? promptTitle(trimmed || references[0]?.name || "Reference motion") : chat.title,
-        updated: "now",
+        updated: nowStamp(),
         document: result.document,
         activeState: result.document.state_machines[0]?.states.includes("wave") ? "wave" : "idle",
         operationBatches: [generationBatch, ...(chat.operationBatches ?? [])],
@@ -2326,63 +2543,160 @@ function App() {
         ) : null}
 
         <div className="project-list">
-          <span className="section-label">Projects</span>
-          {filteredProjects.map((project) => (
-            <div className="project-group" key={project.id}>
-              <div className="project-button">
-                <button className="project-open" type="button" onClick={() => openProject(project.id)}>
-                  <Folder size={15} />
+          {pinnedProjects.length || pinnedChats.length ? (
+            <div className="pinned-list">
+              <span className="section-label">Pinned</span>
+              {pinnedProjects.map((project) => (
+                <button
+                  aria-label={`Pinned project ${project.name}`}
+                  className="pinned-row"
+                  key={`project-${project.id}`}
+                  type="button"
+                  onClick={() => openProject(project.id)}
+                >
+                  <Folder size={14} />
                   <span>{project.name}</span>
                 </button>
+              ))}
+              {pinnedChats.map(({ project, chat }) => (
                 <button
-                  aria-label={`New chat in ${project.name}`}
-                  className="inline-add"
+                  aria-label={`Pinned chat ${chat.title}`}
+                  className="pinned-row"
+                  key={`chat-${chat.id}`}
                   type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    newChat(project.id);
-                  }}
+                  onClick={() => openChat(project.id, chat.id)}
                 >
-                  <Plus size={13} />
+                  <MessageSquarePlus size={14} />
+                  <span>{chat.title}</span>
                 </button>
-                <button
-                  aria-label={`Remove project ${project.name}`}
-                  className="inline-delete"
-                  type="button"
-                  onClick={() => removeProject(project.id)}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              {project.chats.map((chat) => (
-                <div className={chat.id === activeChatId ? "chat-row active" : "chat-row"} key={chat.id}>
-                  <button
-                    className="chat-link"
-                    type="button"
-                    onClick={() => openChat(project.id, chat.id)}
-                  >
-                    <span>{chat.title}</span>
-                    <em>{chat.updated}</em>
-                  </button>
-                  <button
-                    aria-label={`Delete chat ${chat.title}`}
-                    className="chat-delete"
-                    type="button"
-                    onClick={() => deleteChat(project.id, chat.id)}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
               ))}
             </div>
-          ))}
+          ) : null}
+          <span className="section-label">Projects</span>
+          {filteredProjects.map((project) => {
+            const isCollapsed = collapsedProjectIds.has(project.id) && !searchQuery;
+            const projectMenuOpen = sidebarMenu?.kind === "project" && sidebarMenu.projectId === project.id;
+            return (
+              <div className="project-group" key={project.id}>
+                <div
+                  className="project-button"
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setSidebarMenu({ kind: "project", projectId: project.id });
+                  }}
+                >
+                  <button
+                    aria-expanded={!isCollapsed}
+                    className="project-open"
+                    type="button"
+                    onClick={() => {
+                      openProject(project.id);
+                      toggleProjectCollapsed(project.id);
+                    }}
+                  >
+                    <ChevronRight className={isCollapsed ? "" : "expanded"} size={14} />
+                    <Folder size={15} />
+                    <span>{project.name}</span>
+                  </button>
+                  <div className="project-actions">
+                    <button
+                      aria-label={`New chat in ${project.name}`}
+                      className="inline-add"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        newChat(project.id);
+                      }}
+                    >
+                      <Plus size={13} />
+                    </button>
+                    <button
+                      aria-label={`Project options for ${project.name}`}
+                      className="inline-menu"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSidebarMenu(projectMenuOpen ? null : { kind: "project", projectId: project.id });
+                      }}
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                  </div>
+                  {projectMenuOpen ? (
+                    <div className="sidebar-menu" role="menu">
+                      <button role="menuitem" type="button" onClick={() => toggleProjectPinned(project.id)}>
+                        <Pin size={14} />
+                        {project.pinned ? "Unpin project" : "Pin project"}
+                      </button>
+                      <button role="menuitem" type="button" onClick={() => void openProjectFolder(project)}>
+                        <FolderOpen size={14} />
+                        Open in Explorer
+                      </button>
+                      <button role="menuitem" type="button" onClick={() => renameProject(project.id)}>
+                        <Pencil size={14} />
+                        Rename project
+                      </button>
+                      <button role="menuitem" type="button" onClick={() => removeProject(project.id)}>
+                        <Trash2 size={14} />
+                        Delete project
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                {!isCollapsed ? project.chats.map((chat) => {
+                  const chatMenuOpen = sidebarMenu?.kind === "chat" && sidebarMenu.projectId === project.id && sidebarMenu.chatId === chat.id;
+                  return (
+                  <div
+                    className={chat.id === activeChatId ? "chat-row active" : "chat-row"}
+                    key={chat.id}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setSidebarMenu({ kind: "chat", projectId: project.id, chatId: chat.id });
+                    }}
+                  >
+                    <button
+                      className="chat-link"
+                      type="button"
+                      onClick={() => openChat(project.id, chat.id)}
+                    >
+                      <span>{chat.title}</span>
+                      <em>{relativeTimeLabel(chat.updated, clockTick)}</em>
+                    </button>
+                    <button
+                      aria-label={`Chat options for ${chat.title}`}
+                      className="chat-menu-button"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSidebarMenu(chatMenuOpen ? null : { kind: "chat", projectId: project.id, chatId: chat.id });
+                      }}
+                    >
+                      <MoreHorizontal size={13} />
+                    </button>
+                    {chatMenuOpen ? (
+                      <div className="sidebar-menu chat-menu" role="menu">
+                        <button role="menuitem" type="button" onClick={() => toggleChatPinned(project.id, chat.id)}>
+                          <Pin size={14} />
+                          {chat.pinned ? "Unpin chat" : "Pin chat"}
+                        </button>
+                        <button role="menuitem" type="button" onClick={() => renameChat(project.id, chat.id)}>
+                          <Pencil size={14} />
+                          Rename chat
+                        </button>
+                        <button role="menuitem" type="button" onClick={() => deleteChat(project.id, chat.id)}>
+                          <Trash2 size={14} />
+                          Delete chat
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );}) : null}
+              </div>
+            );
+          })}
         </div>
 
         <div className="sidebar-footer">
-          <button className="provider-status" data-testid="activity-pill" type="button" onClick={() => setMainPanel("providers")}>
-            <span>{activeProviderLabel}</span>
-            <em>{activity}</em>
-          </button>
           <button type="button" onClick={() => setMainPanel("settings")}>
             <Settings2 size={16} />
             Settings
@@ -2392,6 +2706,60 @@ function App() {
 
       <section className="workspace">
         <header className="workspace-top">
+          <div className="workspace-context">
+            <strong data-testid="workspace-title">{activeChat?.title ?? activeProject?.name ?? "Home"}</strong>
+            {activeChat && activeProject ? (
+              <button
+                aria-label={`Title options for ${activeChat.title}`}
+                className="title-menu-button"
+                type="button"
+                onClick={() => setTopbarMenu(topbarMenu?.kind === "chat" && topbarMenu.chatId === activeChat.id ? null : { kind: "chat", projectId: activeProject.id, chatId: activeChat.id })}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            ) : activeProject ? (
+              <button
+                aria-label={`Title options for ${activeProject.name}`}
+                className="title-menu-button"
+                type="button"
+                onClick={() => setTopbarMenu(topbarMenu?.kind === "project" && topbarMenu.projectId === activeProject.id ? null : { kind: "project", projectId: activeProject.id })}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            ) : null}
+            {activeChat && activeProject && topbarMenu?.kind === "chat" && topbarMenu.chatId === activeChat.id ? (
+              <div className="topbar-menu" role="menu">
+                <button role="menuitem" type="button" onClick={() => toggleChatPinned(activeProject.id, activeChat.id)}>
+                  <Pin size={14} />
+                  {activeChat.pinned ? "Unpin chat" : "Pin chat"}
+                </button>
+                <button role="menuitem" type="button" onClick={() => renameChat(activeProject.id, activeChat.id)}>
+                  <Pencil size={14} />
+                  Rename chat
+                </button>
+                <button role="menuitem" type="button" onClick={() => deleteChat(activeProject.id, activeChat.id)}>
+                  <Trash2 size={14} />
+                  Delete chat
+                </button>
+              </div>
+            ) : activeProject && topbarMenu?.kind === "project" && topbarMenu.projectId === activeProject.id ? (
+              <div className="topbar-menu" role="menu">
+                <button role="menuitem" type="button" onClick={() => toggleProjectPinned(activeProject.id)}>
+                  <Pin size={14} />
+                  {activeProject.pinned ? "Unpin project" : "Pin project"}
+                </button>
+                <button role="menuitem" type="button" onClick={() => renameProject(activeProject.id)}>
+                  <Pencil size={14} />
+                  Rename project
+                </button>
+                <button role="menuitem" type="button" onClick={() => removeProject(activeProject.id)}>
+                  <Trash2 size={14} />
+                  Delete project
+                </button>
+              </div>
+            ) : null}
+            <span className="sr-status" data-testid="activity-pill">{activity}</span>
+          </div>
           <nav className="view-switcher" aria-label="View mode">
             {viewModes.map(({ id, Icon, label }) => (
               <button
@@ -2409,45 +2777,6 @@ function App() {
               </button>
             ))}
           </nav>
-          <div className="workspace-context">
-            <strong>{activeChat?.title ?? "Home"}</strong>
-            <span>{activeProject?.name ?? "No project selected"} / {status?.format_version ?? "browser preview"}</span>
-          </div>
-          <div className="workspace-status" aria-label="Project status">
-            <span>{viewMode === "editor" ? "AI editor" : titleCase(viewMode)}</span>
-            <span>{currentDocument ? `${layers.length} layers` : "No scene"}</span>
-            <span>{operationBatches.length} batches</span>
-            <span data-testid="selected-provider-chip">Provider: {activeProviderLabel}</span>
-          </div>
-          <div className="persistence-actions" aria-label="Persistence controls">
-            <button disabled={!activeProject || !currentDocument} type="button" onClick={() => void saveActiveProject()}>
-              <Save size={15} />
-              Save
-            </button>
-            <button disabled={!activeProject} type="button" onClick={() => void loadActiveProject()}>
-              <FolderOpen size={15} />
-              Reopen
-            </button>
-            <button disabled={!undoStack.length} type="button" onClick={undoLastBatch}>
-              <RotateCcw size={15} />
-              Undo
-            </button>
-            <button disabled={!redoStack.length} type="button" onClick={redoLastBatch}>
-              <RotateCw size={15} />
-              Redo
-            </button>
-          </div>
-          <button
-            aria-label="Open in file explorer"
-            className="open-folder-button"
-            disabled={!activeProject}
-            title="Open in file explorer"
-            type="button"
-            onClick={() => void openActiveProjectFolder()}
-          >
-            <FolderOpen size={16} />
-            <span>Open</span>
-          </button>
         </header>
 
         {newProjectOpen ? (
@@ -2680,6 +3009,32 @@ function App() {
                     </button>
                   ))}
                 </div>
+                <div className="composer-toolbar" aria-label="Composer tools">
+                  <button aria-expanded={composerToolsOpen} type="button" onClick={() => setComposerToolsOpen((isOpen) => !isOpen)}>
+                    <MoreHorizontal size={15} />
+                    Tools
+                  </button>
+                  {composerToolsOpen ? (
+                    <div className="composer-tool-actions">
+                      <button aria-label="Reload" disabled={!activeProject} title="Reload project" type="button" onClick={() => void loadActiveProject()}>
+                        <RefreshCw size={15} />
+                      </button>
+                      <button aria-label="Save project" disabled={!activeProject || !currentDocument} title="Save project" type="button" onClick={() => void saveActiveProject()}>
+                        <Save size={15} />
+                      </button>
+                      <button aria-label="Undo" disabled={!undoStack.length} title="Undo" type="button" onClick={undoLastBatch}>
+                        <RotateCcw size={15} />
+                      </button>
+                      <button aria-label="Redo" disabled={!redoStack.length} title="Redo" type="button" onClick={redoLastBatch}>
+                        <RotateCw size={15} />
+                      </button>
+                      <button aria-label={`Provider ${activeProviderLabel}`} className="provider-composer-button" type="button" onClick={() => setMainPanel("providers")}>
+                        <Cpu size={15} />
+                        {activeProviderLabel}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene" />
                 <div className="composer-controls">
                   <div className="composer-left">
@@ -2696,7 +3051,6 @@ function App() {
                       <ImagePlus size={16} />
                       Reference
                     </button>
-                    <span className="composer-provider">Provider: {activeProviderLabel}</span>
                   </div>
                   <button aria-label="Generate" type="button" onClick={() => void runGeneration()}>
                     <Send size={17} />
@@ -2729,13 +3083,20 @@ function App() {
                 activeChat={activeChat}
                 activeProviderLabel={activeProviderLabel}
                 canStageOperation={Boolean(selectedLayer)}
+                composerToolsOpen={composerToolsOpen}
                 fileInputRef={fileInputRef}
                 onAttachReferenceImages={(filesToAttach) => void attachReferenceImages(filesToAttach)}
                 onApplyPendingOperation={applyPendingOperation}
+                onReload={() => void loadActiveProject()}
+                onSave={() => void saveActiveProject()}
                 onRemovePendingReference={removePendingReference}
                 onRejectPendingOperation={rejectPendingOperation}
+                onOpenProviders={() => setMainPanel("providers")}
                 onRunGeneration={() => void runGeneration()}
                 onStageOperationPreview={stageOperationPreview}
+                onToggleComposerTools={() => setComposerToolsOpen((isOpen) => !isOpen)}
+                onUndo={undoLastBatch}
+                onRedo={redoLastBatch}
                 operationHistory={operationHistory}
                 pendingOperation={pendingOperation}
                 pendingReferences={pendingReferences}
@@ -2743,6 +3104,10 @@ function App() {
                 selectedLayer={selectedLayer}
                 selectedTargetLabel={selectedTargetLabel}
                 setPrompt={setPrompt}
+                canReload={Boolean(activeProject)}
+                canSave={Boolean(activeProject && currentDocument)}
+                canUndo={Boolean(undoStack.length)}
+                canRedo={Boolean(redoStack.length)}
               />
 
               <div className="editor-main">
@@ -2855,14 +3220,25 @@ function HomePanel({
 function AiEditRail({
   activeChat,
   activeProviderLabel,
+  canRedo,
+  canReload,
+  canSave,
   canStageOperation,
+  canUndo,
+  composerToolsOpen,
   fileInputRef,
   onApplyPendingOperation,
   onAttachReferenceImages,
+  onReload,
   onRemovePendingReference,
   onRejectPendingOperation,
+  onOpenProviders,
+  onRedo,
   onRunGeneration,
+  onSave,
   onStageOperationPreview,
+  onToggleComposerTools,
+  onUndo,
   operationHistory,
   pendingOperation,
   pendingReferences,
@@ -2873,14 +3249,25 @@ function AiEditRail({
 }: {
   activeChat: ChatThread;
   activeProviderLabel: string;
+  canRedo: boolean;
+  canReload: boolean;
+  canSave: boolean;
   canStageOperation: boolean;
+  canUndo: boolean;
+  composerToolsOpen: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onApplyPendingOperation: () => void;
   onAttachReferenceImages: (files: FileList | null) => void;
+  onReload: () => void;
   onRemovePendingReference: (id: string) => void;
   onRejectPendingOperation: () => void;
+  onOpenProviders: () => void;
+  onRedo: () => void;
   onRunGeneration: () => void;
+  onSave: () => void;
   onStageOperationPreview: () => void;
+  onToggleComposerTools: () => void;
+  onUndo: () => void;
   operationHistory: OperationBatch[];
   pendingOperation: OperationBatch | null;
   pendingReferences: ReferenceAttachment[];
@@ -2994,6 +3381,32 @@ function AiEditRail({
             ))}
           </div>
         ) : null}
+        <div className="composer-toolbar" aria-label="Composer tools">
+          <button aria-expanded={composerToolsOpen} type="button" onClick={onToggleComposerTools}>
+            <MoreHorizontal size={15} />
+            Tools
+          </button>
+          {composerToolsOpen ? (
+            <div className="composer-tool-actions">
+              <button aria-label="Reload" disabled={!canReload} title="Reload project" type="button" onClick={onReload}>
+                <RefreshCw size={15} />
+              </button>
+              <button aria-label="Save project" disabled={!canSave} title="Save project" type="button" onClick={onSave}>
+                <Save size={15} />
+              </button>
+              <button aria-label="Undo" disabled={!canUndo} title="Undo" type="button" onClick={onUndo}>
+                <RotateCcw size={15} />
+              </button>
+              <button aria-label="Redo" disabled={!canRedo} title="Redo" type="button" onClick={onRedo}>
+                <RotateCw size={15} />
+              </button>
+              <button aria-label={`Provider ${activeProviderLabel}`} className="provider-composer-button" type="button" onClick={onOpenProviders}>
+                <Cpu size={15} />
+                {activeProviderLabel}
+              </button>
+            </div>
+          ) : null}
+        </div>
         <textarea
           aria-label="Motion prompt"
           value={prompt}
@@ -3015,7 +3428,6 @@ function AiEditRail({
               <ImagePlus size={16} />
               Reference
             </button>
-            <span className="composer-provider">Provider: {activeProviderLabel}</span>
           </div>
           <button aria-label="Generate" type="button" onClick={onRunGeneration}>
             <Send size={17} />
