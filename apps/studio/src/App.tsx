@@ -1653,6 +1653,18 @@ function App() {
     window.document.documentElement.dataset.theme = themeMode;
   }, [themeMode]);
 
+  useEffect(() => {
+    function closeTransientPanels(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+        setNewProjectOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", closeTransientPanels);
+    return () => window.removeEventListener("keydown", closeTransientPanels);
+  }, []);
+
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const activeChat = activeProject?.chats.find((chat) => chat.id === activeChatId) ?? null;
   const projectPreview = latestPreviewForProject(activeProject, activeChatId);
@@ -1997,6 +2009,13 @@ function App() {
 
   function attachLayerReference(layer: StrutNode) {
     const attachment = layerToAttachment(layer);
+    const isAlreadyAttached = composerReferences.some((reference) => reference.kind === "layer" && reference.nodeId === layer.id);
+    if (isAlreadyAttached) {
+      removePendingReference(attachment.id);
+      setSelectedNode(selectedNodeId === layer.id ? null : selectedNodeId);
+      setActivity(`Removed layer ${layer.name} from the next prompt`);
+      return;
+    }
     setSelectedNode(layer.id);
     setPendingReferences((current) =>
       current.some((reference) => reference.kind === "layer" && reference.nodeId === layer.id)
@@ -2352,7 +2371,7 @@ function App() {
             <FolderPlus size={16} />
             New project
           </button>
-          <button type="button" onClick={() => setSearchOpen((isOpen) => !isOpen)}>
+          <button type="button" onClick={() => setSearchOpen(true)}>
             <Search size={16} />
             Search
           </button>
@@ -2361,13 +2380,6 @@ function App() {
             Providers
           </button>
         </div>
-
-        {searchOpen ? (
-          <label className="sidebar-search">
-            <Search size={14} />
-            <input aria-label="Search projects and chats" value={searchQuery} onChange={(event) => setSearchQuery(event.currentTarget.value)} placeholder="Search projects" />
-          </label>
-        ) : null}
 
         <div className="project-list">
           {pinnedProjects.length || pinnedChats.length ? (
@@ -2400,8 +2412,8 @@ function App() {
             </div>
           ) : null}
           <span className="section-label">Projects</span>
-          {filteredProjects.map((project) => {
-            const isCollapsed = collapsedProjectIds.has(project.id) && !searchQuery;
+          {projects.map((project) => {
+            const isCollapsed = collapsedProjectIds.has(project.id);
             const projectMenuOpen = sidebarMenu?.kind === "project" && sidebarMenu.projectId === project.id;
             return (
               <div className="project-group" key={project.id}>
@@ -2606,25 +2618,79 @@ function App() {
           </nav>
         </header>
 
+        {searchOpen ? (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setSearchOpen(false)}>
+            <section className="modal-panel search-modal" role="dialog" aria-modal="true" aria-label="Search" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="modal-heading">
+                <div>
+                  <h2>Search</h2>
+                  <p>Find a project or chat without changing the sidebar.</p>
+                </div>
+                <button aria-label="Close search" type="button" onClick={() => setSearchOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <label className="modal-search-field">
+                <Search size={15} />
+                <input aria-label="Search projects and chats" autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.currentTarget.value)} placeholder="Search projects or chats" />
+              </label>
+              <div className="search-results" aria-label="Search results">
+                {filteredProjects.length ? (
+                  filteredProjects.map((project) => (
+                    <div className="search-project" key={project.id}>
+                      <button type="button" onClick={() => {
+                        openProject(project.id);
+                        setSearchOpen(false);
+                      }}>
+                        <Folder size={14} />
+                        <span>{project.name}</span>
+                      </button>
+                      {project.chats.map((chat) => (
+                        <button key={chat.id} type="button" onClick={() => {
+                          openChat(project.id, chat.id);
+                          setSearchOpen(false);
+                        }}>
+                          <MessageSquarePlus size={14} />
+                          <span>{chat.title}</span>
+                          <em>{relativeTimeLabel(chat.updated, clockTick)}</em>
+                        </button>
+                      ))}
+                    </div>
+                  ))
+                ) : (
+                  <p className="panel-empty">No projects or chats match this search.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         {newProjectOpen ? (
-          <section className="project-sheet" aria-label="New project panel">
-            <div>
-              <h2>New project</h2>
-              <p>Choose where Strut should create the editable scene files.</p>
-            </div>
-            <label>
-              <span>Name</span>
-              <input aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.currentTarget.value)} />
-            </label>
-            <label>
-              <span>Location</span>
-              <input aria-label="Project location" value={projectLocation} onChange={(event) => setProjectLocation(event.currentTarget.value)} />
-            </label>
-            <div className="sheet-actions">
-              <button type="button" onClick={() => setNewProjectOpen(false)}>Cancel</button>
-              <button type="button" onClick={() => void createProject()}>Create project</button>
-            </div>
-          </section>
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setNewProjectOpen(false)}>
+            <section className="modal-panel project-sheet" role="dialog" aria-modal="true" aria-label="New project panel" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="modal-heading">
+                <div>
+                  <h2>New project</h2>
+                  <p>Choose where Strut should create the editable scene files.</p>
+                </div>
+                <button aria-label="Close new project" type="button" onClick={() => setNewProjectOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <label>
+                <span>Name</span>
+                <input aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.currentTarget.value)} />
+              </label>
+              <label>
+                <span>Location</span>
+                <input aria-label="Project location" value={projectLocation} onChange={(event) => setProjectLocation(event.currentTarget.value)} />
+              </label>
+              <div className="sheet-actions">
+                <button type="button" onClick={() => setNewProjectOpen(false)}>Cancel</button>
+                <button type="button" onClick={() => void createProject()}>Create project</button>
+              </div>
+            </section>
+          </div>
         ) : null}
 
         {mainPanel === "providers" ? (
@@ -2880,7 +2946,7 @@ function App() {
               </div>
             </div>
             {viewMode === "preview" ? (
-              <>
+              <div className="preview-area">
                 <PreviewPane activeMachine={activeMachine} activeState={currentActiveState} document={currentDocument} setActiveState={setCurrentActiveState} />
                 <LayerRail
                   collapsed={layersRailCollapsed}
@@ -2890,7 +2956,7 @@ function App() {
                   pendingReferences={composerReferences}
                   selectedNodeId={selectedNodeId}
                 />
-              </>
+              </div>
             ) : null}
           </section>
         ) : null}
@@ -2993,7 +3059,7 @@ function LayerRail({
                 const isAttached = attachedLayerIds.has(layer.id);
                 return (
                   <button
-                    aria-label={`Attach layer ${layer.name} ${layer.kind}`}
+                    aria-label={`${isAttached ? "Remove" : "Attach"} layer ${layer.name} ${layer.kind}`}
                     aria-pressed={isAttached}
                     className={`${selectedNodeId === layer.id ? "active" : ""} ${isAttached ? "attached" : ""}`}
                     key={layer.id}
@@ -3002,7 +3068,7 @@ function LayerRail({
                   >
                     <span>{layer.name}</span>
                     <em>{layer.role ?? layer.kind}</em>
-                    {isAttached ? <strong>Attached</strong> : null}
+                    {isAttached ? <strong>Attached</strong> : <strong>Add</strong>}
                   </button>
                 );
               })}

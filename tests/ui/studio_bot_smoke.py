@@ -125,8 +125,10 @@ def run_smoke() -> None:
 
             page.get_by_role("button", name="Search", exact=True).click()
             page.get_by_label("Search projects and chats").fill("smoke")
-            expect(page.get_by_role("button", name="Project brief now", exact=True)).to_be_visible()
+            expect(page.get_by_label("Search results").get_by_role("button", name="Project brief now", exact=True)).to_be_visible()
             page.get_by_label("Search projects and chats").fill("")
+            page.keyboard.press("Escape")
+            expect(page.get_by_role("dialog", name="Search")).not_to_be_visible()
 
             page.get_by_role("button", name="New chat in Smoke Mascot").click()
             expect(page.get_by_role("button", name="New motion chat now", exact=True)).to_be_visible()
@@ -329,6 +331,10 @@ def run_smoke() -> None:
             expect(page.get_by_text("Context Owl / ContextMoods")).to_be_visible()
             expect(page.locator('[data-testid="character-preview"]')).to_be_visible()
             expect(page.get_by_text("ContextBody")).to_be_visible()
+            page.get_by_role("button", name="Attach layer ContextBody ellipse").click()
+            expect(page.get_by_text("Layer: ContextBody")).to_be_visible()
+            page.get_by_role("button", name="Remove layer ContextBody ellipse").click()
+            expect(page.get_by_text("Layer: ContextBody")).not_to_be_visible()
             page.get_by_role("button", name="Attach layer ContextBody ellipse").click()
             expect(page.get_by_text("Layer: ContextBody")).to_be_visible()
             page.get_by_role("button", name="Attach layer ContextFace rect").click()
