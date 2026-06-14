@@ -4,6 +4,8 @@ Strut is an open-source desktop app for creating interactive motion components.
 
 A Strut file can be a button, loader, onboarding illustration, empty state, icon, badge, chart accent, or game-like UI moment. It can include artwork, animation timelines, state machines, inputs, bindings, and events.
 
+Strut's default taste is low-energy product motion: calm loops, tiny state changes, and subtle feedback that feels alive without pulling focus away from the app.
+
 ## What You Can Make
 
 - Buttons with hover, press, loading, success, and error states.

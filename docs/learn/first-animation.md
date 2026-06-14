@@ -10,6 +10,8 @@ The first Strut workflows are a small interactive login button and a minimalist 
 - verifier checks
 - export
 
+Both examples should use Strut's default quiet motion language: small loops, soft pauses, clear state changes, and no noisy effects unless a user asks for them.
+
 ## Login Button Goal
 
 Create a button with these states:

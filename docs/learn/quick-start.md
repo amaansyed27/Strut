@@ -61,16 +61,17 @@ http://127.0.0.1:1420
 
 ## What To Try First
 
-In the chat box, ask Strut to make a character. You can also attach reference images with the **Reference** button in the composer. PNG, JPEG, WebP, GIF, and SVG references are shown in the conversation and passed to the desktop generation pipeline.
+In the chat box, ask Strut to make a calm motion component. You can also attach reference images with the **Reference** button in the composer. PNG, JPEG, WebP, GIF, and SVG references are shown in the conversation and passed to the desktop generation pipeline.
 
 ```txt
+make a quiet loader with a tiny breathing loop
+make a soft logo settle animation with a restrained success state
 make a minimalist waving robot character like the reference image
-make an owl mascot like Duo from Duolingo
 ```
 
 Then open:
 
-- **Chat + preview** to see the animated character beside the conversation.
+- **Chat + preview** to see the generated motion beside the conversation.
 - **Editor** to inspect project files, layers, parts, state machines, and motion states.
 - **Providers** in the sidebar to select local CLI tools, Ollama, or BYOK providers.
 - **Settings** in the sidebar footer to change appearance, workspace, generation, and editor defaults. Appearance supports **Auto**, **Light**, and **Dark**.

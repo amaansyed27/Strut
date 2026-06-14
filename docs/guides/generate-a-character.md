@@ -4,6 +4,8 @@ Strut can start from a plain prompt or attached reference images and create an e
 
 This is useful when you want a product mascot, helper bot, empty-state character, onboarding guide, or small animated brand moment but do not have a finished mockup yet.
 
+By default, generated character motion should stay low-energy: subtle breathing, tiny bobs, short acknowledgement gestures, focused scan loops, and restrained success states. Ask for louder or more playful motion only when that is the product goal.
+
 ## Try It
 
 Open Strut Studio, create or open a project, then use the chat composer.

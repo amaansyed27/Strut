@@ -69,6 +69,7 @@ Start with the public docs:
 - [What Is Strut?](./docs/learn/what-is-strut.md)
 - [Quick Start](./docs/learn/quick-start.md)
 - [Create Your First Animation](./docs/learn/first-animation.md)
+- [Motion Language](./docs/learn/motion-language.md)
 - [Plan Mode](./docs/learn/plan-mode.md)
 - [Generate A Character](./docs/guides/generate-a-character.md)
 - [AI And Providers](./docs/learn/ai-and-providers.md)

@@ -9,6 +9,7 @@ Strut is pre-alpha, so some screenshots and commands will change. The main ideas
 - [What Is Strut?](./learn/what-is-strut.md)
 - [Quick Start](./learn/quick-start.md)
 - [Create Your First Animation](./learn/first-animation.md)
+- [Motion Language](./learn/motion-language.md)
 - [Plan Mode](./learn/plan-mode.md)
 - [AI And Providers](./learn/ai-and-providers.md)
 
