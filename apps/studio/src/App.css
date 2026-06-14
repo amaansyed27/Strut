@@ -242,6 +242,7 @@ textarea:focus-visible {
 .editor-toolbar button,
 .preview-title button,
 .state-row button,
+.project-animation-list button,
 .composer-controls button,
 .byok-form button {
   min-height: 34px;
@@ -252,6 +253,7 @@ textarea:focus-visible {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sidebar-actions button,
@@ -1432,7 +1434,16 @@ textarea:focus-visible {
   font-style: normal;
 }
 
+.preview-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .preview-title button {
+  width: 38px;
+  min-height: 34px;
+  justify-content: center;
   color: var(--ink);
   border-color: var(--line);
   background: var(--panel);
@@ -1767,6 +1778,54 @@ textarea:focus-visible {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.22);
   border-color: var(--line);
+}
+
+.project-animation-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.project-animation-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-animation-list-heading strong {
+  font-size: 13px;
+}
+
+.project-animation-list-heading em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.project-animation-list button {
+  min-height: 34px;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow: hidden;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.project-animation-list button.active,
+.project-animation-list button:hover {
+  border-color: color-mix(in srgb, var(--accent-strong) 48%, var(--line));
+  background: color-mix(in srgb, var(--active-bg) 82%, transparent);
+  color: var(--active-text);
+}
+
+.project-animation-list button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor-layout {
@@ -2500,6 +2559,32 @@ textarea:focus-visible {
   margin-left: auto;
 }
 
+.empty-state-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state-row span {
+  font-size: 13px;
+}
+
+.empty-state-row button {
+  background: var(--mode-rail);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0 16px;
+}
+
+.empty-state-row button:hover {
+  background: var(--mode-hover);
+}
+
 .workspace-status span {
   min-height: 24px;
   padding: 0 9px;
@@ -3173,4 +3258,353 @@ textarea:focus-visible {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Dialog component (reusable modal primitive)                              */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  padding: 86px 24px 24px;
+  background: rgba(18, 26, 23, 0.18);
+  backdrop-filter: blur(4px);
+}
+
+.dialog-panel {
+  max-height: min(720px, calc(100vh - 118px));
+  display: grid;
+  gap: 16px;
+  overflow: hidden;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-glass);
+  box-shadow: 0 24px 80px rgba(29, 47, 42, 0.18);
+  animation: modal-rise 160ms ease-out;
+}
+
+.dialog-sm {
+  width: min(480px, calc(100vw - 48px));
+}
+
+.dialog-md {
+  width: min(640px, calc(100vw - 48px));
+}
+
+.dialog-lg {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dialog-header h2,
+.dialog-header p {
+  margin: 0;
+}
+
+.dialog-header p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dialog-close {
+  width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+  transition: color 120ms, background 120ms;
+}
+
+.dialog-close:hover {
+  color: var(--ink);
+  background: var(--mode-hover);
+}
+
+.dialog-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dialog-body label {
+  display: grid;
+  gap: 6px;
+}
+
+.dialog-body label > span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.dialog-body input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+  outline: 0;
+  font-size: 14px;
+  transition: border-color 120ms;
+}
+
+.dialog-body input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.dialog-footer button {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms, transform 80ms;
+}
+
+.dialog-footer button:active {
+  transform: scale(0.97);
+}
+
+.dialog-footer button:first-child {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.dialog-footer button:last-child {
+  color: var(--active-text);
+  border: 1px solid transparent;
+  background: var(--active-bg);
+}
+
+.dialog-footer button:last-child:hover {
+  background: var(--accent-strong);
+}
+
+.dialog-footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dialog-error {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: rgba(179, 92, 87, 0.08);
+}
+
+/* Dialog search field (for SearchCommandModal) */
+.dialog-search-field {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+}
+
+.dialog-search-field input {
+  width: 100%;
+  height: 38px;
+  color: var(--ink);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.dialog-search-results {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+  max-height: 400px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Badge utility                                                            */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.badge-installed {
+  color: var(--success);
+  background: rgba(66, 125, 94, 0.12);
+}
+
+.badge-missing {
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.badge-selected {
+  color: var(--accent-strong);
+  background: rgba(111, 184, 159, 0.16);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Page shell (scrollable content areas)                                    */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+.page-shell {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Provider card refinements                                                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+.provider-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.provider-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.provider-status-dot.installed {
+  background: var(--success);
+}
+
+.provider-status-dot.missing {
+  background: var(--muted);
+  opacity: 0.4;
+}
+
+.provider-kind {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.provider-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Micro-interactions                                                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/* Button press feedback */
+.sidebar-actions button:active,
+.sidebar-footer button:active,
+.composer-controls button:active,
+.composer-tool-actions button:active,
+.prompt-examples button:active,
+.state-row button:active,
+.empty-actions button:active,
+.home-card-grid button:active {
+  transform: scale(0.97);
+}
+
+/* Card hover lift */
+.home-card-grid button:hover {
+  transform: translateY(-1px);
+}
+
+/* Smooth background transitions for sidebar items */
+.sidebar-actions button,
+.sidebar-footer button,
+.chat-link,
+.project-open,
+.pinned-row {
+  transition: background 120ms, color 120ms, transform 80ms;
+}
+
+/* State button press feedback */
+.state-row button {
+  transition: background 120ms, color 120ms, transform 80ms;
+}
+
+/* Empty state fade-in */
+.empty-home,
+.preview-empty {
+  animation: fade-in 300ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Activity pill slide animation */
+.sr-status {
+  transition: opacity 200ms;
+}
+
+/* Composer send pulse on hover */
+.composer-controls button[aria-label="Generate"]:not(:disabled):hover {
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
