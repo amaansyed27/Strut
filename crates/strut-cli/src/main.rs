@@ -324,7 +324,7 @@ struct GenerationPlanSummary {
 struct GenerationPlanEnvelope {
     plan: GenerationPlan,
     #[serde(default)]
-    operations: Vec<SceneOperation>,
+    operations: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -469,8 +469,12 @@ struct TimelineTrackPlan {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KeyframePlan {
+    #[serde(alias = "t")]
     #[serde(alias = "time_ms")]
+    #[serde(alias = "time")]
     time_ms: u32,
+    #[serde(alias = "v")]
+    #[serde(alias = "value")]
     value: f64,
     easing: Option<String>,
 }
@@ -1271,7 +1275,17 @@ fn document_from_generation_plan_value(value: &Value) -> CliResult<PlannedDocume
     let envelope: GenerationPlanEnvelope = serde_json::from_value(envelope_value)
         .map_err(|error| CliError::Message(format!("generation plan schema mismatch: {error}")))?;
     validate_generation_plan(&envelope.plan)?;
-    let operations = envelope.operations;
+
+    let operations = if let Ok(ops) = serde_json::from_value::<Vec<SceneOperation>>(envelope.operations.clone()) {
+        if ops.is_empty() {
+            operations_from_generation_plan(&envelope.plan)
+        } else {
+            ops
+        }
+    } else {
+        operations_from_generation_plan(&envelope.plan)
+    };
+
     validate_scene_operations(&envelope.plan, &operations)?;
     let document = document_from_scene_operations(&envelope.plan, &operations)?;
     strut_format::validate_document(&document)?;
@@ -1296,6 +1310,78 @@ fn document_from_generation_plan_value(value: &Value) -> CliResult<PlannedDocume
         summary,
         operations,
     })
+}
+
+fn operations_from_generation_plan(plan: &GenerationPlan) -> Vec<SceneOperation> {
+    let mut operations = Vec::new();
+    let child_ids = plan
+        .parts
+        .iter()
+        .map(|part| part.id.clone())
+        .collect::<Vec<_>>();
+    operations.push(SceneOperation::GroupNodes {
+        id: "SceneRig".to_string(),
+        name: format!("{} Rig", plan.name),
+        children: child_ids,
+    });
+    operations.extend(plan.parts.iter().map(|part| SceneOperation::CreateNode {
+        id: part.id.clone(),
+        name: part.name.clone(),
+        kind: node_kind_from_geometry(&part.geometry).to_string(),
+        parent: Some("SceneRig".to_string()),
+        geometry: part.geometry.clone(),
+        style: part.style.clone(),
+        role: Some(part.role.clone()),
+    }));
+    operations.extend(plan.states.iter().map(|state| SceneOperation::AddState {
+        state: normalized_state_name(state),
+    }));
+    for timeline in &plan.timelines {
+        operations.push(SceneOperation::AddTimeline {
+            id: timeline.id.clone(),
+            name: timeline.name.clone(),
+            state: timeline
+                .state
+                .as_ref()
+                .map(|state| normalized_state_name(state)),
+            duration_ms: timeline.duration_ms,
+        });
+        for track in &timeline.tracks {
+            for keyframe in &track.keyframes {
+                operations.push(SceneOperation::AddKeyframe {
+                    timeline: timeline.id.clone(),
+                    target: track.target.clone(),
+                    property: normalize_motion_property(&track.property),
+                    time_ms: keyframe.time_ms,
+                    value: keyframe.value,
+                    easing: keyframe.easing.clone(),
+                });
+            }
+        }
+    }
+    for part in &plan.parts {
+        if part.constraints.editable
+            && !plan
+                .editability
+                .locked_parts
+                .iter()
+                .any(|id| id == &part.id)
+        {
+            operations.push(SceneOperation::BindProperty {
+                name: format!("edit_{}_fill", semantic_token(&part.id)),
+                target: part.id.clone(),
+                property: "fill".to_string(),
+            });
+        }
+    }
+    operations.push(SceneOperation::EmitEvent {
+        name: "generation_plan_validated".to_string(),
+        description: format!(
+            "strut successfully derived {} semantic operations",
+            operations.len()
+        ),
+    });
+    operations
 }
 
 fn validate_generation_plan(plan: &GenerationPlan) -> CliResult<()> {
@@ -1415,12 +1501,13 @@ fn validate_generation_plan(plan: &GenerationPlan) -> CliResult<()> {
                 timeline.id
             )));
         }
-        if timeline.duration_ms == 0 || timeline.tracks.is_empty() {
+        if timeline.duration_ms == 0 {
             return Err(CliError::Message(format!(
-                "timeline '{}' needs duration and tracks",
+                "timeline '{}' needs a positive duration",
                 timeline.name
             )));
         }
+        // Allow empty tracks: LLMs often put keyframe data only in operations
         if let Some(state) = &timeline.state {
             if !states.contains(normalized_state_name(state).as_str()) {
                 return Err(CliError::Message(format!(
