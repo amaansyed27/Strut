@@ -78,6 +78,7 @@ export type StrutTimeline = {
   name: string;
   duration_ms: number;
   tracks?: StrutTrack[];
+  loops?: boolean;
 };
 
 export type StrutInput = {
@@ -126,7 +127,6 @@ export type StrutPackage = {
   document: StrutDocument;
 };
 
-export type BotState = "idle" | "float" | "wave" | "blink" | "scan" | "celebrate" | "sleep";
 
 export type MountOptions = {
   artboard?: string;
@@ -251,7 +251,7 @@ export function mountStrut(
 export function mountMinimalBot(
   target: HTMLElement,
   document: StrutDocument,
-  initialState: BotState = "idle",
+  initialState: string = "idle",
 ): MountedStrut {
   return mountStrut(target, document, { initialState });
 }
@@ -292,11 +292,6 @@ export function renderStrutSvg(
   svg.append(label);
 
   return svg;
-}
-
-export function createMinimalBotSvg(initialState: BotState = "idle"): SVGSVGElement {
-  const document = minimalBotDocument();
-  return renderStrutSvg(document, { initialState });
 }
 
 function renderNode(node: StrutNode): SVGElement {
@@ -451,15 +446,16 @@ function scalarTrackCss(timeline: StrutTimeline, track: StrutTrack) {
 }
 
 function stateTimelineCss(state: string, timeline: StrutTimeline, transforms: Map<string, StrutTransform>) {
+  const iteration = timeline.loops ? "infinite" : "1 both";
   return Array.from(timelineTrackGroups(timeline).entries())
     .map(([target, tracks]) => {
       const animations = [
         tracks.some((track) => isTransformProperty(track.property))
-          ? `${transformAnimationName(timeline, target)} ${timeline.duration_ms}ms ${groupEasing(tracks)} infinite`
+          ? `${transformAnimationName(timeline, target)} ${timeline.duration_ms}ms ${groupEasing(tracks)} ${iteration}`
           : "",
         ...tracks
           .filter((track) => isScalarProperty(track.property))
-          .map((track) => `${scalarAnimationName(timeline, track)} ${timeline.duration_ms}ms ${cssEasing(track.keyframes[0]?.easing ?? "linear")} infinite`),
+          .map((track) => `${scalarAnimationName(timeline, track)} ${timeline.duration_ms}ms ${cssEasing(track.keyframes[0]?.easing ?? "linear")} ${iteration}`),
       ].filter(Boolean);
       if (!animations.length) {
         return "";
@@ -586,7 +582,6 @@ function timelinesForState(document: StrutDocument, stateMachine: StrutStateMach
       .map((transition) => transition.timeline),
   );
   const timelineNames = new Set([state, ...transitionTimelines]);
-  if (state === "float") timelineNames.add("idle_float");
   return document.timelines.filter((timeline) => timelineNames.has(timeline.name));
 }
 
@@ -713,28 +708,4 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function minimalBotDocument(): StrutDocument {
-  return {
-    id: "minimal-bot-runtime-fallback",
-    name: "Minimal Bot",
-    artboards: [
-      {
-        id: "minimal-bot-artboard",
-        name: "MinimalBot",
-        width: 960,
-        height: 540,
-        nodes: [],
-      },
-    ],
-    timelines: [],
-    state_machines: [
-      {
-        id: "minimal-bot-machine",
-        name: "BotMoods",
-        states: ["idle", "float", "wave", "blink", "scan", "celebrate", "sleep"],
-      },
-    ],
-    bindings: [],
-    events: [],
-  };
-}
+
