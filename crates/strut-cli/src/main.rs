@@ -2389,6 +2389,7 @@ fn append_node_svg(svg: &mut String, node: &strut_core::Node) {
             escape_xml(value)
         )),
         strut_core::Shape::None => {}
+        strut_core::Shape::Sprite { .. } => {}
     }
     for child in &node.children {
         append_node_svg(svg, child);

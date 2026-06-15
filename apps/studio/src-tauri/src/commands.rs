@@ -440,7 +440,13 @@ pub async fn assistant_message(
         }
     };
 
-    // Quality reflection pass - make generation feedback failures more visible
+    // Quality reflection pass - DISABLED due to self-correction blind spot
+    // Research shows LLMs reviewing their own output share the same biases
+    // and can over-correct to blank/broken results. The reflection either
+    // misses the same errors (too lenient) or rejects valid output (too strict).
+    // See: arxiv.org/abs/2507.02778 - Self-Correction Blind Spot
+    // TODO: Implement external validator or different sampling strategy
+    /*
     if classify_request_intent(&user_prompt) == RequestIntent::Generate {
         if let AssistantResult::DocumentCreated { document, .. } | AssistantResult::DocumentUpdated { document, .. } = &initial_result {
             if let Ok(document_json) = serde_json::to_string_pretty(document) {
@@ -465,6 +471,7 @@ pub async fn assistant_message(
             }
         }
     }
+    */
 
     Ok(initial_result)
 }

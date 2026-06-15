@@ -28,6 +28,8 @@ export type StrutNode = {
     translate_x?: number;
     translate_y?: number;
     rotate?: number;
+    rotate_x?: number;
+    rotate_y?: number;
     scale_x?: number;
     scale_y?: number;
   };
@@ -44,7 +46,8 @@ export type StrutNode = {
     | { type: "rect"; x: number; y: number; width: number; height: number; rx: number }
     | { type: "ellipse"; cx: number; cy: number; rx: number; ry: number }
     | { type: "path"; d: string }
-    | { type: "text"; x: number; y: number; value: string; size: number };
+    | { type: "text"; x: number; y: number; value: string; size: number }
+    | { type: "sprite"; url: string; frame_width: number; frame_height: number; columns: number; rows: number };
   children?: StrutNode[];
 };
 
@@ -67,7 +70,7 @@ export type Timeline = {
     keyframes: Array<{
       time_ms: number;
       value: { type: "number"; value: number } | { type: string; value: unknown };
-      easing: "linear" | "ease_in" | "ease_out" | "ease_in_out";
+      easing: "linear" | "ease_in" | "ease_out" | "ease_in_out" | "steps";
     }>;
   }>;
 };

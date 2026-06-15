@@ -23,9 +23,10 @@ export type StateNodeOverride = {
 export function documentAnimationCss(document: StrutDocument, activeState: string): string {
   const timelines = timelinesForState(document, activeState);
   const transforms = nodeTransformMap(document);
+  const shapes = nodeShapeMap(document);
   return timelines
     .flatMap((timeline) => [
-      timelineAnimationCss(timeline, transforms),
+      timelineAnimationCss(timeline, transforms, shapes),
       ...stateTimelineCss(timeline, transforms),
     ])
     .filter(Boolean)
@@ -43,11 +44,11 @@ export function timelinesForState(document: StrutDocument, activeState: string):
   return document.timelines.filter((timeline) => timelineNames.has(timeline.name));
 }
 
-function timelineAnimationCss(timeline: Timeline, transforms: Map<string, StrutNode["transform"]>): string {
+function timelineAnimationCss(timeline: Timeline, transforms: Map<string, StrutNode["transform"]>, shapes: Map<string, StrutNode["shape"]>): string {
   return Array.from(timelineTrackGroups(timeline).entries())
     .flatMap(([target, tracks]) => [
       transformTracksCss(timeline, target, tracks.filter((t) => isTransformProperty(t.property)), transforms.get(target)),
-      ...tracks.filter((t) => isScalarProperty(t.property)).map((t) => scalarTrackCss(timeline, t)),
+      ...tracks.filter((t) => isScalarProperty(t.property)).map((t) => scalarTrackCss(timeline, t, shapes.get(target))),
     ])
     .filter(Boolean)
     .join("\n");
@@ -68,21 +69,29 @@ function transformTracksCss(
       const tx = base.translate_x + trackValue(tracks, "translation.x", time, 0);
       const ty = base.translate_y + trackValue(tracks, "translation.y", time, 0);
       const rotate = base.rotate + trackValue(tracks, "rotation", time, 0);
+      const rotate_x = base.rotate_x + trackValue(tracks, "rotation.x", time, 0);
+      const rotate_y = base.rotate_y + trackValue(tracks, "rotation.y", time, 0);
       const scale = trackValue(tracks, "scale", time, 1);
       const sx = base.scale_x * scale * trackValue(tracks, "scale.x", time, 1);
       const sy = base.scale_y * scale * trackValue(tracks, "scale.y", time, 1);
-      return `${percent}% { transform: translate(${round(tx)}px, ${round(ty)}px) rotate(${round(rotate)}deg) scale(${round(sx)}, ${round(sy)}); }`;
+      return `${percent}% { transform: translate(${round(tx)}px, ${round(ty)}px) rotateZ(${round(rotate)}deg) rotateX(${round(rotate_x)}deg) rotateY(${round(rotate_y)}deg) scale(${round(sx)}, ${round(sy)}); }`;
     })
     .join("\n");
   return `@keyframes ${transformAnimationName(timeline, target)} { ${frames} }`;
 }
 
-function scalarTrackCss(timeline: Timeline, track: TimelineTrack): string {
+function scalarTrackCss(timeline: Timeline, track: TimelineTrack, shape: StrutNode["shape"]): string {
   const numericKeyframes = numericTrackKeyframes(track);
   if (numericKeyframes.length < 2) return "";
   const frames = numericKeyframes
     .map((kf) => {
       const percent = Math.max(0, Math.min(100, (kf.time_ms / timeline.duration_ms) * 100));
+      if (track.property === "frame" && shape?.type === "sprite") {
+        const frame = Math.round(Number(kf.value.value));
+        const x = (frame % shape.columns) * shape.frame_width;
+        const y = Math.floor(frame / shape.columns) * shape.frame_height;
+        return `${percent}% { --sprite-x: -${x}px; --sprite-y: -${y}px; }`;
+      }
       return `${percent}% { ${track.property}: ${round(Number(kf.value.value))}; }`;
     })
     .join("\n");
@@ -153,10 +162,12 @@ function transformAtTime(tracks: TimelineTrack[], baseTransform: StrutNode["tran
   const tx = base.translate_x + trackValue(tracks, "translation.x", time, 0);
   const ty = base.translate_y + trackValue(tracks, "translation.y", time, 0);
   const rotate = base.rotate + trackValue(tracks, "rotation", time, 0);
+  const rotate_x = base.rotate_x + trackValue(tracks, "rotation.x", time, 0);
+  const rotate_y = base.rotate_y + trackValue(tracks, "rotation.y", time, 0);
   const scale = trackValue(tracks, "scale", time, 1);
   const sx = base.scale_x * scale * trackValue(tracks, "scale.x", time, 1);
   const sy = base.scale_y * scale * trackValue(tracks, "scale.y", time, 1);
-  return transformCss({ translate_x: tx, translate_y: ty, rotate, scale_x: sx, scale_y: sy });
+  return transformCss({ translate_x: tx, translate_y: ty, rotate, rotate_x, rotate_y, scale_x: sx, scale_y: sy });
 }
 
 function timelineLoops(timeline: Timeline): boolean {
@@ -218,11 +229,11 @@ function hasNumericMotion(track: TimelineTrack): boolean {
 }
 
 function isTransformProperty(property: string): boolean {
-  return ["translation.x", "translation.y", "rotation", "scale", "scale.x", "scale.y"].includes(property);
+  return ["translation.x", "translation.y", "rotation", "rotation.x", "rotation.y", "scale", "scale.x", "scale.y"].includes(property);
 }
 
 function isScalarProperty(property: string): boolean {
-  return property === "opacity";
+  return property === "opacity" || property === "frame";
 }
 
 function groupEasing(tracks: TimelineTrack[]): string {
@@ -233,6 +244,7 @@ function cssEasing(easing: string): string {
   if (easing === "ease_in") return "ease-in";
   if (easing === "ease_out") return "ease-out";
   if (easing === "ease_in_out") return "ease-in-out";
+  if (easing === "steps") return "step-end";
   return "linear";
 }
 
@@ -253,13 +265,27 @@ function normalizeTransform(transform: StrutNode["transform"]): ResolvedTransfor
     translate_x: transform?.translate_x ?? 0,
     translate_y: transform?.translate_y ?? 0,
     rotate: transform?.rotate ?? 0,
+    rotate_x: transform?.rotate_x ?? 0,
+    rotate_y: transform?.rotate_y ?? 0,
     scale_x: transform?.scale_x ?? 1,
     scale_y: transform?.scale_y ?? 1,
   };
 }
 
 function transformCss(transform: ResolvedTransform): string {
-  return `translate(${round(transform.translate_x)}px, ${round(transform.translate_y)}px) rotate(${round(transform.rotate)}deg) scale(${round(transform.scale_x)}, ${round(transform.scale_y)})`;
+  return `translate(${round(transform.translate_x)}px, ${round(transform.translate_y)}px) rotateZ(${round(transform.rotate)}deg) rotateX(${round(transform.rotate_x)}deg) rotateY(${round(transform.rotate_y)}deg) scale(${round(transform.scale_x)}, ${round(transform.scale_y)})`;
+}
+
+export function nodeShapeMap(document: StrutDocument): Map<string, StrutNode["shape"]> {
+  const shapes = new Map<string, StrutNode["shape"]>();
+  const visit = (node: StrutNode) => {
+    shapes.set(node.id, node.shape ?? { type: "none" });
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const artboard of document.artboards) {
+    for (const node of artboard.nodes) visit(node);
+  }
+  return shapes;
 }
 
 function transformAnimationName(timeline: Timeline, target: string): string {

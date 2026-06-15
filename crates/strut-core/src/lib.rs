@@ -55,6 +55,10 @@ pub struct Transform {
     pub translate_x: f32,
     pub translate_y: f32,
     pub rotate: f32,
+    #[serde(default)]
+    pub rotate_x: f32,
+    #[serde(default)]
+    pub rotate_y: f32,
     pub scale_x: f32,
     pub scale_y: f32,
 }
@@ -65,6 +69,8 @@ impl Default for Transform {
             translate_x: 0.0,
             translate_y: 0.0,
             rotate: 0.0,
+            rotate_x: 0.0,
+            rotate_y: 0.0,
             scale_x: 1.0,
             scale_y: 1.0,
         }
@@ -120,6 +126,13 @@ pub enum Shape {
         y: f32,
         value: String,
         size: f32,
+    },
+    Sprite {
+        url: String,
+        frame_width: f32,
+        frame_height: f32,
+        columns: u32,
+        rows: u32,
     },
 }
 
@@ -400,6 +413,8 @@ pub struct Timeline {
     pub id: Uuid,
     pub name: String,
     pub duration_ms: u32,
+    #[serde(default)]
+    pub loops: bool,
     pub tracks: Vec<Track>,
 }
 
@@ -479,6 +494,7 @@ impl Document {
             }],
             timelines: vec![
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(6),
                     name: "hover".to_string(),
                     duration_ms: 180,
@@ -500,6 +516,7 @@ impl Document {
                     }],
                 },
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(7),
                     name: "loading".to_string(),
                     duration_ms: 900,
@@ -704,6 +721,7 @@ impl Document {
             }],
             timelines: vec![
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(120),
                     name: "idle_float".to_string(),
                     duration_ms: 1400,
@@ -842,6 +860,7 @@ impl Document {
                     ],
                 },
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(121),
                     name: "wave".to_string(),
                     duration_ms: 900,
@@ -1036,6 +1055,7 @@ impl Document {
                     ],
                 },
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(122),
                     name: "blink".to_string(),
                     duration_ms: 420,
@@ -1062,6 +1082,7 @@ impl Document {
                     }],
                 },
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(123),
                     name: "scan".to_string(),
                     duration_ms: 1200,
@@ -1132,6 +1153,7 @@ impl Document {
                     ],
                 },
                 Timeline {
+                    loops: false,
                     id: Uuid::from_u128(124),
                     name: "celebrate".to_string(),
                     duration_ms: 1000,

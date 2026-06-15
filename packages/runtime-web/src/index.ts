@@ -15,6 +15,8 @@ export type StrutTransform = {
   translate_x?: number;
   translate_y?: number;
   rotate?: number;
+  rotate_x?: number;
+  rotate_y?: number;
   scale_x?: number;
   scale_y?: number;
 };
@@ -33,7 +35,8 @@ export type StrutShape =
   | { type: "rect"; x: number; y: number; width: number; height: number; rx: number }
   | { type: "ellipse"; cx: number; cy: number; rx: number; ry: number }
   | { type: "path"; d: string }
-  | { type: "text"; x: number; y: number; value: string; size: number };
+  | { type: "text"; x: number; y: number; value: string; size: number }
+  | { type: "sprite"; url: string; frame_width: number; frame_height: number; columns: number; rows: number };
 
 export type StrutNode = {
   id: string;
@@ -53,7 +56,7 @@ export type StrutArtboard = {
   nodes: StrutNode[];
 };
 
-export type StrutEasing = "linear" | "ease_in" | "ease_out" | "ease_in_out";
+export type StrutEasing = "linear" | "ease_in" | "ease_out" | "ease_in_out" | "steps";
 
 export type StrutPropertyValue =
   | { type: "number"; value: number }
@@ -340,6 +343,18 @@ function shapeElement(node: StrutNode, shape: StrutShape): SVGElement {
     text.textContent = shape.value;
     return text;
   }
+  if (shape.type === "sprite") {
+    const wrapper = createSvg("svg");
+    setAttributes(wrapper, { width: shape.frame_width, height: shape.frame_height });
+    wrapper.style.overflow = "hidden";
+    const img = createSvg("image");
+    img.setAttribute("href", shape.url);
+    img.setAttribute("width", String(shape.frame_width * shape.columns));
+    img.setAttribute("height", String(shape.frame_height * shape.rows));
+    img.classList.add("strut-sprite-image");
+    wrapper.append(img);
+    return wrapper;
+  }
   return createSvg("g");
 }
 
@@ -363,43 +378,47 @@ function applyTransform(element: SVGElement, transform: StrutTransform | undefin
   if (transform.translate_x || transform.translate_y) {
     transforms.push(`translate(${transform.translate_x ?? 0} ${transform.translate_y ?? 0})`);
   }
-  if (transform.rotate) {
-    transforms.push(`rotate(${transform.rotate})`);
+  if (transform.rotate || transform.rotate_x || transform.rotate_y) {
+    if (transform.rotate) transforms.push(`rotateZ(${transform.rotate}deg)`);
+    if (transform.rotate_x) transforms.push(`rotateX(${transform.rotate_x}deg)`);
+    if (transform.rotate_y) transforms.push(`rotateY(${transform.rotate_y}deg)`);
   }
   if (transform.scale_x !== undefined || transform.scale_y !== undefined) {
-    transforms.push(`scale(${transform.scale_x ?? 1} ${transform.scale_y ?? 1})`);
+    transforms.push(`scale(${transform.scale_x ?? 1}, ${transform.scale_y ?? 1})`);
   }
   if (transforms.length) {
-    element.setAttribute("transform", transforms.join(" "));
+    element.style.transform = transforms.join(" ");
   }
 }
 
 function runtimeCss(document: StrutDocument, stateMachine: StrutStateMachine, reducedMotion: boolean) {
-  const base = `
-.strut-runtime-svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.strut-runtime-svg [data-node-id] { transform-box: fill-box; transform-origin: center; }
+const base = `
+.strut-runtime-svg { width: 100%; height: 100%; display: block; overflow: visible; perspective: 800px; transform-style: preserve-3d; }
+.strut-runtime-svg [data-node-id] { transform-box: fill-box; transform-origin: center; transform-style: preserve-3d; }
 .strut-runtime-svg .strut-state-label { fill: #17142f; font: 800 22px system-ui, sans-serif; }
+.strut-runtime-svg .strut-sprite-image { transform: translate(var(--sprite-x, 0), var(--sprite-y, 0)); }
 `;
   if (reducedMotion) {
     return base;
   }
   const transforms = nodeTransformMap(document);
+  const shapes = nodeShapeMap(document);
   const timelines = document.timelines.filter((timeline) => timeline.tracks?.length);
   const animations = timelines
-    .map((timeline) => timelineAnimationCss(timeline, transforms))
+    .map((timeline) => timelineAnimationCss(timeline, transforms, shapes))
     .filter(Boolean)
     .join("\n");
   const stateRules = stateMachine.states
-    .flatMap((state) => timelinesForState(document, stateMachine, state).flatMap((timeline) => stateTimelineCss(state, timeline, transforms)))
+    .flatMap((state) => timelinesForState(document, stateMachine, state).flatMap((timeline) => stateTimelineCss(state, timeline, transforms, shapes)))
     .join("\n");
   return `${base}\n${animations}\n${stateRules}`;
 }
 
-function timelineAnimationCss(timeline: StrutTimeline, transforms: Map<string, StrutTransform>) {
+function timelineAnimationCss(timeline: StrutTimeline, transforms: Map<string, StrutTransform>, shapes: Map<string, StrutShape>) {
   return Array.from(timelineTrackGroups(timeline).entries())
     .flatMap(([target, tracks]) => [
       transformTracksCss(timeline, target, tracks.filter((track) => isTransformProperty(track.property)), transforms.get(target)),
-      ...tracks.filter((track) => isScalarProperty(track.property)).map((track) => scalarTrackCss(timeline, track)),
+      ...tracks.filter((track) => isScalarProperty(track.property)).map((track) => scalarTrackCss(timeline, track, shapes.get(target))),
     ])
     .filter(Boolean)
     .join("\n");
@@ -422,16 +441,18 @@ function transformTracksCss(
       const tx = base.translate_x + trackValue(tracks, "translation.x", time, 0);
       const ty = base.translate_y + trackValue(tracks, "translation.y", time, 0);
       const rotate = base.rotate + trackValue(tracks, "rotation", time, 0);
+      const rotate_x = base.rotate_x + trackValue(tracks, "rotation.x", time, 0);
+      const rotate_y = base.rotate_y + trackValue(tracks, "rotation.y", time, 0);
       const scale = trackValue(tracks, "scale", time, 1);
       const sx = base.scale_x * scale * trackValue(tracks, "scale.x", time, 1);
       const sy = base.scale_y * scale * trackValue(tracks, "scale.y", time, 1);
-      return `${percent}% { transform: translate(${round(tx)}px, ${round(ty)}px) rotate(${round(rotate)}deg) scale(${round(sx)}, ${round(sy)}); }`;
+      return `${percent}% { transform: translate(${round(tx)}px, ${round(ty)}px) rotateZ(${round(rotate)}deg) rotateX(${round(rotate_x)}deg) rotateY(${round(rotate_y)}deg) scale(${round(sx)}, ${round(sy)}); }`;
     })
     .join("\n");
   return `@keyframes ${transformAnimationName(timeline, target)} { ${frames} }`;
 }
 
-function scalarTrackCss(timeline: StrutTimeline, track: StrutTrack) {
+function scalarTrackCss(timeline: StrutTimeline, track: StrutTrack, shape: StrutShape | undefined) {
   const numericKeyframes = numericTrackKeyframes(track);
   if (numericKeyframes.length < 2) {
     return "";
@@ -439,13 +460,19 @@ function scalarTrackCss(timeline: StrutTimeline, track: StrutTrack) {
   const frames = numericKeyframes
     .map((keyframe) => {
       const percent = Math.max(0, Math.min(100, (keyframe.time_ms / timeline.duration_ms) * 100));
+      if (track.property === "frame" && shape?.type === "sprite") {
+        const frame = Math.round(keyframe.value);
+        const x = (frame % shape.columns) * shape.frame_width;
+        const y = Math.floor(frame / shape.columns) * shape.frame_height;
+        return `${percent}% { --sprite-x: -${x}px; --sprite-y: -${y}px; }`;
+      }
       return `${percent}% { ${track.property}: ${round(keyframe.value)}; }`;
     })
     .join("\n");
   return `@keyframes ${scalarAnimationName(timeline, track)} { ${frames} }`;
 }
 
-function stateTimelineCss(state: string, timeline: StrutTimeline, transforms: Map<string, StrutTransform>) {
+function stateTimelineCss(state: string, timeline: StrutTimeline, transforms: Map<string, StrutTransform>, shapes: Map<string, StrutShape>) {
   const iteration = timeline.loops ? "infinite" : "1 both";
   return Array.from(timelineTrackGroups(timeline).entries())
     .map(([target, tracks]) => {
@@ -455,7 +482,13 @@ function stateTimelineCss(state: string, timeline: StrutTimeline, transforms: Ma
           : "",
         ...tracks
           .filter((track) => isScalarProperty(track.property))
-          .map((track) => `${scalarAnimationName(timeline, track)} ${timeline.duration_ms}ms ${cssEasing(track.keyframes[0]?.easing ?? "linear")} ${iteration}`),
+          .map((track) => {
+            const easing = cssEasing(track.keyframes[0]?.easing ?? "linear");
+            // If the easing is a step easing, we format it as `steps(...)` instead of `linear`.
+            // But actually CSS custom properties don't interpolate smoothly anyway.
+            // If the user specifies 'steps', we just pass it to the generated CSS.
+            return `${scalarAnimationName(timeline, track)} ${timeline.duration_ms}ms ${easing} ${iteration}`;
+          }),
       ].filter(Boolean);
       if (!animations.length) {
         return "";
@@ -534,7 +567,7 @@ function isTransformProperty(property: string) {
 }
 
 function isScalarProperty(property: string) {
-  return property === "opacity";
+  return property === "opacity" || property === "frame";
 }
 
 function groupEasing(tracks: StrutTrack[]) {
@@ -557,11 +590,29 @@ function nodeTransformMap(document: StrutDocument) {
   return transforms;
 }
 
+function nodeShapeMap(document: StrutDocument) {
+  const shapes = new Map<string, StrutShape>();
+  const visit = (node: StrutNode) => {
+    shapes.set(node.id, node.shape ?? { type: "none" });
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+  for (const artboard of document.artboards) {
+    for (const node of artboard.nodes) {
+      visit(node);
+    }
+  }
+  return shapes;
+}
+
 function normalizeTransform(transform: StrutTransform | undefined): Required<StrutTransform> {
   return {
     translate_x: transform?.translate_x ?? 0,
     translate_y: transform?.translate_y ?? 0,
     rotate: transform?.rotate ?? 0,
+    rotate_x: transform?.rotate_x ?? 0,
+    rotate_y: transform?.rotate_y ?? 0,
     scale_x: transform?.scale_x ?? 1,
     scale_y: transform?.scale_y ?? 1,
   };
@@ -683,6 +734,7 @@ function cssEasing(easing: StrutEasing) {
   if (easing === "ease_in") return "ease-in";
   if (easing === "ease_out") return "ease-out";
   if (easing === "ease_in_out") return "ease-in-out";
+  if (easing === "steps") return "step-end";
   return "linear";
 }
 
