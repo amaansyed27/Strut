@@ -143,6 +143,8 @@ function App() {
   const [composerToolsOpen, setComposerToolsOpen] = useState(true);
   const [layersRailCollapsed, setLayersRailCollapsed] = useState(false);
   const [previewRefreshSignal, setPreviewRefreshSignal] = useState(0);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<"auto" | "svg" | "sprite" | "dynamic">("auto");
 
   // ── Disclosure state for modals ──────────────────────────────────────
   const searchModal = useDisclosure();
@@ -815,7 +817,19 @@ function App() {
       return;
     }
     const references = composerReferences;
-    const combinedPrompt = `${trimmed}${layerReferencePrompt(references)}`;
+    
+    // Apply manual strategy override if selected
+    let finalPrompt = trimmed;
+    if (selectedStrategy !== "auto") {
+      const strategyHint = selectedStrategy === "svg" 
+        ? " [use svg vector style]"
+        : selectedStrategy === "sprite"
+        ? " [use sprite style]"
+        : " [use dynamic style]";
+      finalPrompt = `${trimmed}${strategyHint}`;
+    }
+    
+    const combinedPrompt = `${finalPrompt}${layerReferencePrompt(references)}`;
 
     appendUserMessage(trimmed || "Use the attached reference image.", references);
     updateChat(activeProjectId, activeChatId, (chat) => ({
@@ -1096,7 +1110,86 @@ function App() {
                     </div>
                   ) : null}
                 </div>
-                <textarea aria-label="Motion prompt" value={prompt} onChange={(event) => setPrompt(event.currentTarget.value)} placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene" />
+                <div className="composer-input-wrapper">
+                  <textarea 
+                    aria-label="Motion prompt" 
+                    value={prompt} 
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setPrompt(value);
+                      // Open slash menu when user types "/"
+                      if (value === "/" || (value.length > 1 && value[value.length - 2] === " " && value[value.length - 1] === "/")) {
+                        setSlashMenuOpen(true);
+                      } else if (!value.endsWith("/")) {
+                        setSlashMenuOpen(false);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void sendMessage();
+                      } else if (event.key === "Escape" && slashMenuOpen) {
+                        setSlashMenuOpen(false);
+                      }
+                    }}
+                    placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene. Type / for options" 
+                  />
+                  {slashMenuOpen && (
+                    <div className="slash-menu">
+                      <button
+                        type="button"
+                        className={selectedStrategy === "auto" ? "selected" : ""}
+                        onClick={() => {
+                          setSelectedStrategy("auto");
+                          setSlashMenuOpen(false);
+                          setPrompt(prompt.replace(/\/$/, ""));
+                        }}
+                      >
+                        <span className="slash-command">/auto</span>
+                        <span className="slash-description">Let AI choose the best style</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedStrategy === "svg" ? "selected" : ""}
+                        onClick={() => {
+                          setSelectedStrategy("svg");
+                          setSlashMenuOpen(false);
+                          setPrompt(prompt.replace(/\/$/, ""));
+                        }}
+                      >
+                        <span className="slash-command">/svg</span>
+                        <span className="slash-description">Simple SVG vector style (logos, icons, loaders)</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedStrategy === "sprite" ? "selected" : ""}
+                        onClick={() => {
+                          setSelectedStrategy("sprite");
+                          setSlashMenuOpen(false);
+                          setPrompt(prompt.replace(/\/$/, ""));
+                        }}
+                      >
+                        <span className="slash-command">/sprite</span>
+                        <span className="slash-description">Complex sprite style (mascots, characters)</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedStrategy === "dynamic" ? "selected" : ""}
+                        onClick={() => {
+                          setSelectedStrategy("dynamic");
+                          setSlashMenuOpen(false);
+                          setPrompt(prompt.replace(/\/$/, ""));
+                        }}
+                      >
+                        <span className="slash-command">/dynamic</span>
+                        <span className="slash-description">Dynamic provider plan (flexible approach)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="composer-strategy-indicator" title={`Animation strategy: ${selectedStrategy}`}>
+                  <span>{selectedStrategy === "auto" ? "🎯 Auto" : selectedStrategy === "svg" ? "🎨 SVG" : selectedStrategy === "sprite" ? "🎮 Sprite" : "⚡ Dynamic"}</span>
+                </div>
                 <div className="composer-controls">
                   <div className="composer-left">
                     <input
