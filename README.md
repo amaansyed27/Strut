@@ -121,6 +121,12 @@ npm run studio:dev
 
 Maintainer review commands live in [docs/internal/manual-review.md](./docs/internal/manual-review.md).
 
+## Generation Troubleshooting
+
+Test animation generation through Strut Studio, not through an external Gemini, Claude, or ChatGPT chat. Studio supplies the Strut router prompt, generation schema, project context, and repair prompts that external chats do not have.
+
+If Studio reports `Provider did not return valid Strut animation JSON`, check the selected provider, API key or local adapter setup, endpoint/model configuration, and try a direct generation prompt such as `Make me 3d rolling die`. For the full workflow, see [Testing Animation Generation](./TESTING-GENERATION.md).
+
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
