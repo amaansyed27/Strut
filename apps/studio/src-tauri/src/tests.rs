@@ -2652,6 +2652,67 @@
     }
 
     #[test]
+    fn dice_plan_compiles_to_visible_six_face_rig() {
+        let json_str = r##"{
+            "plan": {
+                "id": "weak-dice-plan",
+                "name": "Premium 3D Dice Roller",
+                "subject": {"classification": "dice", "label": "3D rolling die"},
+                "parts": [
+                    {"id": "Shadow", "name": "Shadow", "role": "shadow", "geometry": {"kind": "ellipse", "cx": 480, "cy": 350, "rx": 70, "ry": 14}, "style": {"fill": "#111827", "opacity": 0.18}, "constraints": {"editable": true, "allowed_properties": ["opacity", "scale"]}},
+                    {"id": "DieContainer", "name": "Die Container", "role": "body", "geometry": {"kind": "rect", "x": 430, "y": 220, "width": 100, "height": 100, "rx": 18}, "style": {"fill": "#e2e8f0", "stroke": "#cbd5e1", "stroke_width": 1, "opacity": 1}, "constraints": {"editable": true, "allowed_properties": ["translation.y", "rotation"]}},
+                    {"id": "DieRim", "name": "Die Rim", "role": "rim", "geometry": {"kind": "rect", "x": 434, "y": 224, "width": 92, "height": 92, "rx": 16}, "style": {"fill": "#dbe4ef", "opacity": 1}, "constraints": {"editable": true, "allowed_properties": ["translation.y"]}},
+                    {"id": "DieBody", "name": "Die Body", "role": "body", "geometry": {"kind": "rect", "x": 438, "y": 228, "width": 84, "height": 84, "rx": 14}, "style": {"fill": "#f8fafc", "opacity": 1}, "constraints": {"editable": true, "allowed_properties": ["translation.y", "rotation"]}},
+                    {"id": "Pip1", "name": "Pip 1", "role": "pip", "geometry": {"kind": "ellipse", "cx": 480, "cy": 270, "rx": 6, "ry": 6}, "style": {"fill": "#f8fafc", "opacity": 0}, "constraints": {"editable": true, "allowed_properties": ["opacity"]}}
+                ],
+                "states": ["idle", "roll", "face_1", "face_2", "face_3", "face_4", "face_5", "face_6"],
+                "timelines": [
+                    {"id": "idle", "name": "idle", "duration_ms": 1200, "loops": true, "tracks": []},
+                    {"id": "roll", "name": "roll", "duration_ms": 900, "loops": true, "tracks": []},
+                    {"id": "face_1", "name": "face_1", "duration_ms": 700, "tracks": []}
+                ],
+                "editability": {"editable_parts": ["DieContainer", "DieRim", "DieBody", "Pip1"], "locked_parts": [], "notes": []}
+            },
+            "operations": []
+        }"##;
+
+        let document = document_from_generation_plan_text(json_str).expect("dice plan should compile");
+        let names = semantic_layer_names(&document);
+        let visible_pips = flatten_document_nodes(&document)
+            .into_iter()
+            .filter(|node| {
+                let name = node.name.to_ascii_lowercase();
+                name.contains("pip") && node.style.opacity > 0.0
+            })
+            .count();
+
+        for required in [
+            "Die Group",
+            "Back Face",
+            "Right Face",
+            "Front Face",
+            "Face 1 Pips",
+            "Face 6 Pips",
+        ] {
+            assert!(
+                names.iter().any(|name| name == required),
+                "missing canonical dice layer {required}"
+            );
+        }
+        assert!(visible_pips >= 6, "idle dice should show visible pips, got {visible_pips}");
+        for state in ["idle", "roll", "face_1", "face_2", "face_3", "face_4", "face_5", "face_6"] {
+            assert!(
+                document.state_machines[0].states.iter().any(|item| item == state),
+                "missing dice state {state}"
+            );
+            assert!(
+                document.timelines.iter().any(|timeline| timeline.name == state),
+                "missing dice timeline {state}"
+            );
+        }
+    }
+
+    #[test]
     fn assistant_result_serializes_plan_summary_for_studio() {
         let result = AssistantResult::DocumentCreated {
             message: "Created rolling dice".to_string(),

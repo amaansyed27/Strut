@@ -9,6 +9,7 @@ pub mod validation;
 pub mod api;
 pub mod cli;
 pub mod utils;
+mod dice_repair;
 
 pub use models::*;
 pub use project::*;

@@ -531,6 +531,7 @@ pub fn document_from_generation_plan_value(value: &Value) -> Result<strut_core::
         .and_then(|s| s.get("label"))
         .and_then(Value::as_str)
         .unwrap_or("");
+    let name = plan.get("name").and_then(Value::as_str).unwrap_or("Generated");
     
     let allows_mascot = subject_allows_mascot_anatomy(classification, label);
     
@@ -585,9 +586,13 @@ pub fn document_from_generation_plan_value(value: &Value) -> Result<strut_core::
         }
     }
     // ---------------------------
+
+    if crate::dice_repair::should_replace_with_canonical_dice(plan, classification, label, name) {
+        return Ok(crate::dice_repair::canonical_dice_document(name));
+    }
     
     let doc_id = Uuid::new_v4();
-    let name = plan.get("name").and_then(Value::as_str).unwrap_or("Generated").to_string();
+    let name = name.to_string();
     
     let mut flat_nodes = Vec::new();
     let mut centers = std::collections::HashMap::new();
