@@ -347,6 +347,11 @@ pub fn context_requests_chat_response(context: Option<&GenerationContext>) -> bo
         .is_some_and(|mode| matches!(mode.trim().to_ascii_lowercase().as_str(), "chat" | "chat_only" | "chat-only"))
 }
 
+pub fn should_route_to_chat_response(prompt: &str, context: Option<&GenerationContext>) -> bool {
+    let _context_requests_chat = context_requests_chat_response(context);
+    !matches!(classify_request_intent(prompt), RequestIntent::Generate)
+}
+
 pub fn classify_generation_strategy(prompt: &str) -> GenerationStrategy {
     let value = prompt.to_lowercase();
     let heavy_words = [

@@ -117,12 +117,12 @@ pub async fn chat_with_local_adapter(
     let reference_dir = reference_files
         .as_ref()
         .map(|files| files.directory.as_path());
-    let local_prompt = contextual_generation_prompt(prompt, None, GenerationStrategy::ProviderPlan);
+    let combined_prompt = format!("{}\n\n{}", system_prompt, prompt);
     let output = run_local_cli_command(
         &definition,
         &command,
         reference_dir,
-        &local_prompt,
+        &combined_prompt,
         Duration::from_secs(240),
     )?;
     let _ = reference_files

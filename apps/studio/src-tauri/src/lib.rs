@@ -48,7 +48,7 @@ pub fn run() {
             assistant_message,
             local_agent_adapters,
             test_local_adapter,
-            
+            export_animation_to_react,
             
             test_byok_provider,
             save_byok_provider

@@ -498,4 +498,19 @@ pub struct ProjectAnimationRecord {
 pub struct ValidatedGeneratedBatch {
     pub document: strut_core::Document,
     pub batch: OperationBatchRecord,
-    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResult {
+    pub success: bool,
+    pub output_dir: String,
+    pub files: Vec<ExportedFile>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportedFile {
+    pub name: String,
+    pub path: String,
+}

@@ -244,8 +244,6 @@ pub fn local_generation_args(
         "gemini-cli" => vec![
             "--output-format".to_string(),
             "stream-json".to_string(),
-            "--prompt".to_string(),
-            "Generate exactly the requested JSON from stdin.".to_string(),
         ],
         "claude-code" => vec![
             "-p".to_string(),

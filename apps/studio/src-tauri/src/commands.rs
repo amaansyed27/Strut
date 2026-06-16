@@ -1,6 +1,33 @@
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use crate::*;
+
+fn generation_debug_enabled() -> bool {
+    std::env::var("STRUT_DEBUG_GENERATION")
+        .ok()
+        .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+}
+
+fn debug_generation(label: &str, detail: impl AsRef<str>) {
+    if generation_debug_enabled() {
+        eprintln!("[strut:generation] {label}: {}", detail.as_ref());
+    }
+}
+
+fn provider_debug_label(provider: &GenerationProvider) -> String {
+    match provider.mode.as_str() {
+        "local" => format!(
+            "local adapter={}",
+            provider.local_adapter_id.as_deref().unwrap_or("<missing>")
+        ),
+        "byok" => provider
+            .byok
+            .as_ref()
+            .map(|config| format!("byok provider={} model={}", config.provider_id, config.model))
+            .unwrap_or_else(|| "byok <missing config>".to_string()),
+        other => other.to_string(),
+    }
+}
 #[tauri::command]
 pub fn studio_status() -> strut_format::StudioStatus {
     let sample_path =
@@ -415,12 +442,20 @@ pub async fn assistant_message(
     }
 
     let user_prompt = prompt.clone();
+    let request_intent = classify_request_intent(&user_prompt);
+    let route_to_chat = should_route_to_chat_response(&user_prompt, context.as_ref());
+    debug_generation("classification", format!("{request_intent:?}"));
+    debug_generation("chat_early_exit", route_to_chat.to_string());
+    debug_generation("system_prompt_preview", response_preview(&system_prompt));
+    debug_generation("user_prompt", &user_prompt);
+    debug_generation("provider", provider_debug_label(&provider));
 
-    if context_requests_chat_response(context.as_ref())
-        || classify_request_intent(&user_prompt) == RequestIntent::Conversation
-    {
+    if route_to_chat {
         let chat_prompt = chat_system_prompt(&user_prompt, context.as_ref());
+        debug_generation("chat_prompt_preview", response_preview(&chat_prompt));
         let text = call_provider_for_assistant(&user_prompt, &provider, &references, &chat_prompt).await?;
+        debug_generation("llm_response_preview", response_preview(&text));
+        debug_generation("final_result", "chat");
         return Ok(AssistantResult::Chat {
             message: text,
             source: "llm".to_string(),
@@ -428,37 +463,49 @@ pub async fn assistant_message(
     }
 
     let text = call_provider_for_assistant(&user_prompt, &provider, &references, &system_prompt).await?;
+    debug_generation("llm_response_preview", response_preview(&text));
 
+    // Generation mode: attempt to parse as Strut document
+    // Chat mode requests already returned early above, so we know this is generation
     let initial_result = match parse_assistant_result_from_text(&text) {
-        Ok(result) => result,
+        Ok(result) => {
+            debug_generation("parse_initial", "ok");
+            result
+        }
         Err(first_error) => {
-            if classify_request_intent(&user_prompt) == RequestIntent::Conversation {
-                return Ok(AssistantResult::Chat {
-                    message: text,
-                    source: "raw".to_string(),
-                });
-            }
-
+            debug_generation("parse_initial", format!("error: {first_error}"));
+            // Apply repair/compact plan fallback for generation mode only
+            // No need to check intent again - chat mode already returned early
             let repair_prompt = generation_plan_repair_prompt(&user_prompt, &text, &first_error);
             let repair_text = match call_provider_for_assistant(&repair_prompt, &provider, &references, &system_prompt).await {
                 Ok(t) => t,
                 Err(e) => return Err(format!("Repair generation failed: {}", e)),
             };
+            debug_generation("repair_response_preview", response_preview(&repair_text));
 
             match parse_assistant_result_from_text(&repair_text) {
-                Ok(result) => result,
+                Ok(result) => {
+                    debug_generation("parse_repair", "ok");
+                    result
+                }
                 Err(repair_error) => {
+                    debug_generation("parse_repair", format!("error: {repair_error}"));
                     let compact_prompt = compact_plan_prompt(&user_prompt, &repair_error);
                     let compact_text = match call_provider_for_assistant(&compact_prompt, &provider, &references, &system_prompt).await {
                         Ok(t) => t,
                         Err(e) => return Err(format!("Compact plan generation failed: {}", e)),
                     };
+                    debug_generation("compact_response_preview", response_preview(&compact_text));
 
                     match parse_assistant_result_from_text(&compact_text) {
-                        Ok(result) => result,
+                        Ok(result) => {
+                            debug_generation("parse_compact", "ok");
+                            result
+                        }
                         Err(plan_error) => {
+                            debug_generation("parse_compact", format!("error: {plan_error}"));
                             return Err(format!(
-                                "Model did not return a valid Strut document after 3 attempts.\nFirst error: {first_error}\nRepair error: {repair_error}\nPlan error: {plan_error}\nResponse preview: {}",
+                                "Provider did not return valid Strut animation JSON after 3 attempts. Try a different provider or check provider configuration.\nFirst error: {first_error}\nRepair error: {repair_error}\nPlan error: {plan_error}\nResponse preview: {}",
                                 response_preview(&compact_text)
                             ));
                         }
@@ -500,6 +547,15 @@ pub async fn assistant_message(
         }
     }
     */
+
+    debug_generation(
+        "final_result",
+        match &initial_result {
+            AssistantResult::Chat { .. } => "chat",
+            AssistantResult::DocumentCreated { .. } => "document_created",
+            AssistantResult::DocumentUpdated { .. } => "document_updated",
+        },
+    );
 
     Ok(initial_result)
 }
@@ -800,4 +856,244 @@ pub fn test_local_adapter(adapter_id: String) -> ProviderOperationResult {
             detail: error,
         },
     }
+}
+
+#[tauri::command]
+pub fn export_animation_to_react(
+    project_path: String,
+    document: strut_core::Document,
+    animation_name: String,
+    output_dir: Option<String>,
+) -> Result<ExportResult, String> {
+    let root = ensure_project_root(&project_path)?;
+    let default_name = sanitize_token(&animation_name);
+
+    let export_dir = if let Some(dir) = output_dir.as_deref().map(str::trim).filter(|dir| !dir.is_empty()) {
+        let requested = PathBuf::from(dir);
+        if requested.is_absolute() {
+            requested
+        } else {
+            root.join(requested)
+        }
+    } else {
+        root.join("exports").join(format!("{default_name}-react"))
+    };
+
+    fs::create_dir_all(&export_dir).map_err(|error| {
+        format!("Failed to create export directory: {}", error)
+    })?;
+
+    let files = react_export_files(&document);
+    let mut exported_files = Vec::new();
+
+    for (file_name, content) in files {
+        let file_path = export_dir.join(&file_name);
+        fs::write(&file_path, content).map_err(|error| {
+            format!("Failed to write {}: {}", file_name.display(), error)
+        })?;
+
+        exported_files.push(ExportedFile {
+            name: file_name.display().to_string(),
+            path: file_path.display().to_string(),
+        });
+    }
+
+    Ok(ExportResult {
+        success: true,
+        output_dir: export_dir.display().to_string(),
+        files: exported_files,
+    })
+}
+
+fn react_export_files(document: &strut_core::Document) -> Vec<(PathBuf, String)> {
+    let scene_json = serde_json::to_string_pretty(document).expect("document serializes");
+    let component_template = r#"import type { ReactNode } from "react";
+import scene from "./scene.json";
+
+type StrutNode = {{
+  id: string;
+  name: string;
+  kind: string;
+  role?: string;
+  shape: {{ type: string; [key: string]: unknown }};
+  style: {{ fill?: string | null; stroke?: string | null; stroke_width?: number; opacity?: number }};
+  children?: StrutNode[];
+}};
+
+type StrutKeyframe = {{ time_ms: number; value: {{ type: string; value: number }}; easing?: string }};
+type StrutTrack = {{ target: string; property: string; keyframes: StrutKeyframe[] }};
+type StrutTimeline = {{ name: string; duration_ms: number; tracks: StrutTrack[] }};
+type StrutTransition = {{ to: string; timeline: string }};
+type StrutStateMachine = {{ transitions?: StrutTransition[] }};
+type StrutScene = {{
+  name: string;
+  artboards: Array<{{ width: number; height: number; nodes: StrutNode[] }}>;
+  timelines?: StrutTimeline[];
+  state_machines?: StrutStateMachine[];
+}};
+
+const strutScene = scene as StrutScene;
+const defaultTitle = __STRUT_TITLE_JSON__;
+
+function paint(value: string | null | undefined) {{
+  return value ?? "none";
+}}
+
+function cssIdent(value: string) {{
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}}
+
+function numericKeyframes(track: StrutTrack) {{
+  return (track.keyframes ?? []).filter((keyframe) => keyframe.value?.type === "number");
+}}
+
+function valueAt(track: StrutTrack | undefined, time: number, fallback: number) {{
+  const frames = track ? numericKeyframes(track).sort((a, b) => a.time_ms - b.time_ms) : [];
+  if (!frames.length) return fallback;
+  if (time <= frames[0].time_ms) return frames[0].value.value;
+  const last = frames[frames.length - 1];
+  if (time >= last.time_ms) return last.value.value;
+  for (let index = 0; index < frames.length - 1; index += 1) {{
+    const left = frames[index];
+    const right = frames[index + 1];
+    if (time >= left.time_ms && time <= right.time_ms) {{
+      const span = Math.max(1, right.time_ms - left.time_ms);
+      const progress = (time - left.time_ms) / span;
+      return left.value.value + (right.value.value - left.value.value) * progress;
+    }}
+  }}
+  return fallback;
+}}
+
+function groupTracks(timeline: StrutTimeline) {{
+  const groups = new Map<string, StrutTrack[]>();
+  for (const track of timeline.tracks ?? []) {{
+    if (!numericKeyframes(track).length) continue;
+    groups.set(track.target, [...(groups.get(track.target) ?? []), track]);
+  }}
+  return groups;
+}}
+
+function transformCss(tracks: StrutTrack[], timeline: StrutTimeline, target: string) {{
+  const transformTracks = tracks.filter((track) => ["translation.x", "translation.y", "rotation", "scale.x", "scale.y"].includes(track.property));
+  if (!transformTracks.length) return "";
+  const times = Array.from(new Set([0, timeline.duration_ms, ...transformTracks.flatMap((track) => numericKeyframes(track).map((frame) => frame.time_ms))])).sort((a, b) => a - b);
+  const frames = times
+    .map((time) => {{
+      const percent = Math.max(0, Math.min(100, (time / Math.max(1, timeline.duration_ms)) * 100));
+      const tx = valueAt(transformTracks.find((track) => track.property === "translation.x"), time, 0);
+      const ty = valueAt(transformTracks.find((track) => track.property === "translation.y"), time, 0);
+      const rotate = valueAt(transformTracks.find((track) => track.property === "rotation"), time, 0);
+      const sx = valueAt(transformTracks.find((track) => track.property === "scale.x"), time, 1);
+      const sy = valueAt(transformTracks.find((track) => track.property === "scale.y"), time, 1);
+      return `${{percent}}% {{ transform: translate(${{tx.toFixed(2)}}px, ${{ty.toFixed(2)}}px) rotate(${{rotate.toFixed(2)}}deg) scale(${{sx.toFixed(3)}}, ${{sy.toFixed(3)}}); }}`;
+    }})
+    .join("\n");
+  return `@keyframes strut-${{cssIdent(timeline.name)}}-${{cssIdent(target)}}-transform {{\n${{frames}}\n}}\n`;
+}}
+
+function scalarCss(track: StrutTrack, timeline: StrutTimeline) {{
+  if (track.property !== "opacity") return "";
+  const frames = numericKeyframes(track)
+    .sort((a, b) => a.time_ms - b.time_ms)
+    .map((keyframe) => `${{Math.max(0, Math.min(100, (keyframe.time_ms / Math.max(1, timeline.duration_ms)) * 100))}}% {{ opacity: ${{keyframe.value.value.toFixed(3)}}; }}`)
+    .join("\n");
+  return `@keyframes strut-${{cssIdent(timeline.name)}}-${{cssIdent(track.target)}}-${{cssIdent(track.property)}} {{\n${{frames}}\n}}\n`;
+}}
+
+function activeTimelines(state: string, playAll: boolean) {{
+  const timelines = strutScene.timelines ?? [];
+  if (playAll) return timelines;
+  const names = new Set<string>([state]);
+  for (const machine of strutScene.state_machines ?? []) {{
+    for (const transition of machine.transitions ?? []) {{
+      if (transition.to === state) names.add(transition.timeline);
+    }}
+  }}
+  return timelines.filter((timeline) => names.has(timeline.name) || timeline.name.startsWith(state));
+}}
+
+function animationCss(state: string, playAll: boolean) {{
+  const rules: string[] = [];
+  for (const timeline of activeTimelines(state, playAll)) {{
+    for (const [target, tracks] of groupTracks(timeline)) {{
+      const animations: string[] = [];
+      const transformRule = transformCss(tracks, timeline, target);
+      if (transformRule) {{
+        rules.push(transformRule);
+        animations.push(`strut-${{cssIdent(timeline.name)}}-${{cssIdent(target)}}-transform ${{timeline.duration_ms}}ms ease-in-out infinite`);
+      }}
+      for (const track of tracks) {{
+        const scalarRule = scalarCss(track, timeline);
+        if (scalarRule) {{
+          rules.push(scalarRule);
+          animations.push(`strut-${{cssIdent(timeline.name)}}-${{cssIdent(track.target)}}-${{cssIdent(track.property)}} ${{timeline.duration_ms}}ms ease-in-out infinite`);
+        }}
+      }}
+      if (animations.length) {{
+        rules.push(`[data-strut-id="${{target}}"] {{ transform-box: fill-box; transform-origin: center; animation: ${{animations.join(", ")}}; }}`);
+      }}
+    }}
+  }}
+  return rules.join("\n");
+}}
+
+function renderNode(node: StrutNode): ReactNode {{
+  const style = node.style ?? {{}};
+  const common = {{
+    key: node.id,
+    "data-strut-id": node.id,
+    fill: paint(style.fill),
+    stroke: paint(style.stroke),
+    strokeWidth: style.stroke_width ?? 0,
+    opacity: style.opacity ?? 1,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "data-strut-node": node.name,
+    "data-strut-role": node.role ?? "",
+  }};
+  const shape = node.shape ?? {{ type: "none" }};
+  if (shape.type === "rect") {{
+    return <rect {{...common}} x={{shape.x as number}} y={{shape.y as number}} width={{shape.width as number}} height={{shape.height as number}} rx={{shape.rx as number}} />;
+  }}
+  if (shape.type === "ellipse") {{
+    return <ellipse {{...common}} cx={{shape.cx as number}} cy={{shape.cy as number}} rx={{shape.rx as number}} ry={{shape.ry as number}} />;
+  }}
+  if (shape.type === "path") {{
+    return <path {{...common}} d={{shape.d as string}} />;
+  }}
+  if (shape.type === "text") {{
+    return <text {{...common}} x={{shape.x as number}} y={{shape.y as number}} fontSize={{shape.size as number}}>{{shape.value as string}}</text>;
+  }}
+  return <g key={{node.id}}>{{node.children?.map(renderNode)}}</g>;
+}}
+
+export function StrutAnimation({{ state = "idle", title = defaultTitle, playAll = true }}: {{ state?: string; title?: string; playAll?: boolean }}) {{
+  const artboard = strutScene.artboards[0];
+  return (
+    <svg viewBox={{`0 0 ${{artboard.width}} ${{artboard.height}}`}} role="img" aria-label={{title}} data-strut-state={{state}}>
+      <style>{{animationCss(state, playAll)}}</style>
+      {{artboard.nodes.map(renderNode)}}
+    </svg>
+  );
+}}
+
+export default StrutAnimation;
+"#;
+    let component = component_template
+        .replace(
+            "__STRUT_TITLE_JSON__",
+            &serde_json::to_string(&document.name).expect("title serializes"),
+        )
+        .replace("{{", "{")
+        .replace("}}", "}");
+    let readme = format!(
+        "# Strut React Export\n\nGenerated from `{}`.\n\n```tsx\nimport {{ StrutAnimation }} from \"./StrutAnimation\";\n\nexport function Example() {{\n  return <StrutAnimation state=\"idle\" playAll />;\n}}\n```\n\nThe component renders the validated `.strut` document as SVG and maps numeric Strut timeline tracks to CSS keyframe playback. Coding agents can edit `scene.json`, re-run `strut verify`, and keep the React wrapper unchanged.\n",
+        document.name
+    );
+    vec![
+        (PathBuf::from("scene.json"), scene_json),
+        (PathBuf::from("StrutAnimation.tsx"), component),
+        (PathBuf::from("README.md"), readme),
+    ]
 }
