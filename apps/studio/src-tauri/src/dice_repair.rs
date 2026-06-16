@@ -187,6 +187,18 @@ fn dice_pip_group(face: usize, positions: &[(f32, f32)], base_opacity: f32) -> s
     )
 }
 
+fn face_pose(face: usize) -> (f32, f32, f32) {
+    match face {
+        1 => (-2.0, 0.0, 0.0),
+        2 => (3.0, -78.0, 8.0),
+        3 => (-5.0, 8.0, 78.0),
+        4 => (5.0, -8.0, -78.0),
+        5 => (-3.0, 78.0, -8.0),
+        6 => (2.0, 0.0, 158.0),
+        _ => (0.0, 0.0, 0.0),
+    }
+}
+
 pub(crate) fn canonical_dice_document(name: &str) -> strut_core::Document {
     let face_positions: [(usize, &[(f32, f32)]); 6] = [
         (1, &[(0.0, 0.0)]),
@@ -338,6 +350,8 @@ pub(crate) fn canonical_dice_document(name: &str) -> strut_core::Document {
             tracks: vec![
                 dice_track("DieGroup", "translation.y", vec![(0, 0.0, strut_core::Easing::EaseOut), (430, -58.0, strut_core::Easing::EaseOut), (950, 0.0, strut_core::Easing::EaseIn)]),
                 dice_track("DieGroup", "rotation", vec![(0, 0.0, strut_core::Easing::Linear), (950, 720.0, strut_core::Easing::Linear)]),
+                dice_track("DieGroup", "rotation.x", vec![(0, 0.0, strut_core::Easing::Linear), (475, -210.0, strut_core::Easing::Linear), (950, -420.0, strut_core::Easing::Linear)]),
+                dice_track("DieGroup", "rotation.y", vec![(0, 0.0, strut_core::Easing::Linear), (475, 270.0, strut_core::Easing::Linear), (950, 540.0, strut_core::Easing::Linear)]),
                 dice_track("DieGroup", "scale.x", vec![(0, 1.0, strut_core::Easing::Linear), (235, 0.18, strut_core::Easing::Linear), (470, -1.0, strut_core::Easing::Linear), (705, -0.18, strut_core::Easing::Linear), (950, 1.0, strut_core::Easing::Linear)]),
                 dice_track("SettleShadow", "opacity", vec![(0, 0.18, strut_core::Easing::EaseOut), (430, 0.06, strut_core::Easing::EaseOut), (950, 0.18, strut_core::Easing::EaseIn)]),
             ],
@@ -345,9 +359,13 @@ pub(crate) fn canonical_dice_document(name: &str) -> strut_core::Document {
     ];
 
     for face in 1..=6 {
+        let (rotate_z, rotate_x, rotate_y) = face_pose(face);
         let mut tracks = vec![
             dice_track("DieGroup", "translation.y", vec![(0, -24.0, strut_core::Easing::EaseOut), (360, 8.0, strut_core::Easing::EaseInOut), (700, 0.0, strut_core::Easing::EaseOut)]),
             dice_track("DieGroup", "scale", vec![(0, 0.92, strut_core::Easing::EaseOut), (360, 1.08, strut_core::Easing::EaseInOut), (700, 1.0, strut_core::Easing::EaseOut)]),
+            dice_track("DieGroup", "rotation", vec![(0, rotate_z + 18.0, strut_core::Easing::EaseOut), (460, rotate_z - 4.0, strut_core::Easing::EaseInOut), (700, rotate_z, strut_core::Easing::EaseOut)]),
+            dice_track("DieGroup", "rotation.x", vec![(0, rotate_x - 34.0, strut_core::Easing::EaseOut), (460, rotate_x + 8.0, strut_core::Easing::EaseInOut), (700, rotate_x, strut_core::Easing::EaseOut)]),
+            dice_track("DieGroup", "rotation.y", vec![(0, rotate_y + 42.0, strut_core::Easing::EaseOut), (460, rotate_y - 8.0, strut_core::Easing::EaseInOut), (700, rotate_y, strut_core::Easing::EaseOut)]),
         ];
         for (index, target) in face_ids.iter().enumerate() {
             let visible = if index + 1 == face { 1.0 } else { 0.0 };

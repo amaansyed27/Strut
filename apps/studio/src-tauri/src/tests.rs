@@ -2710,6 +2710,38 @@
                 "missing dice timeline {state}"
             );
         }
+
+        let roll = document.timelines.iter().find(|timeline| timeline.name == "roll").expect("roll timeline");
+        assert!(
+            roll.tracks.iter().any(|track| track.property == "rotation.x")
+                && roll.tracks.iter().any(|track| track.property == "rotation.y"),
+            "roll should tumble on multiple axes, got {:?}",
+            roll.tracks.iter().map(|track| track.property.as_str()).collect::<Vec<_>>()
+        );
+
+        let face_poses: std::collections::HashSet<String> = (1..=6)
+            .map(|face| {
+                let timeline = document
+                    .timelines
+                    .iter()
+                    .find(|timeline| timeline.name == format!("face_{face}"))
+                    .expect("face timeline");
+                let end_rotation = |property: &str| {
+                    timeline
+                        .tracks
+                        .iter()
+                        .find(|track| track.property == property)
+                        .and_then(|track| track.keyframes.last())
+                        .and_then(|keyframe| match keyframe.value {
+                            strut_core::PropertyValue::Number(value) => Some(value),
+                            _ => None,
+                        })
+                        .unwrap_or(0.0)
+                };
+                format!("{:.1}:{:.1}:{:.1}", end_rotation("rotation"), end_rotation("rotation.x"), end_rotation("rotation.y"))
+            })
+            .collect();
+        assert_eq!(face_poses.len(), 6, "each face state should settle into a distinct cube pose");
     }
 
     #[test]
