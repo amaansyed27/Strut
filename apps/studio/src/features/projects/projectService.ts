@@ -12,6 +12,12 @@ import type {
   LayerUiState,
 } from "../../types";
 
+export type ExportResult = {
+  success: boolean;
+  outputDir: string;
+  files: Array<{ name: string; path: string }>;
+};
+
 export const projectService = {
   async createProject(name: string, location: string): Promise<ProjectInfo> {
     return tauriInvoke<ProjectInfo>("create_project", { name, location });
@@ -67,5 +73,19 @@ export const projectService = {
 
   async deleteProjectAnimation(projectPath: string, animationId: string): Promise<void> {
     await tauriInvoke<void>("delete_project_animation", { projectPath, animationId });
+  },
+
+  async exportAnimationToReact(
+    projectPath: string,
+    document: StrutDocument,
+    animationName: string,
+    outputDir?: string,
+  ): Promise<ExportResult> {
+    return tauriInvoke<ExportResult>("export_animation_to_react", {
+      projectPath,
+      document,
+      animationName,
+      outputDir: outputDir?.trim() ? outputDir.trim() : null,
+    });
   },
 };

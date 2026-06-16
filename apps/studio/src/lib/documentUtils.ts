@@ -252,6 +252,142 @@ export function localChatFallback(prompt: string): string {
   return "I can talk through the idea first. Ask me for direction, critique, or options; when you're ready to create motion, use words like generate, animate, create, or make.";
 }
 
+function browserId(prefix: string): string {
+  const random = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${random}`;
+}
+
+function numericKeyframe(timeMs: number, value: number, easing: "linear" | "ease_in" | "ease_out" | "ease_in_out" = "ease_in_out") {
+  return { time_ms: timeMs, value: { type: "number" as const, value }, easing };
+}
+
+export function createBrowserPreviewGeneration(prompt: string): Extract<AssistantResult, { kind: "document_created" }> {
+  const value = prompt.toLowerCase();
+  const isDice = value.includes("dice") || value.includes("die");
+  const isLoader = value.includes("loader") || value.includes("spinner");
+  const subject = isDice ? "Browser Rolling Dice" : isLoader ? "Browser Loader" : "Browser Bouncing Ball";
+  const docId = browserId("doc");
+  const artboardId = browserId("artboard");
+  const bodyId = browserId("body");
+  const accentId = browserId("accent");
+  const shadowId = browserId("shadow");
+  const idleTimelineId = browserId("timeline-idle");
+  const motionTimelineId = browserId("timeline-motion");
+  const machineId = browserId("machine");
+
+  const bodyShape = isLoader
+    ? { type: "ellipse" as const, cx: 256, cy: 232, rx: 54, ry: 54 }
+    : { type: "rect" as const, x: 196, y: 162, width: 120, height: 120, rx: isDice ? 22 : 60 };
+  const accentShape = isDice
+    ? { type: "path" as const, d: "M226 194a8 8 0 1 0 0.1 0M286 194a8 8 0 1 0 0.1 0M226 250a8 8 0 1 0 0.1 0M286 250a8 8 0 1 0 0.1 0" }
+    : isLoader
+      ? { type: "path" as const, d: "M256 178 A54 54 0 0 1 310 232" }
+      : { type: "ellipse" as const, cx: 256, cy: 222, rx: 18, ry: 18 };
+
+  const document: StrutDocument = {
+    id: docId,
+    name: subject,
+    artboards: [{
+      id: artboardId,
+      name: "Main",
+      width: 512,
+      height: 384,
+      nodes: [
+        {
+          id: shadowId,
+          name: "Ground Shadow",
+          kind: "ellipse",
+          role: "shadow",
+          shape: { type: "ellipse", cx: 256, cy: 314, rx: isLoader ? 72 : 82, ry: 14 },
+          style: { fill: "#111827", stroke: null, stroke_width: 0, opacity: 0.18 },
+          children: [],
+        },
+        {
+          id: bodyId,
+          name: isDice ? "Die Body" : isLoader ? "Loader Ring" : "Ball Body",
+          kind: isLoader ? "ellipse" : "rect",
+          role: "body",
+          shape: bodyShape,
+          style: {
+            fill: isDice ? "#f8fafc" : isLoader ? "#dff4ea" : "#f97316",
+            stroke: "#111827",
+            stroke_width: isLoader ? 4 : 3,
+            opacity: 1,
+          },
+          children: [],
+        },
+        {
+          id: accentId,
+          name: isDice ? "Face Pips" : isLoader ? "Progress Sweep" : "Highlight",
+          kind: isDice || isLoader ? "path" : "ellipse",
+          role: "detail",
+          shape: accentShape,
+          style: {
+            fill: isDice ? "#111827" : isLoader ? "none" : "#fed7aa",
+            stroke: isLoader ? "#0f766e" : "none",
+            stroke_width: isLoader ? 10 : 0,
+            opacity: 1,
+            linecap: "round",
+            linejoin: "round",
+          },
+          children: [],
+        },
+      ],
+    }],
+    timelines: [
+      {
+        id: idleTimelineId,
+        name: "idle",
+        duration_ms: 1400,
+        loops: true,
+        tracks: [
+          { target: bodyId, property: "translation.y", keyframes: [numericKeyframe(0, 0), numericKeyframe(700, -8), numericKeyframe(1400, 0)] },
+          { target: accentId, property: "translation.y", keyframes: [numericKeyframe(0, 0), numericKeyframe(700, -8), numericKeyframe(1400, 0)] },
+          { target: shadowId, property: "scale.x", keyframes: [numericKeyframe(0, 1), numericKeyframe(700, 0.82), numericKeyframe(1400, 1)] },
+        ],
+      },
+      {
+        id: motionTimelineId,
+        name: isDice ? "rolling" : isLoader ? "loading" : "bounce",
+        duration_ms: isDice ? 1200 : 1000,
+        loops: true,
+        tracks: [
+          { target: bodyId, property: "rotation", keyframes: [numericKeyframe(0, 0, "linear"), numericKeyframe(isDice ? 1200 : 1000, isLoader ? 360 : 18, "linear")] },
+          { target: accentId, property: "rotation", keyframes: [numericKeyframe(0, 0, "linear"), numericKeyframe(isDice ? 1200 : 1000, isLoader ? 360 : 18, "linear")] },
+          { target: bodyId, property: "translation.y", keyframes: [numericKeyframe(0, 0), numericKeyframe(500, -54, "ease_out"), numericKeyframe(1000, 0, "ease_in")] },
+          { target: shadowId, property: "opacity", keyframes: [numericKeyframe(0, 0.18), numericKeyframe(500, 0.07), numericKeyframe(1000, 0.18)] },
+        ],
+      },
+    ],
+    state_machines: [{
+      id: machineId,
+      name: "Controller",
+      inputs: [{ name: "play", kind: "trigger" }],
+      states: ["idle", isDice ? "rolling" : isLoader ? "loading" : "bounce"],
+      transitions: [{ from: "idle", to: isDice ? "rolling" : isLoader ? "loading" : "bounce", on: "play", timeline: isDice ? "rolling" : isLoader ? "loading" : "bounce" }],
+    }],
+    bindings: [],
+    events: [],
+  };
+
+  return {
+    kind: "document_created",
+    message: "Generated a browser preview document. Use the desktop app with a configured provider for production output.",
+    source: "browser-preview",
+    document,
+    activeState: "idle",
+    planSummary: {
+      subjectClassification: isDice ? "dice" : isLoader ? "loader" : "ball",
+      subjectLabel: subject,
+      partNames: document.artboards[0].nodes.map((node) => node.name),
+      timelineNames: document.timelines.map((timeline) => timeline.name),
+    },
+    operationCount: document.artboards[0].nodes.length + document.timelines.length,
+  };
+}
+
 /** Unique attachments by kind + ID. */
 export function uniqueAttachments(attachments: ReferenceAttachment[]): ReferenceAttachment[] {
   const seen = new Set<string>();

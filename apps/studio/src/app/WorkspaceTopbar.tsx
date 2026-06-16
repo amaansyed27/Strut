@@ -10,6 +10,7 @@ import {
   Pin,
   Trash2,
   FolderOpen,
+  Download,
 } from "lucide-react";
 import type { ChatThread, ProjectRecord, ViewMode, ViewModeOption, SidebarMenuState } from "../types";
 
@@ -30,6 +31,7 @@ type WorkspaceTopbarProps = {
   onRemoveProject: (projectId: string) => void;
   onOpenProjectFolder: (project: ProjectRecord) => void;
   onSetMainPanel: (panel: "chat") => void;
+  onOpenExportDialog?: () => void;
 };
 
 export function WorkspaceTopbar({
@@ -49,6 +51,7 @@ export function WorkspaceTopbar({
   onRemoveProject,
   onOpenProjectFolder,
   onSetMainPanel,
+  onOpenExportDialog,
 }: WorkspaceTopbarProps) {
   return (
     <header className="workspace-top">
@@ -112,6 +115,15 @@ export function WorkspaceTopbar({
               <FolderOpen size={14} />
               Open in Explorer
             </button>
+            {onOpenExportDialog && (
+              <button role="menuitem" type="button" onClick={() => {
+                onOpenExportDialog();
+                onSetTopbarMenu(null);
+              }}>
+                <Download size={14} />
+                Export animation
+              </button>
+            )}
             <button role="menuitem" type="button" onClick={() => onRenameProject(activeProject.id)}>
               <Pencil size={14} />
               Rename project
@@ -121,6 +133,18 @@ export function WorkspaceTopbar({
               Delete project
             </button>
           </div>
+        ) : null}
+        {activeProject && onOpenExportDialog ? (
+          <button
+            aria-label="Export current animation"
+            className="topbar-export-button"
+            title="Export current animation"
+            type="button"
+            onClick={onOpenExportDialog}
+          >
+            <Download size={15} />
+            <span>Export</span>
+          </button>
         ) : null}
         <span className="sr-status" data-testid="activity-pill">{activity}</span>
       </div>

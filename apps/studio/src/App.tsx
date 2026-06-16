@@ -17,6 +17,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import {
   Cpu,
+  Download,
   Edit3,
   Film,
   FolderOpen,
@@ -65,6 +66,7 @@ import { cssIdent, stateAnimationDuration, stateAnimationLoops, stateNodeOverrid
 import {
   createChat,
   createGenerationBatch,
+  createBrowserPreviewGeneration,
   documentRevisionId,
   documentSummary,
   fileToAttachment,
@@ -75,6 +77,7 @@ import {
   layerUiFor,
   localChatFallback,
   nowStamp,
+  promptIntent,
   promptTitle,
   titleCase,
   uniqueAttachments,
@@ -106,6 +109,7 @@ import { Sidebar } from "./app/Sidebar";
 import { WorkspaceTopbar } from "./app/WorkspaceTopbar";
 import { SearchCommandModal } from "./features/search/SearchCommandModal";
 import { NewProjectDialog } from "./features/projects/NewProjectDialog";
+import { ExportDialog } from "./features/projects/ExportDialog";
 import { ProvidersPage } from "./features/providers/ProvidersPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 
@@ -149,6 +153,8 @@ function App() {
   // ── Disclosure state for modals ──────────────────────────────────────
   const searchModal = useDisclosure();
   const newProjectModal = useDisclosure();
+  const exportDialog = useDisclosure();
+  const [exportTarget, setExportTarget] = useState<{ document: StrutDocument; animationName: string } | null>(null);
 
   // ── Effects ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -732,6 +738,26 @@ function App() {
     setActivity(`Deleted animation ${animation.name}`);
   }
 
+  function openExportDialogForCurrent() {
+    if (!currentDocument) {
+      setActivity("Generate or open an animation before exporting");
+      return;
+    }
+    setExportTarget({
+      document: currentDocument,
+      animationName: currentAnimation?.name ?? currentDocument.name ?? activeProject?.name ?? "animation",
+    });
+    exportDialog.open();
+  }
+
+  function openExportDialogForAnimation(animation: ProjectAnimationRecord) {
+    setExportTarget({
+      document: animation.document,
+      animationName: animation.name,
+    });
+    exportDialog.open();
+  }
+
   function undoLastBatch() {
     const batchId = undoStack[0];
     const batch = operationBatches.find((item) => item.id === batchId);
@@ -846,14 +872,18 @@ function App() {
     setRunState("thinking");
 
     try {
+      let result;
       if (!desktopRuntime) {
-        appendMessage("assistant", localChatFallback(trimmed));
-        setActivity("Answered in chat mode");
-        return;
+        if (promptIntent(combinedPrompt, references.length > 0) === "chat") {
+          appendMessage("assistant", localChatFallback(trimmed));
+          setActivity("Answered in chat mode");
+          return;
+        }
+        result = createBrowserPreviewGeneration(combinedPrompt);
+      } else {
+        result = await generationService.assistantMessage(combinedPrompt, providerPayload(), references, generationContext());
       }
-      
-      const result = await generationService.assistantMessage(combinedPrompt, providerPayload(), references, generationContext());
-      
+
       if (result.kind === "chat") {
         appendMessage("assistant", result.message || localChatFallback(trimmed));
         setActivity(`Answered through ${result.source}`);
@@ -982,6 +1012,7 @@ function App() {
           onRemoveProject={removeProject}
           onOpenProjectFolder={(project) => void openProjectFolder(project)}
           onSetMainPanel={setMainPanel}
+          onOpenExportDialog={openExportDialogForCurrent}
         />
 
         {/* Search Command Palette */}
@@ -1001,6 +1032,16 @@ function App() {
           desktopRuntime={desktopRuntime}
           defaultLocation={defaultLocation}
           onProjectCreated={handleProjectCreated}
+        />
+
+        {/* Export Dialog */}
+        <ExportDialog
+          open={exportDialog.isOpen}
+          onClose={exportDialog.close}
+          desktopRuntime={desktopRuntime}
+          projectPath={activeProject?.path ?? ""}
+          document={exportTarget?.document ?? currentDocument}
+          animationName={exportTarget?.animationName ?? currentAnimation?.name ?? activeProject?.name ?? "animation"}
         />
 
         {/* Providers Page */}
@@ -1069,9 +1110,14 @@ function App() {
                   </div>
                 ) : null}
                 <div className="prompt-examples" aria-label="Prompt examples">
-                  {["Quiet loader", "Soft logo", "Button state", "Calm mascot", "State badge", "Tiny success"].map((example) => (
-                    <button key={example} type="button" onClick={() => setPrompt((current) => current || `Make a ${example.toLowerCase()} as an editable Strut animation`)}>
-                      {example}
+                  {[
+                    ["Coin flip", "Create a 3D coin flip animation"],
+                    ["Dice roller", "Create a rolling dice with all 6 faces"],
+                    ["Loader", "Create a smooth loader animation"],
+                    ["Button", "Create a button with hover and press states"],
+                  ].map(([label, example]) => (
+                    <button key={label} type="button" onClick={() => setPrompt(example)}>
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -1113,6 +1159,7 @@ function App() {
                 </div>
                 <div className="composer-input-wrapper">
                   <textarea 
+                    id="composer-input"
                     aria-label="Motion prompt" 
                     value={prompt} 
                     onChange={(event) => {
@@ -1133,7 +1180,7 @@ function App() {
                         setSlashMenuOpen(false);
                       }
                     }}
-                    placeholder="Ask Strut for calm, low-energy motion for a logo, SVG, UI state, icon, mascot, storyboard, or scene. Type / for options" 
+                    placeholder="Create an animation, e.g. bouncing ball, 3D coin flip, rolling dice, smooth loader. Type / for options" 
                   />
                   {slashMenuOpen && (
                     <div className="slash-menu">
@@ -1221,6 +1268,7 @@ function App() {
                   activeState={currentActiveState}
                   document={currentDocument}
                   onDeleteAnimation={() => void deleteProjectAnimation()}
+                  onExportAnimation={openExportDialogForAnimation}
                   onOpenAnimation={openProjectAnimation}
                   onReferenceAnimation={() => attachAnimationReference()}
                   projectAnimations={projectAnimations}
@@ -1595,6 +1643,7 @@ function PreviewPane({
   document,
   layerUi,
   onDeleteAnimation,
+  onExportAnimation,
   onOpenAnimation,
   onReferenceAnimation,
   onSelectNode,
@@ -1611,6 +1660,7 @@ function PreviewPane({
   document: StrutDocument | null;
   layerUi?: Record<string, LayerUiState>;
   onDeleteAnimation?: () => void;
+  onExportAnimation?: (animation: ProjectAnimationRecord) => void;
   onOpenAnimation?: (animation: ProjectAnimationRecord) => void;
   onReferenceAnimation?: () => void;
   onSelectNode?: (nodeId: string | null) => void;
@@ -1683,16 +1733,26 @@ function PreviewPane({
             <em>{projectAnimations.length} saved</em>
           </div>
           {projectAnimations.map((animation) => (
-            <button
-              aria-pressed={animation.id === activeAnimationId}
-              className={animation.id === activeAnimationId ? "active" : ""}
-              key={animation.id}
-              type="button"
-              onClick={() => onOpenAnimation?.(animation)}
-            >
-              <Film size={13} />
-              <span>{animation.name}</span>
-            </button>
+            <div className={`project-animation-row ${animation.id === activeAnimationId ? "active" : ""}`} key={animation.id}>
+              <button
+                aria-pressed={animation.id === activeAnimationId}
+                className="project-animation-open"
+                type="button"
+                onClick={() => onOpenAnimation?.(animation)}
+              >
+                <Film size={13} />
+                <span>{animation.name}</span>
+              </button>
+              <button
+                aria-label={`Export ${animation.name}`}
+                className="project-animation-export"
+                title="Export animation"
+                type="button"
+                onClick={() => onExportAnimation?.(animation)}
+              >
+                <Download size={13} />
+              </button>
+            </div>
           ))}
         </div>
       ) : null}

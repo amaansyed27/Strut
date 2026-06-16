@@ -582,6 +582,24 @@ textarea:focus-visible {
   background: var(--mode-hover);
 }
 
+.topbar-export-button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--field);
+}
+
+.topbar-export-button:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent-strong) 42%, var(--line));
+  background: var(--mode-hover);
+}
+
 .topbar-menu {
   top: 36px;
   left: 0;
@@ -1806,21 +1824,48 @@ textarea:focus-visible {
   font-style: normal;
 }
 
+.project-animation-row {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .project-animation-list button {
   min-height: 34px;
   justify-content: flex-start;
   gap: 8px;
   overflow: hidden;
   color: var(--ink);
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.18);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
-.project-animation-list button.active,
-.project-animation-list button:hover {
+.project-animation-row.active,
+.project-animation-row:hover {
   border-color: color-mix(in srgb, var(--accent-strong) 48%, var(--line));
   background: color-mix(in srgb, var(--active-bg) 82%, transparent);
   color: var(--active-text);
+}
+
+.project-animation-open {
+  min-width: 0;
+}
+
+.project-animation-export {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+  border-left: 1px solid color-mix(in srgb, var(--line) 72%, transparent) !important;
+}
+
+.project-animation-export:hover {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .project-animation-list button span {
@@ -2687,7 +2732,10 @@ textarea:focus-visible {
 }
 
 .prompt-examples {
-  display: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 12px 12px 0;
 }
 
 .composer {
@@ -3443,6 +3491,66 @@ textarea:focus-visible {
   border: 1px solid var(--danger);
   border-radius: 8px;
   background: rgba(179, 92, 87, 0.08);
+}
+
+.export-format-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.export-format-options button {
+  min-height: 38px;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--field);
+}
+
+.export-format-options button.active {
+  color: var(--active-text);
+  border-color: color-mix(in srgb, var(--accent-strong) 55%, var(--line));
+  background: var(--active-bg);
+}
+
+.export-format-options button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-field-hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.export-success {
+  display: grid;
+  gap: 12px;
+}
+
+.export-success strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.export-success ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.export-success button {
+  min-height: 36px;
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--field);
 }
 
 /* Dialog search field (for SearchCommandModal) */
