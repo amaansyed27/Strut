@@ -520,6 +520,7 @@ pub fn document_from_generation_plan_value(value: &Value) -> Result<strut_core::
     };
 
     let plan = envelope.get("plan").unwrap_or(&envelope);
+    validate_generation_plan_floor(plan)?;
     
     // --- SEMANTIC VALIDATION ---
     let classification = plan.get("subject")
@@ -920,18 +921,73 @@ pub fn document_from_generation_plan_value(value: &Value) -> Result<strut_core::
     })
 }
 
+fn validate_generation_plan_floor(plan: &Value) -> Result<(), String> {
+    let name = plan
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if name.is_empty() {
+        return Err("generation plan name is required".to_string());
+    }
+
+    let parts = plan
+        .get("parts")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "generation plan must include semantic parts".to_string())?;
+    if parts.len() < 5 {
+        return Err("generation plan must include at least five semantic parts".to_string());
+    }
+
+    let timelines = plan
+        .get("timelines")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "generation plan must include timelines".to_string())?;
+    if timelines.is_empty() {
+        return Err("generation plan must include at least one timeline".to_string());
+    }
+
+    let states = plan
+        .get("states")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "generation plan must include states".to_string())?;
+    if !states
+        .iter()
+        .filter_map(Value::as_str)
+        .any(|state| state.eq_ignore_ascii_case("idle"))
+    {
+        return Err("generation plan must include an idle state".to_string());
+    }
+
+    Ok(())
+}
+
 pub fn parse_provider_response_document(text: &str) -> Result<strut_core::Document, String> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text.trim()) {
+        if value.get("plan").is_some()
+            || value.get("generation_plan").is_some()
+            || value.get("generationPlan").is_some()
+            || value.get("document").and_then(|document| document.get("plan")).is_some()
+        {
+            return document_from_generation_plan_value(&value);
+        }
+    }
+
     let json_objects = extract_json_objects(text);
+    let mut last_error = None;
     
     for json_str in json_objects {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            if let Ok(doc) = document_from_generation_plan_value(&value) {
-                return Ok(doc);
+            match document_from_generation_plan_value(&value) {
+                Ok(doc) => return Ok(doc),
+                Err(error) => last_error = Some(error),
             }
         }
     }
     
-    Err("Could not parse response into a valid StrutDocument or GenerationPlan.".to_string())
+    Err(last_error.unwrap_or_else(|| {
+        "Could not parse response into a valid StrutDocument or GenerationPlan.".to_string()
+    }))
 }
 
 pub fn try_parse_implicit_document(text: &str) -> Option<strut_core::Document> {
@@ -1252,13 +1308,15 @@ pub fn parse_generated_document(text: &str) -> Result<strut_core::Document, Stri
     }
 
     // 3. Try parsing as a GenerationPlan
-    if let Ok(document) = parsing::parse_provider_response_document(text) {
-        return Ok(document);
+    match parsing::parse_provider_response_document(text) {
+        Ok(document) => return Ok(document),
+        Err(error) => last_error = Some(error),
     }
 
     for json_text in extract_json_objects(text).into_iter().rev() {
-        if let Ok(document) = parsing::parse_provider_response_document(&json_text) {
-            return Ok(document);
+        match parsing::parse_provider_response_document(&json_text) {
+            Ok(document) => return Ok(document),
+            Err(error) => last_error = Some(error),
         }
     }
 

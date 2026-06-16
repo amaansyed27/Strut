@@ -62,7 +62,10 @@ export function upsertProjectAnimation(
 ): ProjectRecord {
   const animations = [
     animation,
-    ...(project.animations ?? []).filter((item) => item.id !== animation.id),
+    ...(project.animations ?? []).filter((item) => (
+      item.id !== animation.id &&
+      !(item.chatId === animation.chatId && item.name === animation.name)
+    )),
   ];
   return { ...project, animations };
 }

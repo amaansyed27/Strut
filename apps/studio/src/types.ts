@@ -165,6 +165,7 @@ export type GenerationContext = {
   projectName?: string;
   projectPath?: string;
   activeChatTitle?: string;
+  responseMode?: "chat" | "preview";
   currentDocumentSummary?: string;
   chatHistory: Array<{
     role: ChatMessage["role"];

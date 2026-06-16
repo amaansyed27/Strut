@@ -197,7 +197,24 @@ pub fn save_project_animation(
         updated_at,
     };
     let mut animations = read_project_animation_records(&root)?;
-    animations.retain(|animation| animation.id != record.id);
+    let replaced = animations
+        .iter()
+        .filter(|animation| {
+            animation.id == record.id
+                || (animation.chat_id == record.chat_id && animation.name == record.name)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    animations.retain(|animation| {
+        animation.id != record.id
+            && !(animation.chat_id == record.chat_id && animation.name == record.name)
+    });
+    for old in replaced {
+        let _ = fs::remove_file(root.join(&old.scene));
+        if let Some(path) = project_animation_operation_path(&old) {
+            let _ = fs::remove_file(root.join(path));
+        }
+    }
     animations.insert(0, record.clone());
     write_project_manifest_with_animation_records(&root, &project_name, &animations)?;
     Ok(record)
@@ -399,9 +416,20 @@ pub async fn assistant_message(
 
     let user_prompt = prompt.clone();
 
+    if context_requests_chat_response(context.as_ref())
+        || classify_request_intent(&user_prompt) == RequestIntent::Conversation
+    {
+        let chat_prompt = chat_system_prompt(&user_prompt, context.as_ref());
+        let text = call_provider_for_assistant(&user_prompt, &provider, &references, &chat_prompt).await?;
+        return Ok(AssistantResult::Chat {
+            message: text,
+            source: "llm".to_string(),
+        });
+    }
+
     let text = call_provider_for_assistant(&user_prompt, &provider, &references, &system_prompt).await?;
 
-    let mut initial_result = match parse_assistant_result_from_text(&text) {
+    let initial_result = match parse_assistant_result_from_text(&text) {
         Ok(result) => result,
         Err(first_error) => {
             if classify_request_intent(&user_prompt) == RequestIntent::Conversation {
@@ -557,6 +585,8 @@ pub(crate) fn parse_assistant_result_from_text(text: &str) -> Result<AssistantRe
                 message: "Generated document from implicit plan.".to_string(),
                 source: "llm".to_string(),
                 document: doc,
+                plan_summary: None,
+                operation_count: None,
             });
         }
         Err(e) => {
@@ -579,18 +609,27 @@ pub fn parse_assistant_result_value(value: Value) -> Result<AssistantResult, Str
             }
             "document_created" | "document_updated" => {
                 let document_value = value.get("document").ok_or_else(|| "Missing document field".to_string())?;
+                let plan_summary = generation_plan_summary_from_value(document_value);
+                let operation_count = document_value
+                    .get("operations")
+                    .and_then(Value::as_array)
+                    .map(Vec::len);
                 let planned_doc = document_from_generation_plan_value(document_value)?;
                 if kind == "document_created" {
                     return Ok(AssistantResult::DocumentCreated {
                         message,
                         source: "llm".to_string(),
                         document: planned_doc,
+                        plan_summary,
+                        operation_count,
                     });
                 } else {
                     return Ok(AssistantResult::DocumentUpdated {
                         message,
                         source: "llm".to_string(),
                         document: planned_doc,
+                        plan_summary,
+                        operation_count,
                     });
                 }
             }
@@ -598,6 +637,57 @@ pub fn parse_assistant_result_value(value: Value) -> Result<AssistantResult, Str
         }
     }
     Err("Missing AssistantResult kind".to_string())
+}
+
+fn generation_plan_summary_from_value(value: &Value) -> Option<GenerationPlanSummary> {
+    let plan = if let Some(plan) = value.get("plan") {
+        plan
+    } else if let Some(document_plan) = value.get("document").and_then(|document| document.get("plan")) {
+        document_plan
+    } else {
+        return None;
+    };
+
+    let subject = plan.get("subject")?;
+    let subject_classification = subject
+        .get("classification")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let subject_label = subject
+        .get("label")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let part_names = plan
+        .get("parts")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|part| part.get("name").and_then(Value::as_str).or_else(|| part.get("id").and_then(Value::as_str)))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let timeline_names = plan
+        .get("timelines")
+        .and_then(Value::as_array)
+        .map(|timelines| {
+            timelines
+                .iter()
+                .filter_map(|timeline| timeline.get("name").and_then(Value::as_str).or_else(|| timeline.get("id").and_then(Value::as_str)))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Some(GenerationPlanSummary {
+        subject_classification,
+        subject_label,
+        part_names,
+        timeline_names,
+    })
 }
 
 

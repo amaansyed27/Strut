@@ -411,6 +411,7 @@ function App() {
       projectName: activeProject?.name,
       projectPath: activeProject?.path,
       activeChatTitle: activeChat?.title,
+      responseMode: viewMode,
       currentDocumentSummary: selectedLayer
         ? `${documentSummary(currentDocument)}; selected part: ${selectedLayer.name} (${selectedLayer.id}, ${selectedLayer.kind})`
         : documentSummary(currentDocument),

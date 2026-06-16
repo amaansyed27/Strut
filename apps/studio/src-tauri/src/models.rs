@@ -80,6 +80,8 @@ pub struct GenerationContext {
     pub project_name: Option<String>,
     pub project_path: Option<String>,
     pub active_chat_title: Option<String>,
+    #[serde(default)]
+    pub response_mode: Option<String>,
     pub current_document_summary: Option<String>,
     pub chat_history: Vec<GenerationContextMessage>,
     pub current_document: Option<strut_core::Document>,
@@ -132,12 +134,20 @@ pub enum AssistantResult {
         #[serde(default)]
         source: String,
         document: strut_core::Document,
+        #[serde(rename = "planSummary", skip_serializing_if = "Option::is_none")]
+        plan_summary: Option<GenerationPlanSummary>,
+        #[serde(rename = "operationCount", skip_serializing_if = "Option::is_none")]
+        operation_count: Option<usize>,
     },
     DocumentUpdated {
         message: String,
         #[serde(default)]
         source: String,
         document: strut_core::Document,
+        #[serde(rename = "planSummary", skip_serializing_if = "Option::is_none")]
+        plan_summary: Option<GenerationPlanSummary>,
+        #[serde(rename = "operationCount", skip_serializing_if = "Option::is_none")]
+        operation_count: Option<usize>,
     },
 }
 
@@ -170,7 +180,7 @@ pub struct ChatAnswer {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationPlanSummary {
     pub subject_classification: String,

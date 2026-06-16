@@ -460,6 +460,55 @@
     }
 
     #[test]
+    fn project_animation_save_replaces_same_chat_and_name() {
+        let root = temp_project_root("animation-dedupe");
+        let document = strut_core::Document::sample_login_button();
+        let batch = valid_test_batch(&document);
+        create_project(
+            "Animation Dedupe".to_string(),
+            root.parent()
+                .expect("temp parent")
+                .display()
+                .to_string(),
+        )
+        .expect("project can be created");
+        let project_root = root
+            .parent()
+            .expect("temp parent")
+            .join("Animation Dedupe");
+
+        let first = save_project_animation(
+            project_root.display().to_string(),
+            "Animation Dedupe".to_string(),
+            "chat-1".to_string(),
+            "Rolling Dice".to_string(),
+            document.clone(),
+            vec![batch.clone()],
+            None,
+        )
+        .expect("first animation should save");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let second = save_project_animation(
+            project_root.display().to_string(),
+            "Animation Dedupe".to_string(),
+            "chat-1".to_string(),
+            "Rolling Dice".to_string(),
+            document.clone(),
+            vec![batch],
+            None,
+        )
+        .expect("second animation should replace first");
+
+        let loaded = load_project_snapshot(project_root.display().to_string())
+            .expect("project should load with deduped animation");
+        assert_eq!(loaded.animations.len(), 1);
+        assert_eq!(loaded.animations[0].id, second.id);
+        assert!(!project_root.join(&first.scene).exists());
+
+        let _ = fs::remove_dir_all(project_root);
+    }
+
+    #[test]
     fn style_safety_keeps_foreground_visible_when_provider_colors_collide() {
         let text = json!({
             "kind": "document_created",
@@ -992,11 +1041,34 @@
     }
 
     #[test]
+    fn rejects_empty_implicit_generation_plan() {
+        let error = parse_generated_document(
+            r##"{
+              "plan": {
+                "name": "Generated",
+                "subject": {"classification": "object", "label": "Rolling dice"},
+                "states": ["idle"],
+                "parts": [],
+                "timelines": []
+              },
+              "operations": []
+            }"##,
+        )
+        .expect_err("empty plans should not become ready documents");
+
+        assert!(
+            error.contains("semantic parts"),
+            "unexpected validation error: {error}"
+        );
+    }
+
+    #[test]
     fn contextual_prompt_carries_chat_history_and_current_document() {
         let context = GenerationContext {
             project_name: Some("Mascot Game".to_string()),
             project_path: Some("D:\\Strut Projects\\Mascot Game".to_string()),
             active_chat_title: Some("Follow-up edits".to_string()),
+            response_mode: Some("preview".to_string()),
             current_document_summary: Some(
                 "Owl Mascot; 12 editable layers; states: idle, wave".to_string(),
             ),
@@ -1024,6 +1096,36 @@
         assert!(prompt.contains("Current editable Strut document"));
         assert!(prompt.contains("Owl Mascot"));
         assert!(prompt.contains("make it cheer when level completes"));
+    }
+
+    #[test]
+    fn chat_prompt_answers_normally_and_carries_context() {
+        let context = GenerationContext {
+            project_name: Some("Dice Lab".to_string()),
+            project_path: None,
+            active_chat_title: Some("Rolling die planning".to_string()),
+            response_mode: Some("chat".to_string()),
+            current_document_summary: Some(
+                "3D Rolling Die; states: idle, rolling, settle".to_string(),
+            ),
+            chat_history: vec![GenerationContextMessage {
+                role: "user".to_string(),
+                text: "Create a smooth rolling dice animation".to_string(),
+                attachments: None,
+            }],
+            current_document: None,
+        };
+
+        let prompt = chat_system_prompt(
+            "how did you make this and what should we change?",
+            Some(&context),
+        );
+
+        assert!(prompt.contains("Answer normal questions directly"));
+        assert!(prompt.contains("Do not emit JSON"));
+        assert!(prompt.contains("Dice Lab"));
+        assert!(prompt.contains("Create a smooth rolling dice animation"));
+        assert!(!prompt.contains("output standard valid JSON"));
     }
 
     #[test]
@@ -1383,6 +1485,42 @@
             classify_request_intent("generate a calm loader animation"),
             RequestIntent::Generate
         );
+    }
+
+    #[test]
+    fn chat_only_context_forces_conversation_route() {
+        let context = GenerationContext {
+            project_name: Some("Dice Lab".to_string()),
+            project_path: None,
+            active_chat_title: Some("Plan the roll".to_string()),
+            response_mode: Some("chat".to_string()),
+            current_document_summary: None,
+            chat_history: vec![],
+            current_document: None,
+        };
+
+        assert!(context_requests_chat_response(Some(&context)));
+    }
+
+    #[test]
+    fn assistant_result_serializes_plan_summary_for_studio() {
+        let result = AssistantResult::DocumentCreated {
+            message: "Created rolling dice".to_string(),
+            source: "llm".to_string(),
+            document: strut_core::Document::sample_minimal_bot(),
+            plan_summary: Some(GenerationPlanSummary {
+                subject_classification: "object".to_string(),
+                subject_label: "Rolling dice".to_string(),
+                part_names: vec!["Die Body".to_string(), "Face 1".to_string()],
+                timeline_names: vec!["idle".to_string(), "rolling".to_string()],
+            }),
+            operation_count: Some(12),
+        };
+
+        let value = serde_json::to_value(result).expect("assistant result json");
+
+        assert_eq!(value["planSummary"]["subjectLabel"], "Rolling dice");
+        assert_eq!(value["operationCount"], 12);
     }
 
     #[test]
