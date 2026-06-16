@@ -1603,9 +1603,10 @@ textarea:focus-visible {
   position: absolute;
   top: 72px;
   right: 16px;
-  bottom: 112px;
+  bottom: auto;
   z-index: 5;
-  width: min(300px, calc(100% - 32px));
+  width: min(288px, calc(100% - 32px));
+  max-height: min(560px, calc(100% - 104px));
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -2633,10 +2634,11 @@ textarea:focus-visible {
 
 .message-stack,
 .chat-layout.with-preview .message-stack {
-  width: min(760px, 100%);
-  justify-self: center;
+  width: 100%;
+  justify-self: stretch;
   align-content: start;
-  padding: 46px 0 28px;
+  padding: 46px clamp(16px, 5vw, 42px) 28px;
+  scrollbar-gutter: stable;
 }
 
 .message-stack:has(.message) {
@@ -2644,6 +2646,8 @@ textarea:focus-visible {
 }
 
 .message {
+  width: min(760px, 100%);
+  justify-self: center;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 12px;
 }
@@ -2687,16 +2691,30 @@ textarea:focus-visible {
 }
 
 .composer {
+  position: relative;
+  width: min(760px, 100%);
+  justify-self: center;
   max-width: 760px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--field) 86%, var(--paper));
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }
 
+.chat-layout:not(.with-preview) .chat-panel {
+  border-right: 0;
+}
+
+.chat-layout:not(.with-preview) .composer,
+.chat-layout:not(.with-preview) .message {
+  width: min(920px, 100%);
+  max-width: 920px;
+}
+
 .composer-toolbar {
   min-height: 42px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 10px 0;
 }
@@ -2724,6 +2742,7 @@ textarea:focus-visible {
 .composer-tool-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
 }
@@ -2776,7 +2795,7 @@ textarea:focus-visible {
 
 .composer textarea {
   min-height: 76px;
-  padding: 16px 16px 12px;
+  padding: 16px 126px 12px 16px;
   font-size: 14px;
 }
 
@@ -3617,11 +3636,10 @@ textarea:focus-visible {
 }
 
 .slash-menu {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 8px;
+  position: static;
+  margin: 0 8px 8px;
+  max-height: min(280px, calc(100vh - 240px));
+  overflow: auto;
   background: var(--panel-strong);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -3678,8 +3696,8 @@ textarea:focus-visible {
 
 .composer-strategy-indicator {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 58px;
+  right: 14px;
   padding: 4px 10px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -3697,3 +3715,10 @@ textarea:focus-visible {
   align-items: center;
   gap: 4px;
 }
+
+/* Thinking block */
+.message-thinking { margin-bottom: 8px; background: var(--panel-surface); border: 1px solid var(--line-light); border-radius: 6px; overflow: hidden; }
+.message-thinking summary { padding: 6px 10px; font-size: 0.85em; color: var(--text-dim); cursor: pointer; user-select: none; background: var(--bg-body); }
+.message-thinking summary:hover { color: var(--ink); background: var(--panel-surface); }
+.message-thinking-content { padding: 10px; font-size: 0.9em; color: var(--text-dim); border-top: 1px solid var(--line-light); white-space: pre-wrap; font-family: monospace; }
+
