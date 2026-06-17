@@ -5,6 +5,7 @@
  */
 
 import {
+  PanelRight,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -12,13 +13,14 @@ import {
   FolderOpen,
   Download,
 } from "lucide-react";
-import type { ChatThread, ProjectRecord, ViewMode, ViewModeOption, SidebarMenuState } from "../types";
+import type { ChatThread, ProjectRecord, ViewMode, SidebarMenuState } from "../types";
 
 type WorkspaceTopbarProps = {
   activeProject: ProjectRecord | null;
   activeChat: ChatThread | null;
+  workspaceTitle?: string;
   viewMode: ViewMode;
-  viewModes: ViewModeOption[];
+  showViewSwitcher?: boolean;
   activity: string;
   topbarMenu: SidebarMenuState;
   onSetViewMode: (mode: ViewMode) => void;
@@ -37,8 +39,9 @@ type WorkspaceTopbarProps = {
 export function WorkspaceTopbar({
   activeProject,
   activeChat,
+  workspaceTitle,
   viewMode,
-  viewModes,
+  showViewSwitcher = true,
   activity,
   topbarMenu,
   onSetViewMode,
@@ -57,9 +60,9 @@ export function WorkspaceTopbar({
     <header className="workspace-top">
       <div className="workspace-context">
         <strong data-testid="workspace-title">
-          {activeChat?.title ?? activeProject?.name ?? "Home"}
+          {workspaceTitle ?? activeChat?.title ?? activeProject?.name ?? "Home"}
         </strong>
-        {activeChat && activeProject ? (
+        {!workspaceTitle && activeChat && activeProject ? (
           <button
             aria-label={`Title options for ${activeChat.title}`}
             className="title-menu-button"
@@ -74,7 +77,7 @@ export function WorkspaceTopbar({
           >
             <MoreHorizontal size={15} />
           </button>
-        ) : activeProject ? (
+        ) : !workspaceTitle && activeProject ? (
           <button
             aria-label={`Title options for ${activeProject.name}`}
             className="title-menu-button"
@@ -148,23 +151,22 @@ export function WorkspaceTopbar({
         ) : null}
         <span className="sr-status" data-testid="activity-pill">{activity}</span>
       </div>
-      <nav className="view-switcher" aria-label="View mode">
-        {viewModes.map(({ id, Icon, label }) => (
+      {showViewSwitcher ? (
+        <nav className="view-switcher" aria-label="View mode">
           <button
-            aria-pressed={viewMode === id}
-            className={viewMode === id ? "active" : ""}
-            key={id}
+            aria-pressed={viewMode === "preview"}
+            className={viewMode === "preview" ? "active" : ""}
             type="button"
             onClick={() => {
-              onSetViewMode(id);
+              onSetViewMode(viewMode === "preview" ? "chat" : "preview");
               onSetMainPanel("chat");
             }}
           >
-            <Icon size={15} />
-            {label}
+            <PanelRight size={15} />
+            Preview
           </button>
-        ))}
-      </nav>
+        </nav>
+      ) : null}
     </header>
   );
 }

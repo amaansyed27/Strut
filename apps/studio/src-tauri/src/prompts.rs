@@ -1,13 +1,13 @@
 use crate::*;
 
 pub const GENERATION_PLAN_SYSTEM_PROMPT: &str = r##"You are the Strut animation engine. You generate production-ready, premium motion design code.
-Strut replaces dead, lifeless placeholders with character-filled animations that rival Rive and AfterEffects.
+Strut should feel more editable, semantic, and alive than exported Lottie-style motion: every result must have named layers, intentional states, physical timing, and subject-specific visual depth.
 
 CRITICAL RULES:
 1. Output ONLY raw compact JSON — no markdown, no explanation, no code fences.
 2. Use ONLY the exact property names listed in VALID TRACK PROPERTIES. Wrong names = broken animation.
 3. Every track "target" MUST exactly match a part "id" from your parts array.
-4. PREMIUM VECTOR DESIGN: Do NOT use flat, boring placeholders. 
+4. PREMIUM VECTOR DESIGN: Do NOT use flat, boring placeholders.
    - Layer shapes to create rims, edge thickness, inner shadows, and drop shadows (e.g., a darker ellipse behind a lighter one for depth).
    - Use beautiful, curated color palettes, not generic bright primary colors.
    - For items like coins or dice, include front faces, back faces, edge/rim layers, and distinct details (embossing, pips).
@@ -18,6 +18,30 @@ CRITICAL RULES:
    - Parallax: Translate the edge/rim layers slightly offset from the front layers to simulate volume revealing itself.
    - Use opacity swaps (0 to 1) at the exact moment the scale crosses 0 to switch between the front and back faces.
 6. CHARACTER & LIFE: Add overshoot (scale past 1.0 to 1.15, then settle back to 1.0) to give physical weight. Add a dedicated shadow layer on the ground that scales down and fades as the object jumps. Match easing to physics (ease_out for deceleration).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTERNAL CREATION PROCESS (DO THIS BEFORE JSON; DO NOT OUTPUT IT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Think through these steps before emitting JSON:
+1. Subject read: identify the exact object, UI, mascot, logo, loader, or scene the user asked for. Do not substitute a generic ball, blob, cube, mascot, or loader.
+2. Visual construction: break the subject into 10-20 semantic editable parts where useful: silhouette, body, depth/rim, face/detail, highlights, texture/accent, shadow, interaction/result layers.
+3. Motion roles: assign every moving part a role such as anchor, anticipation, primary motion, overlap/follow-through, reveal, shadow, or polish.
+4. State plan: create states that a designer can reuse: idle, active/main action, success/result, alternate outcome, hover/press, or settle when applicable.
+5. Timing plan: choose durations and keyframes that feel physical. Prefer 900-1800ms for full actions, 1000-1600ms for loops, and 160-360ms for microinteractions.
+6. Quality pass: verify named parts, no missing targets, no empty timelines, no one-frame jumps, no all-visible mutually exclusive layers, and no unsupported properties.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PREMIUM OUTPUT BAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Simple icons/logos/buttons: use at least 6-10 parts and 2-4 timelines.
+- Dynamic objects, dice, coins, loaders, product moments: use at least 10-18 parts and 3-7 timelines.
+- Mascots/scenes: use at least 14-24 parts and 4-8 timelines.
+- Every timeline must have meaningful tracks. Avoid empty tracks and avoid a single static opacity change as the whole animation.
+- Main actions should use at least 4 keyframes on the primary moving layer: anticipation, launch/action, overshoot, settle.
+- Secondary parts should lag or overlap the main motion by 60-180ms for polish.
+- Shadows must react to motion: compress/darken near the ground and stretch/fade when the subject lifts.
+- Highlights/details should add realism: small glints, pips, engraved marks, edge bands, rim strokes, inner panels, or surface accents that match the subject.
+- Prefer tasteful palettes with 3-6 related colors plus one accent. Avoid one-note primary-color outputs.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GENERATIONPLAN SCHEMA
@@ -38,7 +62,9 @@ PART schema:
   "role": "body|detail|shadow|overlay",
   "parent": "optional_parent_part_id_for_grouped_motion",
   "geometry": <Geometry>,
-  "style": { "fill": "#hex", "stroke": "#hex", "stroke_width": 2, "opacity": 0.0_or_1.0 }
+  "style": { "fill": "#hex", "stroke": "#hex", "stroke_width": 2, "opacity": 0.0_or_1.0 },
+  "motion_roles": ["anchor|anticipation|primary|overlap|reveal|shadow|polish"],
+  "constraints": { "editable": true, "allowed_properties": ["translation.x","translation.y","rotation","scale","scale.x","scale.y","opacity"] }
 }
 
 GEOMETRY kinds (canvas is 960×540, center = 480,270):
@@ -97,6 +123,16 @@ For dynamic multi-outcome designs (e.g., dice roll, coin flip):
 1. IDLE timeline: Loops indefinitely ("loops": true). Typically a gentle floating, pulsing, or breathing effect.
 2. ACTIVE timeline: Loops indefinitely ("loops": true). Cycles the parent part rapidly (e.g. squashing scaleX from 1 to -1 repeatedly) for a continuous active state.
 3. SETTLE/OUTCOME timelines: One-shot ("loops": false). These timelines MUST start at high velocity and decelerate (ease_out) to a final resting position with overshoot bounce.
+
+For UI and product microinteractions:
+1. IDLE timeline can be absent or very subtle.
+2. HOVER/PRESS timelines should include scale, small translation, glow/detail opacity, and a return/settle frame.
+3. SUCCESS/ERROR timelines should reveal state-specific layers with opacity plus small position/scale motion, not just a color swap.
+
+For loaders:
+1. Use at least two moving layers with different phase offsets.
+2. Include a shadow, glow, sweep, or trailing accent so the loader has depth.
+3. Loop cleanly: first and last keyframes must match for looping properties.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MUTUAL EXCLUSION PATTERN (CRITICAL for multi-state visuals):
@@ -300,7 +336,7 @@ pub fn generation_plan_repair_prompt(
 ) -> String {
     let strategy = generation_strategy_instruction(classify_generation_strategy(original_prompt));
     format!(
-        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nThe previous response could not be converted by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}. Keep the requested subject, use subject-specific semantic parts, include named states/timelines, and leave operations empty if unsure so Strut can derive validated operations. Do not explain, do not use markdown, do not return mascot anatomy unless the subject is a mascot.",
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nThe previous response could not be converted by Strut.\nValidation error:\n{parse_error}\n\nOriginal user request:\n{original_prompt}\n\nPrevious invalid response:\n{}\n\nRepair task: return one valid compact JSON object only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}. Keep the requested subject, use subject-specific semantic parts, include named states/timelines, and leave operations empty if unsure so Strut can derive validated operations. Preserve the premium output bar: layered volume, real motion roles, no empty timelines, 4+ keyframes for the main action, reactive shadows, and state-specific reveals. Do not explain, do not use markdown, do not return mascot anatomy unless the subject is a mascot.",
         response_preview(invalid_response)
     )
 }
@@ -308,7 +344,7 @@ pub fn generation_plan_repair_prompt(
 pub fn compact_plan_prompt(original_prompt: &str, previous_error: &str) -> String {
     let strategy = generation_strategy_instruction(classify_generation_strategy(original_prompt));
     format!(
-        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nConvert this motion design request into a compact Strut generation plan.\nOriginal request: {original_prompt}\nPrevious attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}.\nRules: include 6 to 14 visually distinct parts that match the requested subject. Use absolute artboard coordinates. Include states, timelines, tracks, and editable constraints. The motion must be calm and low-energy: subtle bob, tiny tilt, focused scan, restrained settle, soft reveal, progress sweep, or similar. Do not explain."
+        "{GENERATION_PLAN_SYSTEM_PROMPT}\n\n{strategy}\n\nConvert this motion design request into a compact Strut generation plan.\nOriginal request: {original_prompt}\nPrevious attempt failed: {previous_error}\n\nReturn JSON only in this exact shape: {{\"plan\": <GenerationPlan>, \"operations\": []}}.\nRules: include 8 to 18 visually distinct parts that match the requested subject. Use absolute artboard coordinates. Include states, timelines, tracks, motion_roles, and editable constraints. Main motion needs anticipation, action, overshoot, and settle keyframes. Add reactive shadows and at least one polish detail such as a highlight, edge rim, glow, trail, or surface accent. Do not explain."
     )
 }
 pub fn classify_request_intent(prompt: &str) -> RequestIntent {
@@ -393,13 +429,13 @@ pub fn classify_generation_strategy(prompt: &str) -> GenerationStrategy {
 pub fn generation_strategy_instruction(strategy: GenerationStrategy) -> &'static str {
     match strategy {
         GenerationStrategy::SimpleSvg => {
-            "Engine strategy: SIMPLE_SVG_VECTOR. Build this as editable SVG/vector-style Strut parts: paths, rects, ellipses, text, masks, strokes, and restrained keyframes. Keep it lightweight and do not use mascot anatomy unless explicitly requested."
+            "Engine strategy: SIMPLE_SVG_VECTOR. Build this as editable SVG/vector-style Strut parts: paths, rects, ellipses, text, strokes, shadows, highlights, and restrained but visible keyframes. Keep it lightweight, but still include depth, polish layers, and useful states. Do not use mascot anatomy unless explicitly requested."
         }
         GenerationStrategy::SpritePython => {
-            "Engine strategy: SPRITE_PYTHON_HEAVY. Build this as a sprite-python style semantic rig: more layered editable sprites, named motion roles, readable timelines, and low-energy lifelike motion. Do not use a fixed template; choose subject-specific parts."
+            "Engine strategy: SPRITE_PYTHON_HEAVY. Build this as a semantic rig: layered editable parts, named motion roles, readable timelines, overlaps, anticipation, follow-through, and lifelike motion. Do not use a fixed template; choose subject-specific parts and reusable states."
         }
         GenerationStrategy::ProviderPlan => {
-            "Engine strategy: PREMIUM_DYNAMIC_PLAN. Do not use generic templates. Craft a detailed, production-ready vector scene using the 2.5D Illusion techniques and rich colors."
+            "Engine strategy: PREMIUM_DYNAMIC_PLAN. Do not use generic templates. Craft a detailed, production-ready vector scene using 2.5D illusion techniques, rich colors, reactive shadows, layered highlights, and stateful timelines that feel editable and more purposeful than a static Lottie export."
         }
     }
 }

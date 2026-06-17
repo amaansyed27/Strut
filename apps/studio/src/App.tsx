@@ -26,7 +26,6 @@ import {
   Layers3,
   MessageSquarePlus,
   MoreHorizontal,
-  PanelRight,
   RefreshCw,
   RotateCcw,
   RotateCw,
@@ -57,7 +56,6 @@ import type {
   StrutNode,
   ThemeMode,
   ViewMode,
-  ViewModeOption,
 } from "./types";
 import { browserLocalAdapters, byokProviders, emptyArtboard, emptyMachine } from "./types";
 
@@ -110,7 +108,6 @@ import { WorkspaceTopbar } from "./app/WorkspaceTopbar";
 import { SearchCommandModal } from "./features/search/SearchCommandModal";
 import { NewProjectDialog } from "./features/projects/NewProjectDialog";
 import { ExportDialog } from "./features/projects/ExportDialog";
-import { ProvidersPage } from "./features/providers/ProvidersPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -165,11 +162,9 @@ function App() {
       .then(setDefaultLocation)
       .catch(() => {
         setDesktopRuntime(false);
-        setDefaultLocation("D:\\Strut Projects");
+        setDefaultLocation("Documents/Strut Projects");
       });
-    providerService.listLocalAdapters()
-      .then(setLocalAdapters)
-      .catch(() => setDesktopRuntime(false));
+    void refreshLocalAdapters();
   }, []);
 
   useEffect(() => {
@@ -221,11 +216,6 @@ function App() {
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0] ?? browserLocalAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const activeProviderLabel = providerMode === "local" ? activeLocalAdapter.name : activeByokProvider.name;
-  const viewModes: ViewModeOption[] = [
-    { id: "chat", Icon: MessageSquarePlus, label: "Chat only" },
-    { id: "preview", Icon: PanelRight, label: "Chat + preview" },
-  ];
-
   // Clear stale selection
   useEffect(() => {
     if (selectedNodeId && !layers.some((layer) => layer.id === selectedNodeId)) {
@@ -449,9 +439,26 @@ function App() {
     }
   }
 
+  async function refreshLocalAdapters() {
+    try {
+      const adapters = await providerService.listLocalAdapters();
+      setLocalAdapters(adapters);
+      setDesktopRuntime(true);
+      const installedCount = adapters.filter((adapter) => adapter.installed).length;
+      setActivity(
+        installedCount
+          ? `${installedCount} local provider${installedCount === 1 ? "" : "s"} detected`
+          : "No local providers found on PATH or common Mac/Linux/Windows tool paths",
+      );
+    } catch {
+      setDesktopRuntime(false);
+      setActivity("Browser preview cannot check local providers. Open the desktop app for installed/not found status.");
+    }
+  }
+
   async function testProvider() {
     if (!desktopRuntime) {
-      setActivity("Desktop app required for real provider checks");
+      setActivity("Open the desktop app to test local or BYOK providers");
       return;
     }
     try {
@@ -979,7 +986,6 @@ function App() {
         onNewChat={newChat}
         onOpenNewProject={newProjectModal.open}
         onOpenSearch={searchModal.open}
-        onOpenProviders={() => setMainPanel("providers")}
         onOpenSettings={() => setMainPanel("settings")}
         onOpenProject={openProject}
         onOpenChat={openChat}
@@ -998,8 +1004,9 @@ function App() {
         <WorkspaceTopbar
           activeProject={activeProject}
           activeChat={activeChat}
+          workspaceTitle={mainPanel === "settings" ? "Settings" : undefined}
           viewMode={viewMode}
-          viewModes={viewModes}
+          showViewSwitcher={mainPanel === "chat"}
           activity={activity}
           topbarMenu={topbarMenu}
           onSetViewMode={setViewMode}
@@ -1044,9 +1051,11 @@ function App() {
           animationName={exportTarget?.animationName ?? currentAnimation?.name ?? activeProject?.name ?? "animation"}
         />
 
-        {/* Providers Page */}
-        {mainPanel === "providers" ? (
-          <ProvidersPage
+        {/* Settings Page */}
+        {mainPanel === "settings" ? (
+          <SettingsPage
+            themeMode={themeMode}
+            setThemeMode={setThemeMode}
             providerMode={providerMode}
             setProviderMode={setProviderMode}
             localAdapters={localAdapters}
@@ -1060,16 +1069,11 @@ function App() {
             setProviderEndpoint={setProviderEndpoint}
             providerModel={providerModel}
             setProviderModel={setProviderModel}
+            desktopRuntime={desktopRuntime}
+            onRefreshProviders={() => void refreshLocalAdapters()}
             onSaveProvider={() => void saveProvider()}
             onTestProvider={() => void testProvider()}
-            activity={activity}
-            desktopRuntime={desktopRuntime}
           />
-        ) : null}
-
-        {/* Settings Page */}
-        {mainPanel === "settings" ? (
-          <SettingsPage themeMode={themeMode} setThemeMode={setThemeMode} />
         ) : null}
 
         {/* Home Panel */}
@@ -1077,7 +1081,7 @@ function App() {
           <HomePanel
             projects={projects}
             onNewProject={newProjectModal.open}
-            onOpenProviders={() => setMainPanel("providers")}
+            onOpenProviders={() => setMainPanel("settings")}
             onStartChat={() => newChat(projects[0]?.id ?? null)}
           />
         ) : null}
@@ -1111,10 +1115,10 @@ function App() {
                 ) : null}
                 <div className="prompt-examples" aria-label="Prompt examples">
                   {[
-                    ["Coin flip", "Create a 3D coin flip animation"],
-                    ["Dice roller", "Create a rolling dice with all 6 faces"],
-                    ["Loader", "Create a smooth loader animation"],
-                    ["Button", "Create a button with hover and press states"],
+                    ["Coin flip", "Create a premium 2.5D coin flip with front/back faces, rim depth, glints, reactive shadow, anticipation, flip, and settle states"],
+                    ["Dice roller", "Create a rolling dice animation with all 6 outcomes, layered cube faces, pips, edge highlights, squash, shadow, and settle bounce"],
+                    ["Loader", "Create a polished loader with phased rings, trailing sweep, glow, depth shadow, and a seamless looping timeline"],
+                    ["Button", "Create a tactile button microinteraction with hover, press, success state, surface highlight, shadow compression, and overshoot settle"],
                   ].map(([label, example]) => (
                     <button key={label} type="button" onClick={() => setPrompt(example)}>
                       {label}
@@ -1143,7 +1147,7 @@ function App() {
                       <button aria-label="Redo" disabled={!redoStack.length} title="Redo" type="button" onClick={redoLastBatch}>
                         <RotateCw size={15} />
                       </button>
-                      <button aria-label={`Provider ${activeProviderLabel}`} className="provider-composer-button" type="button" onClick={() => setMainPanel("providers")}>
+                      <button aria-label={`Provider ${activeProviderLabel}`} className="provider-composer-button" type="button" onClick={() => setMainPanel("settings")}>
                         <Cpu size={15} />
                         {activeProviderLabel}
                       </button>
@@ -1180,7 +1184,7 @@ function App() {
                         setSlashMenuOpen(false);
                       }
                     }}
-                    placeholder="Create an animation, e.g. bouncing ball, 3D coin flip, rolling dice, smooth loader. Type / for options" 
+                    placeholder="Describe the subject, states, depth, and motion. Example: premium coin flip with rim layers, glints, reactive shadow, anticipation, flip, and settle." 
                   />
                   {slashMenuOpen && (
                     <div className="slash-menu">

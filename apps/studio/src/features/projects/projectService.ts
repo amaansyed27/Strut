@@ -3,6 +3,7 @@
  */
 
 import { tauriInvoke } from "../../lib/tauriClient";
+import { open } from "@tauri-apps/plugin-dialog";
 import type {
   ProjectAnimationRecord,
   ProjectInfo,
@@ -25,6 +26,16 @@ export const projectService = {
 
   async defaultProjectLocation(): Promise<string> {
     return tauriInvoke<string>("default_project_location");
+  },
+
+  async chooseProjectLocation(currentLocation?: string): Promise<string | null> {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: currentLocation?.trim() || undefined,
+      title: "Choose Strut project folder",
+    });
+    return typeof selected === "string" ? selected : null;
   },
 
   async openProjectFolder(path: string): Promise<void> {

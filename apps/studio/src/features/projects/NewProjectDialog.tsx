@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { FolderOpen } from "lucide-react";
 import { Dialog, DialogBody, DialogFooter } from "../../components/ui/Dialog";
 import { projectService } from "./projectService";
 
@@ -28,6 +29,7 @@ export function NewProjectDialog({
   const [projectLocation, setProjectLocation] = useState(defaultLocation);
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isChoosingLocation, setIsChoosingLocation] = useState(false);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -36,8 +38,26 @@ export function NewProjectDialog({
       setProjectLocation(defaultLocation);
       setError("");
       setIsCreating(false);
+      setIsChoosingLocation(false);
     }
   }, [open, defaultLocation]);
+
+  async function handleChooseLocation() {
+    setError("");
+    setIsChoosingLocation(true);
+    try {
+      const selected = await projectService.chooseProjectLocation(projectLocation);
+      if (selected) setProjectLocation(selected);
+    } catch (err) {
+      setError(
+        desktopRuntime
+          ? err instanceof Error ? err.message : String(err)
+          : "Folder picking is available in the desktop app. You can still type a location for browser preview.",
+      );
+    } finally {
+      setIsChoosingLocation(false);
+    }
+  }
 
   async function handleCreate() {
     const trimmedName = projectName.trim();
@@ -98,11 +118,23 @@ export function NewProjectDialog({
         </label>
         <label>
           <span>Location</span>
-          <input
-            aria-label="Project location"
-            value={projectLocation}
-            onChange={(event) => setProjectLocation(event.currentTarget.value)}
-          />
+          <div className="location-picker-row">
+            <input
+              aria-label="Project location"
+              value={projectLocation}
+              onChange={(event) => setProjectLocation(event.currentTarget.value)}
+            />
+            <button
+              aria-label="Choose project location"
+              className="location-picker-button"
+              type="button"
+              disabled={isChoosingLocation}
+              onClick={() => void handleChooseLocation()}
+            >
+              <FolderOpen size={15} />
+              {isChoosingLocation ? "Opening..." : "Choose"}
+            </button>
+          </div>
         </label>
         {error ? <div className="dialog-error">{error}</div> : null}
       </DialogBody>

@@ -8,7 +8,6 @@
 import { useMemo } from "react";
 import {
   ChevronRight,
-  Cpu,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -36,7 +35,6 @@ type SidebarProps = {
   onNewChat: (projectId?: string) => void;
   onOpenNewProject: () => void;
   onOpenSearch: () => void;
-  onOpenProviders: () => void;
   onOpenSettings: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenChat: (projectId: string, chatId: string) => void;
@@ -61,7 +59,6 @@ export function Sidebar({
   onNewChat,
   onOpenNewProject,
   onOpenSearch,
-  onOpenProviders,
   onOpenSettings,
   onOpenProject,
   onOpenChat,
@@ -109,10 +106,6 @@ export function Sidebar({
         <button type="button" onClick={onOpenSearch}>
           <Search size={16} />
           Search
-        </button>
-        <button type="button" onClick={onOpenProviders}>
-          <Cpu size={16} />
-          Providers
         </button>
       </div>
 

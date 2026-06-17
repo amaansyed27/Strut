@@ -31,7 +31,11 @@ pub fn command_search_dirs() -> Vec<PathBuf> {
         dirs.extend([
             home.join(".codex").join("bin"),
             home.join(".local").join("bin"),
+            home.join(".cargo").join("bin"),
+            home.join(".bun").join("bin"),
+            home.join(".deno").join("bin"),
             home.join(".npm-global").join("bin"),
+            home.join(".nvm").join("current").join("bin"),
             home.join("AppData").join("Roaming").join("npm"),
             home.join("AppData")
                 .join("Local")
@@ -42,6 +46,21 @@ pub fn command_search_dirs() -> Vec<PathBuf> {
                 .join("bin"),
         ]);
     }
+
+    dirs.extend([
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/local/sbin"),
+        PathBuf::from("/opt/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+        PathBuf::from("/usr/sbin"),
+        PathBuf::from("/sbin"),
+        PathBuf::from("/snap/bin"),
+        PathBuf::from("/var/lib/flatpak/exports/bin"),
+        PathBuf::from("/usr/local/share/npm/bin"),
+    ]);
 
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         let program_files = PathBuf::from(program_files);

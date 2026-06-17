@@ -5,8 +5,6 @@
  * components, and utilities can import only the shapes they need.
  */
 
-import type { LucideIcon } from "lucide-react";
-
 /* ------------------------------------------------------------------ */
 /*  Studio runtime                                                     */
 /* ------------------------------------------------------------------ */
@@ -115,7 +113,7 @@ export type ProjectInfo = {
 
 export type ProviderMode = "local" | "byok";
 export type ViewMode = "chat" | "preview";
-export type MainPanel = "chat" | "providers" | "settings";
+export type MainPanel = "chat" | "settings";
 export type ThemeMode = "system" | "light" | "dark";
 export type RunState = "idle" | "thinking" | "generating";
 
@@ -368,12 +366,6 @@ export type SidebarMenuState =
   | { kind: "chat"; projectId: string; chatId: string }
   | null;
 
-export type ViewModeOption = {
-  id: ViewMode;
-  Icon: LucideIcon;
-  label: string;
-};
-
 export type WorkspaceState = {
   projects: ProjectRecord[];
   activeProjectId: string | null;
@@ -403,16 +395,16 @@ export const STORAGE_KEY = "strut-studio-workspace-v4";
 export const BROWSER_SNAPSHOT_KEY = "strut-studio-saved-project-v1";
 
 export const browserLocalAdapters: LocalAdapter[] = [
-  { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "desktop check required" },
-  { id: "codex", name: "Codex", kind: "local-agent", command: "codex", installed: false, detail: "desktop check required" },
-  { id: "gemini-cli", name: "Gemini CLI", kind: "local-agent", command: "gemini", installed: false, detail: "desktop check required" },
-  { id: "claude-code", name: "Claude Code", kind: "local-agent", command: "claude / openclaude", installed: false, detail: "desktop check required" },
-  { id: "opencode", name: "OpenCode", kind: "local-agent", command: "opencode-cli", installed: false, detail: "desktop check required" },
-  { id: "cursor-agent", name: "Cursor Agent", kind: "local-agent", command: "cursor-agent", installed: false, detail: "desktop check required" },
-  { id: "qwen", name: "Qwen Code", kind: "local-agent", command: "qwen", installed: false, detail: "desktop check required" },
-  { id: "qoder", name: "Qoder CLI", kind: "local-agent", command: "qodercli", installed: false, detail: "desktop check required" },
-  { id: "copilot-cli", name: "Copilot CLI", kind: "local-agent", command: "copilot", installed: false, detail: "desktop check required" },
-  { id: "kiro", name: "Kiro", kind: "local-agent", command: "kiro-cli", installed: false, detail: "desktop check required" },
+  { id: "ollama", name: "Ollama", kind: "local-model", command: "ollama", installed: false, detail: "Not checked in browser preview" },
+  { id: "codex", name: "Codex", kind: "local-agent", command: "codex", installed: false, detail: "Not checked in browser preview" },
+  { id: "gemini-cli", name: "Gemini CLI", kind: "local-agent", command: "gemini", installed: false, detail: "Not checked in browser preview" },
+  { id: "claude-code", name: "Claude Code", kind: "local-agent", command: "claude / openclaude", installed: false, detail: "Not checked in browser preview" },
+  { id: "opencode", name: "OpenCode", kind: "local-agent", command: "opencode-cli", installed: false, detail: "Not checked in browser preview" },
+  { id: "cursor-agent", name: "Cursor Agent", kind: "local-agent", command: "cursor-agent", installed: false, detail: "Not checked in browser preview" },
+  { id: "qwen", name: "Qwen Code", kind: "local-agent", command: "qwen", installed: false, detail: "Not checked in browser preview" },
+  { id: "qoder", name: "Qoder CLI", kind: "local-agent", command: "qodercli", installed: false, detail: "Not checked in browser preview" },
+  { id: "copilot-cli", name: "Copilot CLI", kind: "local-agent", command: "copilot", installed: false, detail: "Not checked in browser preview" },
+  { id: "kiro", name: "Kiro", kind: "local-agent", command: "kiro-cli", installed: false, detail: "Not checked in browser preview" },
 ];
 
 export const byokProviders: ByokProvider[] = [

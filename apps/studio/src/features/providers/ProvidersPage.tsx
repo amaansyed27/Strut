@@ -1,3 +1,4 @@
+import type { ChangeEvent } from 'react';
 import { Cpu, RefreshCw } from 'lucide-react';
 import type { LocalAdapter } from '../../types';
 import { byokProviders } from '../../types';
@@ -55,7 +56,7 @@ export function ProvidersPage({
       ? (activeLocalAdapter?.detail ?? '')
       : `${providerModel.trim() || activeByokProvider.model} / ${providerEndpoint.trim() || activeByokProvider.endpoint}`;
 
-  const handleByokProviderChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleByokProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const provider =
       byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
     setSelectedByokProviderId(provider.id);
