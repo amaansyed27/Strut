@@ -10,6 +10,8 @@ pub mod validation;
 pub mod api;
 pub mod cli;
 pub mod motion;
+pub mod utils;
+pub mod provider_clients;
 mod dice_repair;
 
 pub use models::*;
@@ -24,6 +26,8 @@ pub use validation::*;
 pub use api::*;
 pub use cli::*;
 pub use motion::*;
+pub use utils::*;
+pub use provider_clients::*;
 
 
 
@@ -50,13 +54,15 @@ pub fn run() {
             validate_generation_plan_batch,
             open_project_folder,
             assistant_message,
+            assistant_message_v2,
             local_agent_adapters,
             test_local_adapter,
             export_animation_to_react,
             motion_spec_route,
-            
             test_byok_provider,
-            save_byok_provider
+            test_byok_provider_v2,
+            save_byok_provider,
+            save_byok_provider_v2
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
