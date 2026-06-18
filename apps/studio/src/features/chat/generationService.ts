@@ -10,6 +10,7 @@ import type {
   ReferenceAttachment,
   StudioStatus,
 } from "../../types";
+import type { MotionSpec } from "../../lib/motionArtifacts";
 
 export const generationService = {
   async assistantMessage(
@@ -32,6 +33,10 @@ export const generationService = {
       references: imageReferences,
       context,
     });
+  },
+
+  async motionSpecRoute(prompt: string): Promise<MotionSpec | null> {
+    return tauriInvoke<MotionSpec | null>("motion_spec_route", { prompt });
   },
 
   async studioStatus(): Promise<StudioStatus> {
