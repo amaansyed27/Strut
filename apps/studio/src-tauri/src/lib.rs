@@ -8,7 +8,7 @@ pub mod parsing;
 pub mod validation;
 pub mod api;
 pub mod cli;
-pub mod utils;
+pub mod motion;
 mod dice_repair;
 
 pub use models::*;
@@ -21,7 +21,7 @@ pub use parsing::*;
 pub use validation::*;
 pub use api::*;
 pub use cli::*;
-pub use utils::*;
+pub use motion::*;
 
 
 
@@ -51,6 +51,7 @@ pub fn run() {
             local_agent_adapters,
             test_local_adapter,
             export_animation_to_react,
+            motion_spec_route,
             
             test_byok_provider,
             save_byok_provider
