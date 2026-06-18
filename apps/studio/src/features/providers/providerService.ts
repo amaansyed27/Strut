@@ -8,9 +8,9 @@ import type { LocalAdapter, ProviderOperationResult } from "../../types";
 
 export type ByokProviderConfig = {
   providerId: string;
-  token?: string;
   endpoint: string;
   model: string;
+  [key: string]: string | undefined;
 };
 
 export const providerService = {
