@@ -2,6 +2,8 @@ use crate::*;
 use reqwest::Response;
 use serde_json::{json, Value};
 use std::fs;
+use std::path::Path;
+use std::time::Duration;
 
 async fn json_or_detail(response: Response, label: &str) -> Result<Value, String> {
     let status = response.status();
@@ -158,7 +160,7 @@ async fn gemini_text_resilient(
     let model = config.model.trim().trim_start_matches("models/");
     match gemini_text(prompt, config, references, system_prompt, model).await {
         Ok(text) => Ok(text),
-        Err(error) if model.starts_with("gemini-3") && error.to_ascii_lowercase().contains("not found") => {
+        Err(error) if model.starts_with("gemini-3") && (error.to_ascii_lowercase().contains("not found") || error.to_ascii_lowercase().contains("http 404")) => {
             gemini_text(prompt, config, references, system_prompt, "gemini-2.5-flash").await
         }
         Err(error) => Err(error),
@@ -179,12 +181,64 @@ pub async fn byok_generate_text_v2(
     }
 }
 
+fn local_direct_args(definition: &LocalAdapterDefinition, reference_dir: Option<&Path>, prompt: &str) -> (Vec<String>, String) {
+    match definition.id {
+        "codex" => {
+            let mut args = vec!["exec".to_string(), "--json".to_string(), "--skip-git-repo-check".to_string()];
+            if cfg!(windows) {
+                args.extend(["--sandbox".to_string(), "danger-full-access".to_string()]);
+            } else {
+                args.extend(["--sandbox".to_string(), "workspace-write".to_string(), "-c".to_string(), "sandbox_workspace_write.network_access=true".to_string()]);
+            }
+            if let Some(dir) = reference_dir { args.extend(["--add-dir".to_string(), dir.display().to_string()]); }
+            args.push(prompt.to_string());
+            (args, String::new())
+        }
+        "claude-code" => (vec!["-p".to_string(), prompt.to_string(), "--input-format".to_string(), "text".to_string(), "--output-format".to_string(), "stream-json".to_string(), "--verbose".to_string(), "--permission-mode".to_string(), "bypassPermissions".to_string()], String::new()),
+        "opencode" => (vec!["run".to_string(), prompt.to_string(), "--format".to_string(), "json".to_string(), "--dangerously-skip-permissions".to_string()], String::new()),
+        "cursor-agent" => (vec!["--print".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--stream-partial-output".to_string(), "--force".to_string(), "--trust".to_string()], String::new()),
+        "qoder" => (vec!["-p".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--yolo".to_string()], String::new()),
+        "copilot-cli" => (vec!["--allow-all-tools".to_string(), "--output-format".to_string(), "json".to_string(), prompt.to_string()], String::new()),
+        "gemini-cli" => (local_generation_args(definition, reference_dir), prompt.to_string()),
+        "qwen" => (local_generation_args(definition, reference_dir), prompt.to_string()),
+        _ => (local_generation_args(definition, reference_dir), prompt.to_string()),
+    }
+}
+
+fn local_adapter_text_v2(adapter_id: &str, prompt: &str, references: &[ReferenceImageInput], system_prompt: &str) -> Result<String, String> {
+    let definition = local_adapter_definitions()
+        .into_iter()
+        .find(|definition| definition.id == adapter_id)
+        .ok_or_else(|| format!("{adapter_id} is not registered"))?;
+
+    if definition.generation == LocalGenerationKind::OllamaHttp {
+        return tauri::async_runtime::block_on(chat_with_ollama(prompt, system_prompt));
+    }
+    if definition.generation == LocalGenerationKind::SpritePython {
+        return Ok("I can help ideate motion and generate deterministic sprite-python plans locally. Ask for a specific asset, mascot, logo, UI state, icon, or animation when you want me to create a validated Strut scene.".to_string());
+    }
+    if definition.generation == LocalGenerationKind::AcpOnly {
+        return Err(format!("{} is detected, but ACP transport support is not implemented yet.", definition.name));
+    }
+
+    let command = resolve_adapter_command(&definition).ok_or_else(|| format!("{} was not found on PATH or common tool directories", definition.commands.join(" / ")))?;
+    let reference_files = write_reference_files(references)?;
+    let reference_dir = reference_files.as_ref().map(|files| files.directory.as_path());
+    let combined_prompt = format!("{}\n\n{}", system_prompt, prompt);
+    let (args, stdin_text) = local_direct_args(&definition, reference_dir, &combined_prompt);
+    let output = run_command_with_stdin(&command, &args, &local_generation_env(&definition), None, &stdin_text, Duration::from_secs(240));
+    let _ = reference_files.as_ref().map(|files| fs::remove_dir_all(&files.directory));
+    let output = output?;
+    if !output.ok { return Err(command_output_preview(&output.stdout, &output.stderr)); }
+    Ok(format!("{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)).trim().to_string())
+}
+
 async fn call_provider_v2(prompt: &str, provider: &GenerationProvider, references: &[ReferenceImageInput], system_prompt: &str) -> Result<String, String> {
     match provider.mode.as_str() {
         "byok" => byok_generate_text_v2(prompt, provider.byok.as_ref().ok_or_else(|| "BYOK provider config missing".to_string())?, references, Some(system_prompt)).await,
         "local" => {
             let adapter_id = provider.local_adapter_id.as_ref().ok_or_else(|| "Select a local CLI or Ollama adapter".to_string())?;
-            let raw = chat_with_local_adapter(adapter_id, prompt, references, system_prompt).await?;
+            let raw = local_adapter_text_v2(adapter_id, prompt, references, system_prompt)?;
             Ok(cli_assistant_text(&raw))
         }
         _ => Err("Unknown provider mode".to_string()),
