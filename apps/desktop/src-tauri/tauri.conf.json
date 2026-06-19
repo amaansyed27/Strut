@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Live Runtime",
+  "version": "0.1.0",
+  "identifier": "dev.live-runtime.desktop",
+  "build": {
+    "beforeDevCommand": {
+      "cwd": "../../dashboard",
+      "script": "npm run dev",
+      "wait": false
+    },
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": {
+      "cwd": "../../dashboard",
+      "script": "npm run build"
+    },
+    "frontendDist": "../../dashboard/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Live Runtime",
+        "width": 540,
+        "height": 720,
+        "minWidth": 460,
+        "minHeight": 600,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "resizable": true,
+        "visible": true
+      },
+      {
+        "label": "companion",
+        "title": "Live Runtime Companion",
+        "width": 340,
+        "height": 410,
+        "minWidth": 300,
+        "minHeight": 92,
+        "center": false,
+        "x": 40,
+        "y": 120,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "resizable": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:11434 http://127.0.0.1:11434; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Tray-native local AI runtime powered by Ollama"
+  }
+}
