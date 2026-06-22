@@ -54,7 +54,7 @@ fn collect_stats(result: &AssistantResult) -> Option<QualityStats> {
 }
 
 fn count_node(node: &strut_core::Node, stats: &mut QualityStats) {
-    if !matches!(node.shape, strut_core::Shape::None) {
+    if !matches!(&node.shape, strut_core::Shape::None) {
         stats.parts += 1;
     }
     if let Some(fill) = node.style.fill.as_ref() {
