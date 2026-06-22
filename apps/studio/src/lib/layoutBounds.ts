@@ -12,24 +12,32 @@ export function ensureVisibleGeneratedDocument(document: StrutDocument): StrutDo
   let right = Number.NEGATIVE_INFINITY;
   let bottom = Number.NEGATIVE_INFINITY;
 
+  const addEllipse = (x: number, y: number, cx: number, cy: number, rx: number, ry: number) => {
+    left = Math.min(left, x + cx - rx);
+    top = Math.min(top, y + cy - ry);
+    right = Math.max(right, x + cx + rx);
+    bottom = Math.max(bottom, y + cy + ry);
+  };
+  const addRect = (x: number, y: number, rx: number, ry: number, w: number, h: number) => {
+    left = Math.min(left, x + rx);
+    top = Math.min(top, y + ry);
+    right = Math.max(right, x + rx + w);
+    bottom = Math.max(bottom, y + ry + h);
+  };
+
   for (const root of artboard.nodes) {
     const rootX = root.transform?.translate_x ?? 0;
     const rootY = root.transform?.translate_y ?? 0;
-    for (const part of root.children ?? [root]) {
-      const x = rootX + (part.transform?.translate_x ?? 0);
-      const y = rootY + (part.transform?.translate_y ?? 0);
-      const shape = part.shape;
-      if (shape?.type === "ellipse") {
-        left = Math.min(left, x + shape.cx - shape.rx);
-        top = Math.min(top, y + shape.cy - shape.ry);
-        right = Math.max(right, x + shape.cx + shape.rx);
-        bottom = Math.max(bottom, y + shape.cy + shape.ry);
-      }
-      if (shape?.type === "rect") {
-        left = Math.min(left, x + shape.x);
-        top = Math.min(top, y + shape.y);
-        right = Math.max(right, x + shape.x + shape.width);
-        bottom = Math.max(bottom, y + shape.y + shape.height);
+    for (const group of root.children ?? [root]) {
+      const groupX = rootX + (group.transform?.translate_x ?? 0);
+      const groupY = rootY + (group.transform?.translate_y ?? 0);
+      for (const part of group.children ?? [group]) {
+        const x = groupX + (part.transform?.translate_x ?? 0);
+        const y = groupY + (part.transform?.translate_y ?? 0);
+        const shape = part.shape;
+        if (shape?.type === "ellipse") addEllipse(x, y, shape.cx, shape.cy, shape.rx, shape.ry);
+        if (shape?.type === "rect") addRect(x, y, shape.x, shape.y, shape.width, shape.height);
+        if (shape?.type === "text") addRect(x, y, shape.x, shape.y - shape.size, Math.max(24, shape.value.length * shape.size * 0.62), shape.size);
       }
     }
   }
