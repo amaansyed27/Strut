@@ -1,0 +1,19 @@
+.preview-stage {
+  perspective: 900px;
+  perspective-origin: 50% 42%;
+}
+
+.character-preview {
+  overflow: visible;
+}
+
+.character-preview .document-scene,
+.character-preview .strut-node {
+  transform-style: preserve-3d;
+  transform-origin: center;
+  backface-visibility: visible;
+}
+
+.character-preview .strut-node {
+  will-change: transform, opacity;
+}
