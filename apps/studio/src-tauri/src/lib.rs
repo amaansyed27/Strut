@@ -13,6 +13,7 @@ pub mod motion;
 pub mod utils;
 pub mod provider_clients;
 mod dice_repair;
+mod coin_repair;
 
 pub use models::*;
 pub use project::*;
