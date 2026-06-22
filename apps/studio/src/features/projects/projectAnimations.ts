@@ -64,7 +64,7 @@ export function upsertProjectAnimation(
     animation,
     ...(project.animations ?? []).filter((item) => (
       item.id !== animation.id &&
-      !(item.chatId === animation.chatId && item.name === animation.name)
+      !(animation.chatId && item.chatId === animation.chatId)
     )),
   ];
   return { ...project, animations };
