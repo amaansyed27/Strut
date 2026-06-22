@@ -71,10 +71,14 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [providerUiMessage, setProviderUiMessage] = useState("");
   const [providerBusy, setProviderBusy] = useState(false);
+  const [providerCacheReady, setProviderCacheReady] = useState(false);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(PROVIDER_SETTINGS_STORAGE_KEY);
-    if (!raw) return;
+    if (!raw) {
+      setProviderCacheReady(true);
+      return;
+    }
     try {
       const cached = JSON.parse(raw) as CachedProviderSettings;
       if (cached.providerMode === "local" || cached.providerMode === "byok") setProviderMode(cached.providerMode);
@@ -87,10 +91,13 @@ export function SettingsPage({
       if (typeof cached.providerModel === "string") setProviderModel(cached.providerModel);
     } catch {
       window.localStorage.removeItem(PROVIDER_SETTINGS_STORAGE_KEY);
+    } finally {
+      setProviderCacheReady(true);
     }
   }, [setApiKey, setProviderEndpoint, setProviderMode, setProviderModel, setSelectedByokProviderId, setSelectedLocalAdapterId]);
 
   useEffect(() => {
+    if (!providerCacheReady) return;
     const payload: CachedProviderSettings = {
       providerMode,
       selectedLocalAdapterId,
@@ -100,7 +107,7 @@ export function SettingsPage({
       providerModel,
     };
     window.localStorage.setItem(PROVIDER_SETTINGS_STORAGE_KEY, JSON.stringify(payload));
-  }, [apiKey, providerEndpoint, providerMode, providerModel, selectedByokProviderId, selectedLocalAdapterId]);
+  }, [apiKey, providerCacheReady, providerEndpoint, providerMode, providerModel, selectedByokProviderId, selectedLocalAdapterId]);
 
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
