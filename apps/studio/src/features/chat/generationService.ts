@@ -4,7 +4,7 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
-import { upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
+import { engineIssuesV2, upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
 import type {
   AssistantResult,
   GenerationContext,
@@ -37,7 +37,16 @@ export const generationService = {
     });
 
     if (result.kind === "document_created" || result.kind === "document_updated") {
-      result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
+      const upgraded = upgradeGeneratedDocumentV2(prompt, result.document);
+      const issues = engineIssuesV2(prompt, upgraded);
+      if (issues.length) {
+        return {
+          kind: "chat",
+          source: "engine-quality",
+          message: `Strut blocked this generation because it is visually underbuilt: ${issues.join(", ")}. Regenerate with a more detailed model response; the result was not saved to the preview.`,
+        };
+      }
+      result.document = ensureVisibleGeneratedDocument(upgraded);
     }
     return result;
   },
