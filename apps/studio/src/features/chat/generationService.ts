@@ -4,7 +4,6 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
-import { createCanonicalCoinDocument, shouldUseCanonicalCoin } from "../../lib/canonicalCoin";
 import type {
   AssistantResult,
   GenerationContext,
@@ -14,30 +13,6 @@ import type {
 } from "../../types";
 import type { MotionSpec } from "../../lib/motionArtifacts";
 
-function localCoinResult(): AssistantResult {
-  return {
-    kind: "document_created",
-    source: "local-coin",
-    message: "Generated a premium 2.5D coin flip with front/back faces, rim depth, glint, reactive shadow, anticipation, flip, and settle states.",
-    document: ensureVisibleGeneratedDocument(createCanonicalCoinDocument("Premium 2.5D Coin Flip")),
-    activeState: "idle",
-    operationCount: 4,
-    planSummary: {
-      subjectClassification: "object",
-      subjectLabel: "premium 2.5D coin flip",
-      partNames: ["Reactive Ground Shadow", "Coin Rig", "Rim Depth Back Plate", "Warm Side Thickness", "Front Face Group", "Back Face Group", "Moving Glint Highlight", "Settle Spark"],
-      timelineNames: ["idle", "anticipation", "flip", "settle"],
-    },
-  };
-}
-
-function normalizeGeneratedMotion(prompt: string, result: AssistantResult): AssistantResult {
-  if (result.kind !== "document_created" && result.kind !== "document_updated") return result;
-  if (shouldUseCanonicalCoin(prompt)) return localCoinResult();
-  result.document = ensureVisibleGeneratedDocument(result.document);
-  return result;
-}
-
 export const generationService = {
   async assistantMessage(
     prompt: string,
@@ -45,8 +20,6 @@ export const generationService = {
     references: ReferenceAttachment[],
     context: GenerationContext,
   ): Promise<AssistantResult> {
-    if (shouldUseCanonicalCoin(prompt)) return localCoinResult();
-
     const imageReferences = references
       .filter((ref) => ref.kind !== "layer" && ref.dataUrl?.startsWith("data:image/"))
       .map((ref) => ({
@@ -62,7 +35,10 @@ export const generationService = {
       context,
     });
 
-    return normalizeGeneratedMotion(prompt, result);
+    if (result.kind === "document_created" || result.kind === "document_updated") {
+      result.document = ensureVisibleGeneratedDocument(result.document);
+    }
+    return result;
   },
 
   async motionSpecRoute(prompt: string): Promise<MotionSpec | null> {
