@@ -4,6 +4,7 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
+import { createCanonicalCoinDocument, shouldUseCanonicalCoin } from "../../lib/canonicalCoin";
 import type {
   AssistantResult,
   GenerationContext,
@@ -12,6 +13,18 @@ import type {
   StudioStatus,
 } from "../../types";
 import type { MotionSpec } from "../../lib/motionArtifacts";
+
+function normalizeGeneratedMotion(prompt: string, result: AssistantResult): AssistantResult {
+  if (result.kind !== "document_created" && result.kind !== "document_updated") return result;
+  if (shouldUseCanonicalCoin(prompt)) {
+    result.document = ensureVisibleGeneratedDocument(createCanonicalCoinDocument("Premium 2.5D Coin Flip"));
+    result.activeState = "idle";
+    result.message = "Generated a deterministic premium 2.5D coin flip with front/back faces, rim depth, glint, reactive shadow, anticipation, flip, and settle states.";
+    return result;
+  }
+  result.document = ensureVisibleGeneratedDocument(result.document);
+  return result;
+}
 
 export const generationService = {
   async assistantMessage(
@@ -35,10 +48,7 @@ export const generationService = {
       context,
     });
 
-    if (result.kind === "document_created" || result.kind === "document_updated") {
-      result.document = ensureVisibleGeneratedDocument(result.document);
-    }
-    return result;
+    return normalizeGeneratedMotion(prompt, result);
   },
 
   async motionSpecRoute(prompt: string): Promise<MotionSpec | null> {
