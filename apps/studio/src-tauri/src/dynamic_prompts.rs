@@ -18,9 +18,13 @@ Dynamic visual system:
 6. Do not overfit to examples. The same framework must adapt to any subject the user requests.
 
 Stage and layout rules:
-- Use the artboard as a safe stage. Keep the primary animated subject centered inside the visible artboard unless the user explicitly asks for an off-screen entrance.
-- Keep all important geometry inside 10%-90% of artboard width and 12%-86% of artboard height at rest.
-- Use a parent group for local coordinates. Child coordinates should be close to the parent origin; avoid large negative or off-artboard coordinates for child parts.
+- Default artboard is 960x540. Treat x=480, y=250 as the visual center.
+- Keep the primary animated subject centered inside the visible artboard unless the user explicitly asks for an off-screen entrance.
+- Keep all important geometry inside x=140..820 and y=80..430 at rest.
+- For ellipse geometry, use cx/cy in artboard coordinates near the visual center. Do not place cx below 120 or above 840 unless asked.
+- For rect geometry, keep x/y positive and visible. Do not use negative x/y for main parts.
+- For path geometry, use absolute artboard coordinates, not local negative coordinates. Prefer ellipse/rect/text for main bodies and use paths only for small centered accents.
+- Use a parent group only when child geometry still resolves near the artboard center. Avoid local child coordinates that place content outside the visible stage.
 - No keyframe should move the primary subject so far that it clips outside the artboard, unless the state is explicitly an exit transition.
 - Use shadow layers below the subject, not across or above the subject.
 
