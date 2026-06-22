@@ -4,6 +4,7 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
+import { upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
 import type {
   AssistantResult,
   GenerationContext,
@@ -36,7 +37,7 @@ export const generationService = {
     });
 
     if (result.kind === "document_created" || result.kind === "document_updated") {
-      result.document = ensureVisibleGeneratedDocument(result.document);
+      result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
     }
     return result;
   },
