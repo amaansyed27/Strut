@@ -3,6 +3,7 @@
  */
 
 import { tauriInvoke } from "../../lib/tauriClient";
+import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
 import type {
   AssistantResult,
   GenerationContext,
@@ -27,12 +28,17 @@ export const generationService = {
         dataUrl: ref.dataUrl ?? "",
       }));
 
-    return tauriInvoke<AssistantResult>("assistant_message_v2", {
+    const result = await tauriInvoke<AssistantResult>("assistant_message_v2", {
       prompt,
       provider,
       references: imageReferences,
       context,
     });
+
+    if (result.kind === "document_created" || result.kind === "document_updated") {
+      result.document = ensureVisibleGeneratedDocument(result.document);
+    }
+    return result;
   },
 
   async motionSpecRoute(prompt: string): Promise<MotionSpec | null> {
