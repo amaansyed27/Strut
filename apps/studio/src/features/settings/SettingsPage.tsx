@@ -9,6 +9,7 @@ import { Cpu, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import type { LocalAdapter, ProviderMode, ThemeMode } from "../../types";
 import { byokProviders } from "../../types";
 import { ProviderCard } from "../providers/ProviderCard";
+import { providerService } from "../providers/providerService";
 
 type SettingsPageProps = {
   themeMode: ThemeMode;
@@ -67,10 +68,9 @@ export function SettingsPage({
   setProviderModel,
   desktopRuntime,
   onRefreshProviders,
-  onSaveProvider,
-  onTestProvider,
 }: SettingsPageProps) {
   const [providerUiMessage, setProviderUiMessage] = useState("");
+  const [providerBusy, setProviderBusy] = useState(false);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(PROVIDER_SETTINGS_STORAGE_KEY);
@@ -116,6 +116,19 @@ export function SettingsPage({
     ? "Detected/selected only means Strut can see or store the provider settings. It does not mean the provider is online or valid. Run Test selected provider for a real smoke test."
     : "Browser preview cannot inspect providers. Open the desktop app to run real installed-provider and BYOK smoke tests.";
 
+  const byokConfig = () => ({
+    providerId: selectedByokProviderId,
+    apiKey: apiKey.trim() || undefined,
+    endpoint: providerEndpoint.trim(),
+    model: providerModel.trim(),
+  });
+
+  const showProviderResult = (title: string, ok: boolean, status: string, detail?: string) => {
+    const message = `${ok ? "PASS" : "FAIL"}: ${status}${detail ? ` — ${detail}` : ""}`;
+    setProviderUiMessage(message);
+    window.alert(`${title}\n\n${message}`);
+  };
+
   const handleByokProviderChange = (providerId: string) => {
     const provider = byokProviders.find((item) => item.id === providerId) ?? byokProviders[0];
     setSelectedByokProviderId(provider.id);
@@ -123,13 +136,43 @@ export function SettingsPage({
     setProviderModel(provider.model);
   };
 
+  const handleSaveProvider = async () => {
+    if (providerMode !== "byok") {
+      setProviderUiMessage("Select BYOK before saving provider settings.");
+      return;
+    }
+    if (!desktopRuntime) {
+      setProviderUiMessage("Desktop app required to save provider settings.");
+      return;
+    }
+    setProviderBusy(true);
+    setProviderUiMessage("Saving provider settings...");
+    try {
+      const result = await providerService.saveByokProvider(byokConfig());
+      showProviderResult("Provider saved", result.ok, result.status, result.detail);
+    } catch (error) {
+      showProviderResult("Provider save failed", false, String(error));
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
   const handleTestProvider = async () => {
+    if (!desktopRuntime) {
+      setProviderUiMessage("Desktop app required to test providers.");
+      return;
+    }
+    setProviderBusy(true);
     setProviderUiMessage("Running provider smoke test...");
     try {
-      await onTestProvider();
-      setProviderUiMessage("Smoke test finished. Check the top status bar for the provider response or error body.");
+      const result = providerMode === "local"
+        ? await providerService.testLocalAdapter(activeLocalAdapter?.id ?? selectedLocalAdapterId)
+        : await providerService.testByokProvider(byokConfig());
+      showProviderResult("Provider smoke test", result.ok, result.status, result.detail);
     } catch (error) {
-      setProviderUiMessage(`Smoke test failed before the provider call: ${String(error)}`);
+      showProviderResult("Provider smoke test failed", false, String(error));
+    } finally {
+      setProviderBusy(false);
     }
   };
 
@@ -248,9 +291,9 @@ export function SettingsPage({
                   onChange={(event) => setProviderModel(event.currentTarget.value)}
                 />
               </label>
-              <button type="button" onClick={onSaveProvider}>
+              <button type="button" disabled={providerBusy} onClick={handleSaveProvider}>
                 <Cpu size={16} />
-                Save provider
+                {providerBusy ? "Working..." : "Save provider"}
               </button>
             </div>
           ) : null}
@@ -260,7 +303,7 @@ export function SettingsPage({
               <button
                 className="secondary-button"
                 type="button"
-                disabled={!desktopRuntime}
+                disabled={!desktopRuntime || providerBusy}
                 title={desktopRuntime ? "Refresh local provider detection" : "Available in the desktop app"}
                 onClick={onRefreshProviders}
               >
@@ -271,12 +314,12 @@ export function SettingsPage({
             <button
               className="secondary-button"
               type="button"
-              disabled={!desktopRuntime}
+              disabled={!desktopRuntime || providerBusy}
               title={desktopRuntime ? "Run a real provider smoke test" : "Available in the desktop app"}
               onClick={handleTestProvider}
             >
               <RefreshCw size={14} />
-              Test selected provider
+              {providerBusy ? "Testing..." : "Test selected provider"}
             </button>
           </div>
 
