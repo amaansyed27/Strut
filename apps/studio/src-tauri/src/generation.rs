@@ -7,7 +7,8 @@ use crate::*;
 
 async fn response_json_or_detail(response: reqwest::Response, label: &str) -> Result<Value, String> {
     let status = response.status();
-    let body = response.text().await.map_err(|error| format!("{label} response read failed: {error}"))?;
+    let bytes = response.bytes().await.map_err(|error| format!("{label} response body read failed: {error}"))?;
+    let body = String::from_utf8_lossy(&bytes).to_string();
     if !status.is_success() {
         return Err(format!("{label} {}", http_error_preview(status.as_u16(), &body)));
     }
