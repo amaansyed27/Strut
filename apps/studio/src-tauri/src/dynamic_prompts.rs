@@ -18,8 +18,11 @@ Dynamic visual system:
 6. Do not overfit to examples. The same framework must adapt to any subject the user requests.
 
 Design quality rules:
+- Never return a single plain circle/rectangle/blob as the main result.
+- Idle must show a complete designed object, not only one hidden/outcome layer. The user should see the full designed subject before pressing another state.
 - Choose a deliberate palette from the subject and mood. Do not default to flat black/navy objects.
-- Use at least three value levels for premium objects: base color, mid-tone/depth color, and highlight/accent color.
+- Use at least four visible material layers for premium objects: base surface, depth/edge surface, inner/detail surface, highlight/accent surface.
+- Use at least three value levels: base color, mid-tone/depth color, and highlight/accent color.
 - Dark fills should normally be shadows, engravings, holes, or back-plane details; do not let a dark layer hide the main designed surface.
 - Use strokes and highlights to separate foreground, rim/edge, inset/detail, and shadow layers.
 - If the user asks for labels, letters, icons, faces, or markings, make them readable and centered on the relevant surface.
@@ -35,11 +38,13 @@ Stage and layout rules:
 - Use shadow layers below the subject, not across or above the subject.
 
 Motion quality rules:
-- Use 8-18 parts for dynamic objects and product moments.
+- Use 10-22 parts for premium dynamic objects and product moments.
 - Use 3-7 timelines for reusable states.
 - Main actions need anticipation, action, overshoot, and settle keyframes.
+- Action timelines must visibly change at least two of these properties on the main subject: rotation, translation.x, translation.y, scale, scale.x, scale.y, opacity.
+- Flip, spin, roll, reveal, press, bounce, and launch motions must have visible movement in the active state, not only static outcome states.
 - Secondary polish should lag or overlap primary motion.
-- Shadows must respond to motion.
+- Shadows must respond to motion using opacity or scale changes.
 - Details should be tasteful, readable, and subject-specific.
 
 GenerationPlan schema:
