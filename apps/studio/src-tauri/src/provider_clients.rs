@@ -34,19 +34,6 @@ fn supports_response_format(config: &ByokProviderConfig) -> bool {
     matches!(config.provider_id.as_str(), "openai" | "azure-openai")
 }
 
-fn builtin_motion_result(prompt: &str) -> Option<AssistantResult> {
-    if crate::coin_repair::is_coin_prompt(prompt) {
-        return Some(AssistantResult::DocumentCreated {
-            message: "Generated a deterministic premium 2.5D coin flip locally using Strut's built-in motion recipe. This bypasses provider failures for known motion components.".to_string(),
-            source: "built-in-coin-recipe".to_string(),
-            document: crate::coin_repair::canonical_coin_document("Premium 2.5D Coin Flip"),
-            plan_summary: None,
-            operation_count: None,
-        });
-    }
-    None
-}
-
 async fn openai_like_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>, force_json: bool) -> Result<String, String> {
     let client = http_client()?;
     let user_content = if references.is_empty() {
@@ -212,9 +199,6 @@ async fn call_provider_v2(prompt: &str, provider: &GenerationProvider, reference
 pub async fn assistant_message_v2(prompt: String, provider: Option<GenerationProvider>, references: Option<Vec<ReferenceImageInput>>, context: Option<GenerationContext>) -> Result<AssistantResult, String> {
     let references = references.unwrap_or_default();
     let provider = provider.ok_or_else(|| "Select a real local CLI, Ollama, or BYOK provider before generating.".to_string())?;
-    if let Some(result) = builtin_motion_result(&prompt) {
-        return Ok(result);
-    }
     let mut system_prompt = format!("{}\n\n{}", ASSISTANT_ROUTER_SYSTEM_PROMPT, DYNAMIC_GENERATION_SYSTEM_PROMPT);
     if let Some(ctx) = context.as_ref() {
         if let Some(project_name) = &ctx.project_name { system_prompt.push_str(&format!("\nProject: {project_name}")); }
