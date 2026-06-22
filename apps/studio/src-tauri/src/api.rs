@@ -60,6 +60,10 @@ pub fn http_client() -> Result<reqwest::Client, String> {
     headers.insert(reqwest::header::ACCEPT, reqwest::header::HeaderValue::from_static("application/json"));
     reqwest::Client::builder()
         .default_headers(headers)
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .no_zstd()
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|error| error.to_string())
