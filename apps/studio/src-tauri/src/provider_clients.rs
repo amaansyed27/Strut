@@ -7,7 +7,8 @@ use std::time::Duration;
 
 async fn json_or_detail(response: Response, label: &str) -> Result<Value, String> {
     let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
+    let bytes = response.bytes().await.map_err(|error| format!("{label} response body read failed: {error}"))?;
+    let body = String::from_utf8_lossy(&bytes).to_string();
     if !status.is_success() {
         return Err(format!("{label} {}", http_error_preview(status.as_u16(), &body)));
     }
@@ -247,5 +248,5 @@ pub fn save_byok_provider_v2(config: ByokProviderConfig) -> Result<ProviderOpera
     let path = provider_config_path()?;
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
     fs::write(&path, serde_json::to_string_pretty(&saved).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
-    Ok(ProviderOperationResult { ok: true, status: "provider config saved".to_string(), detail: format!("saved endpoint and model to {}; API keys stay in session memory", path.display()) })
+    Ok(ProviderOperationResult { ok: true, status: "provider config saved".to_string(), detail: format!("saved endpoint and model to {}; credentials stay in session/local UI storage", path.display()) })
 }
