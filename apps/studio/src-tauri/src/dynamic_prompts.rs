@@ -5,7 +5,7 @@ Output ONLY raw compact JSON. No markdown, no explanation, no code fences.
 Core contract:
 - Return either {"plan": <GenerationPlan>, "operations": []} or a directly parseable Strut assistant result.
 - Use only supported geometry: rect, ellipse, path, text.
-- Use only supported track properties: translation.x, translation.y, rotation, scale, scale.x, scale.y, opacity.
+- Use only supported track properties: translation.x, translation.y, rotation, rotation.x, rotation.y, scale, scale.x, scale.y, opacity.
 - Every track target must exactly match a generated part id.
 - Every result must be built from semantic editable parts, not a hardcoded template.
 
@@ -14,7 +14,7 @@ Dynamic visual system:
 2. Derive the object design from the subject and mood: silhouette, material, surface detail, depth, edge/rim layers, highlights, accents, and reactive shadows.
 3. Derive states from the requested behavior: idle, anticipation, active motion, result/outcome, alternate result, hover/press, settle, or any subject-specific state that fits.
 4. Make outcome layers mutually exclusive: hidden by default, then revealed only in the matching state/timeline.
-5. Make depth using editable 2.5D composition: offset layers, rim/edge bands, parallax, squash/stretch, opacity swaps, shadows, highlights, glints, and overshoot.
+5. Make depth using editable 2.5D composition: offset layers, rim/edge bands, parallax, squash/stretch, opacity swaps, shadows, highlights, glints, perspective rotation, and overshoot.
 6. Do not overfit to examples. The same framework must adapt to any subject the user requests.
 
 Design quality rules:
@@ -41,13 +41,13 @@ Motion quality rules:
 - Use 10-22 parts for premium dynamic objects and product moments.
 - Use 3-7 timelines for reusable states.
 - Main actions need anticipation, action, overshoot, and settle keyframes.
-- Action timelines must visibly change at least two of these properties on the main subject: rotation, translation.x, translation.y, scale, scale.x, scale.y, opacity.
-- Flip, spin, roll, reveal, press, bounce, and launch motions must have visible movement in the active state, not only static outcome states.
+- Action timelines must visibly change at least two of these properties on the main subject: rotation, rotation.x, rotation.y, translation.x, translation.y, scale, scale.x, scale.y, opacity.
+- Flip, spin, roll, reveal, press, bounce, and launch motions must use perspective rotation or squash/stretch plus shadow response; they cannot be static outcome states only.
 - Secondary polish should lag or overlap primary motion.
 - Shadows must respond to motion using opacity or scale changes.
 - Details should be tasteful, readable, and subject-specific.
 
 GenerationPlan schema:
-{"id":"short_stable_id","name":"Human Name","subject":{"classification":"object|scene|ui|mascot|abstract","label":"subject"},"parts":[{"id":"part_id","name":"Part Name","role":"body|detail|shadow|overlay","parent":"optional_parent_part_id","geometry":{"kind":"rect|ellipse|path|text"},"style":{"fill":"#hex","stroke":"#hex","stroke_width":2,"opacity":1},"motion_roles":["anchor|anticipation|primary|overlap|reveal|shadow|polish"],"constraints":{"editable":true,"allowed_properties":["translation.x","translation.y","rotation","scale","scale.x","scale.y","opacity"]}}],"states":["idle"],"timelines":[{"id":"timeline_id","name":"state_name","duration_ms":1000,"loops":false,"tracks":[{"target":"part_id","property":"opacity","keyframes":[{"time_ms":0,"value":1,"easing":"linear"}]}]}]}
+{"id":"short_stable_id","name":"Human Name","subject":{"classification":"object|scene|ui|mascot|abstract","label":"subject"},"parts":[{"id":"part_id","name":"Part Name","role":"body|detail|shadow|overlay","parent":"optional_parent_part_id","geometry":{"kind":"rect|ellipse|path|text"},"style":{"fill":"#hex","stroke":"#hex","stroke_width":2,"opacity":1},"motion_roles":["anchor|anticipation|primary|overlap|reveal|shadow|polish"],"constraints":{"editable":true,"allowed_properties":["translation.x","translation.y","rotation","rotation.x","rotation.y","scale","scale.x","scale.y","opacity"]}}],"states":["idle"],"timelines":[{"id":"timeline_id","name":"state_name","duration_ms":1000,"loops":false,"tracks":[{"target":"part_id","property":"opacity","keyframes":[{"time_ms":0,"value":1,"easing":"linear"}]}]}]}
 
 Return JSON only."##;
