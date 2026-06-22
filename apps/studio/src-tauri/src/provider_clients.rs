@@ -197,14 +197,14 @@ async fn call_provider_v2(prompt: &str, provider: &GenerationProvider, reference
 
 async fn improve_if_needed(prompt: &str, provider: &GenerationProvider, references: &[ReferenceImageInput], system_prompt: &str, result: AssistantResult) -> AssistantResult {
     let Some(retry_prompt) = quality_repair_prompt(prompt, &result) else {
-        return result;
+        return normalize_assistant_result_layout(result);
     };
     let Ok(retry_text) = call_provider_v2(&retry_prompt, provider, references, system_prompt).await else {
-        return result;
+        return normalize_assistant_result_layout(result);
     };
     match crate::commands::parse_assistant_result_from_text(&retry_text) {
-        Ok(retry_result) => retry_result,
-        Err(_) => result,
+        Ok(retry_result) => normalize_assistant_result_layout(retry_result),
+        Err(_) => normalize_assistant_result_layout(result),
     }
 }
 
