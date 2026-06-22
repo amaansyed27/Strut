@@ -69,8 +69,8 @@ export function SettingsPage({
           providerEndpoint.trim() || activeByokProvider.endpoint
         }`;
   const providerStatusText = desktopRuntime
-    ? "Desktop checks can detect local CLIs on this machine. Use Check installed providers to refresh the list."
-    : "Browser preview cannot inspect your Mac/Linux/Windows PATH. Open the desktop app to see Installed or Not found.";
+    ? "Detected/selected only means Strut can see or store the provider settings. It does not mean the provider is online or valid. Run Test selected provider for a real smoke test."
+    : "Browser preview cannot inspect providers. Open the desktop app to run real installed-provider and BYOK smoke tests.";
 
   const handleByokProviderChange = (providerId: string) => {
     const provider = byokProviders.find((item) => item.id === providerId) ?? byokProviders[0];
@@ -132,11 +132,12 @@ export function SettingsPage({
             </div>
           </div>
 
+          <div className={desktopRuntime ? "provider-check-status ready" : "provider-check-status pending"}>
+            <span>{providerStatusText}</span>
+          </div>
+
           {providerMode === "local" ? (
             <>
-              <div className={desktopRuntime ? "provider-check-status ready" : "provider-check-status pending"}>
-                <span>{providerStatusText}</span>
-              </div>
               <div className="provider-list" aria-label="Local providers">
                 {localAdapters.map((adapter) => (
                   <ProviderCard
@@ -219,7 +220,7 @@ export function SettingsPage({
               className="secondary-button"
               type="button"
               disabled={!desktopRuntime}
-              title={desktopRuntime ? "Run a provider smoke test" : "Available in the desktop app"}
+              title={desktopRuntime ? "Run a real provider smoke test" : "Available in the desktop app"}
               onClick={onTestProvider}
             >
               <RefreshCw size={14} />
