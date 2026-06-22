@@ -29,13 +29,7 @@ fn wants_json(system_prompt: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-async fn openai_like_text(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-    force_json: bool,
-) -> Result<String, String> {
+async fn openai_like_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>, force_json: bool) -> Result<String, String> {
     let client = http_client()?;
     let user_content = if references.is_empty() {
         json!(prompt)
@@ -44,7 +38,6 @@ async fn openai_like_text(
         content.extend(references.iter().map(|reference| json!({"type":"image_url","image_url":{"url":reference.data_url}})));
         json!(content)
     };
-
     let mut payload = json!({
         "model": config.model.trim(),
         "messages": [
@@ -53,18 +46,12 @@ async fn openai_like_text(
         ],
         "temperature": 0.2
     });
-    if force_json {
-        payload["response_format"] = json!({"type":"json_object"});
-    }
-
+    if force_json { payload["response_format"] = json!({"type":"json_object"}); }
     let token = config.api_key.as_deref().unwrap_or_default();
     let mut request = client.post(chat_url(&config.endpoint)).bearer_auth(token).json(&payload);
     if config.provider_id == "openrouter" {
-        request = request
-            .header("HTTP-Referer", "https://github.com/amaansyed27/Strut")
-            .header("X-Title", "Strut Studio");
+        request = request.header("HTTP-Referer", "https://github.com/amaansyed27/Strut").header("X-Title", "Strut Studio");
     }
-
     let body = json_or_detail(request.send().await.map_err(|error| error.to_string())?, provider_label(&config.provider_id)).await?;
     body.pointer("/choices/0/message/content")
         .and_then(Value::as_str)
@@ -72,42 +59,26 @@ async fn openai_like_text(
         .ok_or_else(|| "provider response did not include choices[0].message.content".to_string())
 }
 
-async fn openai_like_text_resilient(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-) -> Result<String, String> {
+async fn openai_like_text_resilient(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
     let force_json = wants_json(system_prompt);
     match openai_like_text(prompt, config, references, system_prompt, force_json).await {
         Ok(text) => Ok(text),
-        Err(error) if force_json && should_retry_without_json_mode(&error) => {
-            openai_like_text(prompt, config, references, system_prompt, false).await
-        }
+        Err(error) if force_json && should_retry_without_json_mode(&error) => openai_like_text(prompt, config, references, system_prompt, false).await,
         Err(error) => Err(error),
     }
 }
 
 fn should_retry_without_json_mode(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
-    lower.contains("response_format")
-        || lower.contains("json_object")
-        || lower.contains("unsupported")
-        || lower.contains("http 400")
+    lower.contains("response_format") || lower.contains("json_object") || lower.contains("unsupported") || lower.contains("http 400")
 }
 
-async fn anthropic_text(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-) -> Result<String, String> {
+async fn anthropic_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
     let client = http_client()?;
     let mut content = vec![json!({"type":"text","text": prompt_with_reference_context(prompt, references)})];
     content.extend(references.iter().filter_map(|reference| {
         Some(json!({"type":"image","source":{"type":"base64","media_type":image_media_type(reference),"data":data_url_payload(&reference.data_url)?}}))
     }));
-
     let token = config.api_key.as_deref().unwrap_or_default();
     let response = client
         .post(format!("{}/v1/messages", endpoint_base(&config.endpoint)))
@@ -122,40 +93,21 @@ async fn anthropic_text(
         .send()
         .await
         .map_err(|error| error.to_string())?;
-
     let body = json_or_detail(response, "Anthropic").await?;
-    let text = body
-        .get("content")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get("text").and_then(Value::as_str))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
+    let text = body.get("content").and_then(Value::as_array).map(|items| {
+        items.iter().filter_map(|item| item.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")
+    }).unwrap_or_default();
     if text.trim().is_empty() { Err("Anthropic response did not include text content".to_string()) } else { Ok(text) }
 }
 
-async fn gemini_text(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-    model: &str,
-) -> Result<String, String> {
+async fn gemini_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>, model: &str) -> Result<String, String> {
     let client = http_client()?;
     let mut parts = vec![json!({"text": format!("{}\nPrompt: {}", system_prompt.unwrap_or("You are Strut's AI assistant."), prompt_with_reference_context(prompt, references))})];
     parts.extend(references.iter().filter_map(|reference| {
         Some(json!({"inline_data":{"mime_type":image_media_type(reference),"data":data_url_payload(&reference.data_url)?}}))
     }));
-
     let mut generation_config = json!({"temperature":0.2});
-    if wants_json(system_prompt) {
-        generation_config["responseMimeType"] = json!("application/json");
-    }
-
+    if wants_json(system_prompt) { generation_config["responseMimeType"] = json!("application/json"); }
     let token = config.api_key.as_deref().unwrap_or_default();
     let response = client
         .post(format!("{}/v1beta/models/{}:generateContent?key={}", endpoint_base(&config.endpoint), model.trim().trim_start_matches("models/"), token))
@@ -163,7 +115,6 @@ async fn gemini_text(
         .send()
         .await
         .map_err(|error| error.to_string())?;
-
     let body = json_or_detail(response, "Gemini").await?;
     body.pointer("/candidates/0/content/parts/0/text")
         .and_then(Value::as_str)
@@ -171,28 +122,16 @@ async fn gemini_text(
         .ok_or_else(|| "Gemini response did not include candidates[0].content.parts[0].text".to_string())
 }
 
-async fn gemini_text_resilient(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-) -> Result<String, String> {
+async fn gemini_text_resilient(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
     let model = config.model.trim().trim_start_matches("models/");
     match gemini_text(prompt, config, references, system_prompt, model).await {
         Ok(text) => Ok(text),
-        Err(error) if model.starts_with("gemini-3") && (error.to_ascii_lowercase().contains("not found") || error.to_ascii_lowercase().contains("http 404")) => {
-            gemini_text(prompt, config, references, system_prompt, "gemini-2.5-flash").await
-        }
+        Err(error) if model.starts_with("gemini-3") && (error.to_ascii_lowercase().contains("not found") || error.to_ascii_lowercase().contains("http 404")) => gemini_text(prompt, config, references, system_prompt, "gemini-2.5-flash").await,
         Err(error) => Err(error),
     }
 }
 
-pub async fn byok_generate_text_v2(
-    prompt: &str,
-    config: &ByokProviderConfig,
-    references: &[ReferenceImageInput],
-    system_prompt: Option<&str>,
-) -> Result<String, String> {
+pub async fn byok_generate_text_v2(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
     ensure_byok_config(config)?;
     match config.provider_id.as_str() {
         "anthropic" => anthropic_text(prompt, config, references, system_prompt).await,
@@ -205,11 +144,8 @@ fn local_direct_args(definition: &LocalAdapterDefinition, reference_dir: Option<
     match definition.id {
         "codex" => {
             let mut args = vec!["exec".to_string(), "--json".to_string(), "--skip-git-repo-check".to_string()];
-            if cfg!(windows) {
-                args.extend(["--sandbox".to_string(), "danger-full-access".to_string()]);
-            } else {
-                args.extend(["--sandbox".to_string(), "workspace-write".to_string(), "-c".to_string(), "sandbox_workspace_write.network_access=true".to_string()]);
-            }
+            if cfg!(windows) { args.extend(["--sandbox".to_string(), "danger-full-access".to_string()]); }
+            else { args.extend(["--sandbox".to_string(), "workspace-write".to_string(), "-c".to_string(), "sandbox_workspace_write.network_access=true".to_string()]); }
             if let Some(dir) = reference_dir { args.extend(["--add-dir".to_string(), dir.display().to_string()]); }
             args.push(prompt.to_string());
             (args, String::new())
@@ -219,27 +155,16 @@ fn local_direct_args(definition: &LocalAdapterDefinition, reference_dir: Option<
         "cursor-agent" => (vec!["--print".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--stream-partial-output".to_string(), "--force".to_string(), "--trust".to_string()], String::new()),
         "qoder" => (vec!["-p".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--yolo".to_string()], String::new()),
         "copilot-cli" => (vec!["--allow-all-tools".to_string(), "--output-format".to_string(), "json".to_string(), prompt.to_string()], String::new()),
-        "gemini-cli" => (local_generation_args(definition, reference_dir), prompt.to_string()),
-        "qwen" => (local_generation_args(definition, reference_dir), prompt.to_string()),
+        "gemini-cli" | "qwen" => (local_generation_args(definition, reference_dir), prompt.to_string()),
         _ => (local_generation_args(definition, reference_dir), prompt.to_string()),
     }
 }
 
 async fn local_adapter_text_v2(adapter_id: &str, prompt: &str, references: &[ReferenceImageInput], system_prompt: &str) -> Result<String, String> {
-    let definition = local_adapter_definitions()
-        .into_iter()
-        .find(|definition| definition.id == adapter_id)
-        .ok_or_else(|| format!("{adapter_id} is not registered"))?;
-
-    if definition.generation == LocalGenerationKind::OllamaHttp {
-        return chat_with_ollama(prompt, system_prompt).await;
-    }
-    if definition.generation == LocalGenerationKind::SpritePython {
-        return Ok("I can help ideate motion and generate deterministic sprite-python plans locally. Ask for a specific asset, mascot, logo, UI state, icon, or animation when you want me to create a validated Strut scene.".to_string());
-    }
-    if definition.generation == LocalGenerationKind::AcpOnly {
-        return Err(format!("{} is detected, but ACP transport support is not implemented yet.", definition.name));
-    }
+    let definition = local_adapter_definitions().into_iter().find(|definition| definition.id == adapter_id).ok_or_else(|| format!("{adapter_id} is not registered"))?;
+    if definition.generation == LocalGenerationKind::OllamaHttp { return chat_with_ollama(prompt, system_prompt).await; }
+    if definition.generation == LocalGenerationKind::SpritePython { return Ok("sprite-python provider is available for deterministic local recipe generation; interactive chat is not required for this engine.".to_string()); }
+    if definition.generation == LocalGenerationKind::AcpOnly { return Err(format!("{} is detected, but ACP transport support is not implemented yet.", definition.name)); }
 
     let command = resolve_adapter_command(&definition).ok_or_else(|| format!("{} was not found on PATH or common tool directories", definition.commands.join(" / ")))?;
     let reference_files = write_reference_files(references)?;
@@ -304,6 +229,14 @@ pub async fn test_byok_provider_v2(config: ByokProviderConfig) -> Result<Provide
     match byok_generate_text_v2("Return exactly {\"ok\":true} and nothing else.", &config, &[], Some("You are a connection test. Return compact JSON only.")).await {
         Ok(text) => Ok(ProviderOperationResult { ok: true, status: format!("{} ready", provider_label(&config.provider_id)), detail: format!("provider returned: {}", response_preview(&text)) }),
         Err(error) => Ok(ProviderOperationResult { ok: false, status: format!("{} failed smoke test", provider_label(&config.provider_id)), detail: error }),
+    }
+}
+
+#[tauri::command]
+pub async fn test_local_adapter_v2(adapter_id: String) -> ProviderOperationResult {
+    match local_adapter_text_v2(&adapter_id, "Return exactly: strut-local-provider-ok", &[], "You are a local provider connection test. Return only the requested text and no markdown.").await {
+        Ok(text) => ProviderOperationResult { ok: true, status: format!("{adapter_id} ready"), detail: format!("provider returned: {}", response_preview(&cli_assistant_text(&text))) },
+        Err(error) => ProviderOperationResult { ok: false, status: format!("{adapter_id} failed smoke test"), detail: error },
     }
 }
 
