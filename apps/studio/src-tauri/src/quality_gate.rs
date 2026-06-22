@@ -19,7 +19,7 @@ pub fn quality_repair_prompt(user_prompt: &str, result: &AssistantResult) -> Opt
     }
 
     Some(format!(
-        "The previous animation passed JSON validation but failed Strut's visual quality gate. Regenerate it from scratch. User request: {user_prompt}\n\nProblems detected: parts={}, distinct_fill_colors={}, timelines={}, tracks={}, active_motion_tracks={}.\n\nRequirements for the regenerated result: create a complete designed object in idle, use 10-22 semantic editable parts, use at least 4 visible material/detail layers, use at least 3 distinct fill colors, create 3-7 state timelines, and make the active motion visibly change rotation plus translation or scale. Do not return a single circle/blob or static object. Do not hardcode any template; derive all parts and states from the user's subject.",
+        "The previous animation passed JSON validation but failed Strut's visual quality gate. Regenerate it from scratch. User request: {user_prompt}\n\nProblems detected: parts={}, distinct_fill_colors={}, timelines={}, tracks={}, active_motion_tracks={}.\n\nRequirements for the regenerated result: create a complete designed object in idle, use 10-22 semantic editable parts, use at least 4 visible material/detail layers, use at least 3 distinct fill colors, create 3-7 state timelines, and make the active motion visibly change rotation, perspective rotation, translation, or scale. Do not return a single circle/blob or static object. Do not hardcode any template; derive all parts and states from the user's subject.",
         stats.parts,
         distinct_colors,
         stats.timelines,
@@ -45,7 +45,7 @@ fn collect_stats(result: &AssistantResult) -> Option<QualityStats> {
         for track in &timeline.tracks {
             stats.tracks += 1;
             let property = track.property.as_str();
-            if matches!(property, "rotation" | "translation.x" | "translation.y" | "scale" | "scale.x" | "scale.y") {
+            if matches!(property, "rotation" | "rotation.x" | "rotation.y" | "translation.x" | "translation.y" | "scale" | "scale.x" | "scale.y") {
                 stats.active_tracks += 1;
             }
         }
