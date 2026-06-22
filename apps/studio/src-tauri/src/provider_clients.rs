@@ -196,16 +196,26 @@ async fn call_provider_v2(prompt: &str, provider: &GenerationProvider, reference
 }
 
 async fn improve_if_needed(prompt: &str, provider: &GenerationProvider, references: &[ReferenceImageInput], system_prompt: &str, result: AssistantResult) -> AssistantResult {
-    let Some(retry_prompt) = quality_repair_prompt(prompt, &result) else {
-        return normalize_assistant_result_layout(result);
-    };
-    let Ok(retry_text) = call_provider_v2(&retry_prompt, provider, references, system_prompt).await else {
-        return normalize_assistant_result_layout(result);
-    };
-    match crate::commands::parse_assistant_result_from_text(&retry_text) {
-        Ok(retry_result) => normalize_assistant_result_layout(retry_result),
-        Err(_) => normalize_assistant_result_layout(result),
+    let mut current = result;
+    for _ in 0..2 {
+        let Some(retry_prompt) = quality_repair_prompt(prompt, &current) else {
+            return normalize_assistant_result_layout(current);
+        };
+        let Ok(retry_text) = call_provider_v2(&retry_prompt, provider, references, system_prompt).await else {
+            return normalize_assistant_result_layout(current);
+        };
+        match crate::commands::parse_assistant_result_from_text(&retry_text) {
+            Ok(retry_result) => current = retry_result,
+            Err(_) => return normalize_assistant_result_layout(current),
+        }
     }
+    if quality_repair_prompt(prompt, &current).is_some() {
+        return AssistantResult::Chat {
+            source: "quality-gate".to_string(),
+            message: "Generation was blocked because the provider kept returning an underbuilt animation that missed requested states, semantic layers, or active motion. Try again with the same prompt; Strut will now force a stricter repair prompt instead of saving another broken preview.".to_string(),
+        };
+    }
+    normalize_assistant_result_layout(current)
 }
 
 #[tauri::command]
