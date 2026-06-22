@@ -55,7 +55,14 @@ pub fn is_blocked_internal_ip(ip: IpAddr) -> bool {
 }
 
 pub fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|error| error.to_string())
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(reqwest::header::ACCEPT_ENCODING, reqwest::header::HeaderValue::from_static("identity"));
+    headers.insert(reqwest::header::ACCEPT, reqwest::header::HeaderValue::from_static("application/json"));
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| error.to_string())
 }
 
 pub fn endpoint_base(endpoint: &str) -> String {
