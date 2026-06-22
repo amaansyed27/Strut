@@ -8,6 +8,7 @@ Output contract:
 - Use only supported timeline tracks: translation.x, translation.y, rotation, rotation.x, rotation.y, scale, scale.x, scale.y, opacity.
 - Every state named in the prompt must exist exactly in the state machine and must have a timeline with active motion.
 - If current document context exists and the user asks to edit, update the existing animation instead of creating a new unrelated design.
+- Animation colors and art direction must be independent of the Strut app theme and independent of the preview background. Never copy app chrome colors unless explicitly requested.
 
 Quality floor:
 - Never output a single flat circle, blob, placeholder, decorative arc, or generic icon as the subject.
@@ -22,6 +23,12 @@ Circular-object / coin / medallion grammar:
 - Front/back faces must not be two identical circles. The back face should have a different mark/detail and should be animated through opacity or rotation during flip.
 - Rim depth must be visible as side thickness or stacked edge layers, not just a stroke.
 - Flip motion must use rotation.y across 0/90/180/270/360, translation.y arc, scale squash on settle, shadow opacity/scale response, and glint sweep.
+
+Graphic dot-transition grammar:
+- If the user asks for an opening-title dot sequence, gun-barrel-like dots, horizontal circles, or circles expanding over the screen, create a graphic title-transition scene, not a coin.
+- Use a row of repeated circular dots entering horizontally, staggered timing, increasing scale, and one final circle that expands to cover the full artboard.
+- Include states such as idle, dots_enter, expand, and cover if the user does not name states.
+- Keep it abstract and editable: separate dot nodes, leading circle, expansion circle, full-screen circle, subtle shadows/glints, and clean black/white/transparent background compatibility.
 
 Component / mascot / object grammar:
 - UI components need base surface, bevel, label/icon, highlight, hover/press/success depth changes, and shadow compression.
