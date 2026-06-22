@@ -19,7 +19,7 @@ export const providerService = {
   },
 
   async testLocalAdapter(adapterId: string): Promise<ProviderOperationResult> {
-    return tauriInvoke<ProviderOperationResult>("test_local_adapter", { adapterId });
+    return tauriInvoke<ProviderOperationResult>("test_local_adapter_v2", { adapterId });
   },
 
   async saveByokProvider(config: ByokProviderConfig): Promise<ProviderOperationResult> {
