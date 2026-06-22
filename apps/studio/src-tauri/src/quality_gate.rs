@@ -83,8 +83,8 @@ fn collect_node_stats(node: &strut_core::Node, stats: &mut SceneStats) {
 }
 
 fn track_has_motion(track: &strut_core::Track) -> bool {
-    let mut values = track.keyframes.iter().filter_map(|keyframe| match keyframe.value {
-        strut_core::PropertyValue::Number(value) => Some(value),
+    let mut values = track.keyframes.iter().filter_map(|keyframe| match &keyframe.value {
+        strut_core::PropertyValue::Number(value) => Some(*value),
         _ => None,
     });
     let Some(first) = values.next() else { return false; };
