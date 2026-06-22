@@ -71,13 +71,13 @@ fn normalize_node_material(node: &mut strut_core::Node) {
         }
         node.style.opacity = node.style.opacity.min(0.30);
     } else if text.contains("gold") || text.contains("yellow") || text.contains("amber") {
-        if fill_is_weak { node.style.fill = Some("#f7c948".to_string()); }
+        node.style.fill = Some("#f7c948".to_string());
         if node.style.stroke.as_deref().map_or(true, |stroke| stroke.eq_ignore_ascii_case("none")) {
             node.style.stroke = Some("#a16207".to_string());
             node.style.stroke_width = node.style.stroke_width.max(2.0);
         }
     } else if text.contains("silver") || text.contains("chrome") || text.contains("steel") {
-        if fill_is_weak { node.style.fill = Some("#cbd5e1".to_string()); }
+        node.style.fill = Some("#cbd5e1".to_string());
         if node.style.stroke.as_deref().map_or(true, |stroke| stroke.eq_ignore_ascii_case("none")) {
             node.style.stroke = Some("#64748b".to_string());
             node.style.stroke_width = node.style.stroke_width.max(2.0);
@@ -129,7 +129,7 @@ fn ensure_action_motion(document: &mut strut_core::Document) {
         let name = timeline.name.to_ascii_lowercase();
         if !is_action_timeline(&name) { continue; }
         let active_track_count = timeline.tracks.iter().filter(|track| track.target == primary && is_transform_track(&track.property)).count();
-        if active_track_count < 2 { add_action_tracks(timeline, primary, shadow); }
+        if active_track_count < 3 { add_action_tracks(timeline, primary, shadow); }
     }
 }
 
@@ -180,7 +180,7 @@ fn is_action_timeline(name: &str) -> bool {
 }
 
 fn is_transform_track(property: &str) -> bool {
-    matches!(property, "rotation" | "translation.x" | "translation.y" | "scale" | "scale.x" | "scale.y")
+    matches!(property, "rotation" | "rotation.x" | "rotation.y" | "translation.x" | "translation.y" | "scale" | "scale.x" | "scale.y")
 }
 
 fn add_action_tracks(timeline: &mut strut_core::Timeline, primary: Uuid, shadow: Option<Uuid>) {
@@ -188,9 +188,10 @@ fn add_action_tracks(timeline: &mut strut_core::Timeline, primary: Uuid, shadow:
     let mid = duration / 2;
     let end = duration;
     timeline.tracks.push(number_track(primary, "translation.y", vec![(0, 0.0), (mid / 2, -42.0), (mid, -12.0), (end, 0.0)]));
-    timeline.tracks.push(number_track(primary, "rotation", vec![(0, 0.0), (mid, 360.0), (end, 720.0)]));
-    timeline.tracks.push(number_track(primary, "scale.x", vec![(0, 1.0), (mid / 2, 0.16), (mid, 1.08), (end, 1.0)]));
-    timeline.tracks.push(number_track(primary, "scale.y", vec![(0, 1.0), (mid / 2, 1.08), (mid, 0.96), (end, 1.0)]));
+    timeline.tracks.push(number_track(primary, "rotation.y", vec![(0, 0.0), (mid / 2, 88.0), (mid, 180.0), ((duration * 3) / 4, 300.0), (end, 360.0)]));
+    timeline.tracks.push(number_track(primary, "rotation", vec![(0, 0.0), (mid, 10.0), (end, 0.0)]));
+    timeline.tracks.push(number_track(primary, "scale.x", vec![(0, 1.0), (mid / 2, 0.14), (mid, 1.04), (end, 1.0)]));
+    timeline.tracks.push(number_track(primary, "scale.y", vec![(0, 1.0), (mid / 2, 1.08), (mid, 0.98), (end, 1.0)]));
     if let Some(shadow) = shadow {
         timeline.tracks.push(number_track(shadow, "opacity", vec![(0, 0.20), (mid / 2, 0.06), (end, 0.22)]));
         timeline.tracks.push(number_track(shadow, "scale.x", vec![(0, 1.0), (mid / 2, 0.64), (end, 1.08)]));
