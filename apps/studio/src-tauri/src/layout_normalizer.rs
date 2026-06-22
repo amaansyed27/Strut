@@ -107,6 +107,12 @@ fn shape_bounds(shape: &strut_core::Shape, tx: f32, ty: f32) -> Option<Bounds> {
             max_x: tx + *x + (value.chars().count() as f32 * *size * 0.62).max(24.0),
             max_y: ty + *y,
         }),
+        strut_core::Shape::Sprite { frame_width, frame_height, .. } => Some(Bounds {
+            min_x: tx,
+            min_y: ty,
+            max_x: tx + *frame_width,
+            max_y: ty + *frame_height,
+        }),
         strut_core::Shape::Path { d } => path_bounds(d, tx, ty),
         strut_core::Shape::None => None,
     }
