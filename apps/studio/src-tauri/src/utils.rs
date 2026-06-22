@@ -27,11 +27,7 @@ pub fn sanitize_token(value: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
         .collect::<String>()
         .to_lowercase();
-    if token.is_empty() {
-        "unknown".to_string()
-    } else {
-        token
-    }
+    if token.is_empty() { "unknown".to_string() } else { token }
 }
 
 pub fn timestamp_label() -> String {
@@ -44,48 +40,30 @@ pub fn unix_timestamp() -> u64 {
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
 }
+
 pub fn response_preview(text: &str) -> String {
     let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.is_empty() {
-        "empty response".to_string()
-    } else {
-        compact.chars().take(700).collect()
-    }
+    if compact.is_empty() { "empty response".to_string() } else { compact.chars().take(700).collect() }
 }
+
 pub fn data_url_payload(data_url: &str) -> Option<&str> {
     data_url.split_once(',').map(|(_, payload)| payload)
 }
 
 pub fn image_media_type(reference: &ReferenceImageInput) -> &str {
-    if reference.mime_type.trim().is_empty() {
-        return "image/png";
-    }
+    if reference.mime_type.trim().is_empty() { return "image/png"; }
     reference.mime_type.trim()
 }
 
-
-
-
-
-
-
-pub fn write_reference_files(
-    references: &[ReferenceImageInput],
-) -> Result<Option<WrittenReferenceFiles>, String> {
-    if references.is_empty() {
-        return Ok(None);
-    }
+pub fn write_reference_files(references: &[ReferenceImageInput]) -> Result<Option<WrittenReferenceFiles>, String> {
+    if references.is_empty() { return Ok(None); }
 
     let directory = std::env::temp_dir().join(format!("strut-references-{}", unix_timestamp()));
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let mut paths = Vec::new();
     for (index, reference) in references.iter().enumerate() {
-        let Some(payload) = data_url_payload(&reference.data_url) else {
-            continue;
-        };
-        let bytes = general_purpose::STANDARD
-            .decode(payload)
-            .map_err(|error| format!("could not decode {}: {error}", reference.name))?;
+        let Some(payload) = data_url_payload(&reference.data_url) else { continue; };
+        let bytes = general_purpose::STANDARD.decode(payload).map_err(|error| format!("could not decode {}: {error}", reference.name))?;
         let extension = image_extension(reference);
         let name = sanitize_file_stem(&reference.name);
         let path = directory.join(format!("{index:02}-{name}.{extension}"));
@@ -97,15 +75,8 @@ pub fn write_reference_files(
 }
 
 pub fn sanitize_file_stem(name: &str) -> String {
-    let sanitized = name
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-        .collect::<String>();
-    if sanitized.is_empty() {
-        "reference".to_string()
-    } else {
-        sanitized
-    }
+    let sanitized = name.chars().filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_')).collect::<String>();
+    if sanitized.is_empty() { "reference".to_string() } else { sanitized }
 }
 
 pub fn image_extension(reference: &ReferenceImageInput) -> &'static str {
@@ -122,45 +93,63 @@ pub fn reference_message(base: &str, references: &[ReferenceImageInput]) -> Stri
     if references.is_empty() {
         base.to_string()
     } else {
-        format!(
-            "{base} using {} reference image{}",
-            references.len(),
-            if references.len() == 1 { "" } else { "s" }
-        )
-    }
-}
-pub fn cli_assistant_text(text: &str) -> String {
-    let mut collected = String::new();
-    for line in text.lines() {
-        if let Ok(value) = serde_json::from_str::<Value>(line) {
-            collect_text_fields(&value, &mut collected);
-        }
-    }
-    if collected.trim().is_empty() {
-        text.to_string()
-    } else {
-        collected
+        format!("{base} using {} reference image{}", references.len(), if references.len() == 1 { "" } else { "s" })
     }
 }
 
+pub fn cli_assistant_text(text: &str) -> String {
+    let mut chunks = Vec::new();
+    if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        collect_cli_text_fields(&value, &mut chunks);
+    }
+    for line in text.lines() {
+        if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
+            collect_cli_text_fields(&value, &mut chunks);
+        }
+    }
+
+    let mut deduped = Vec::new();
+    for chunk in chunks {
+        let clean = chunk.trim();
+        if clean.is_empty() { continue; }
+        if deduped.last().map(|last: &String| last.as_str()) == Some(clean) { continue; }
+        deduped.push(clean.to_string());
+    }
+
+    if deduped.is_empty() { text.trim().to_string() } else { deduped.join("\n") }
+}
+
 pub fn collect_text_fields(value: &Value, out: &mut String) {
+    let mut chunks = Vec::new();
+    collect_cli_text_fields(value, &mut chunks);
+    out.push_str(&chunks.join("\n"));
+}
+
+fn collect_cli_text_fields(value: &Value, out: &mut Vec<String>) {
     match value {
         Value::String(text) => {
-            out.push_str(text);
+            let trimmed = text.trim();
+            if !trimmed.is_empty() { out.push(trimmed.to_string()); }
         }
         Value::Array(values) => {
-            for value in values {
-                collect_text_fields(value, out);
-            }
+            for value in values { collect_cli_text_fields(value, out); }
         }
         Value::Object(map) => {
-            if map.get("role").and_then(Value::as_str) == Some("user") {
-                return;
-            }
-            for key in ["item", "text", "content", "message", "delta", "output", "response"] {
+            if map.get("role").and_then(Value::as_str) == Some("user") { return; }
+            if map.get("type").and_then(Value::as_str).is_some_and(|kind| matches!(kind, "error" | "stderr" | "tool_call" | "tool_result")) { return; }
+
+            for key in ["text", "content", "message", "response", "output", "result", "delta"] {
                 if let Some(value) = map.get(key) {
-                    collect_text_fields(value, out);
+                    collect_cli_text_fields(value, out);
+                    return;
                 }
+            }
+
+            for (key, value) in map {
+                if matches!(key.as_str(), "id" | "type" | "role" | "model" | "usage" | "created" | "timestamp" | "session_id" | "tool" | "tool_name" | "metadata") {
+                    continue;
+                }
+                collect_cli_text_fields(value, out);
             }
         }
         _ => {}

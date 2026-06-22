@@ -1,5 +1,6 @@
 /**
  * Provider service — typed wrappers for provider-related Tauri commands.
+ * Uses the resilient provider test/save commands on desktop.
  */
 
 import { tauriInvoke } from "../../lib/tauriClient";
@@ -7,9 +8,9 @@ import type { LocalAdapter, ProviderOperationResult } from "../../types";
 
 export type ByokProviderConfig = {
   providerId: string;
-  apiKey?: string;
   endpoint: string;
   model: string;
+  [key: string]: string | undefined;
 };
 
 export const providerService = {
@@ -18,14 +19,14 @@ export const providerService = {
   },
 
   async testLocalAdapter(adapterId: string): Promise<ProviderOperationResult> {
-    return tauriInvoke<ProviderOperationResult>("test_local_adapter", { adapterId });
+    return tauriInvoke<ProviderOperationResult>("test_local_adapter_v2", { adapterId });
   },
 
   async saveByokProvider(config: ByokProviderConfig): Promise<ProviderOperationResult> {
-    return tauriInvoke<ProviderOperationResult>("save_byok_provider", { config });
+    return tauriInvoke<ProviderOperationResult>("save_byok_provider_v2", { config });
   },
 
   async testByokProvider(config: ByokProviderConfig): Promise<ProviderOperationResult> {
-    return tauriInvoke<ProviderOperationResult>("test_byok_provider", { config });
+    return tauriInvoke<ProviderOperationResult>("test_byok_provider_v2", { config });
   },
 };
