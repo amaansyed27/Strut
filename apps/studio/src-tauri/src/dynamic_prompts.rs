@@ -17,6 +17,13 @@ Dynamic visual system:
 5. Make depth using editable 2.5D composition: offset layers, rim/edge bands, parallax, squash/stretch, opacity swaps, shadows, highlights, glints, perspective rotation, and overshoot.
 6. Do not overfit to examples. The same framework must adapt to any subject the user requests.
 
+3D illusion method:
+- For prompts asking for 3D, perspective, flip, spin, roll, coin, card, cube, medallion, badge, or rotating object illusions, think like a CSS3D scene even though the output is a Strut document.
+- Build separate semantic layers for front face, back face/result face, visible side/edge thickness, rim/edge texture, foreground markings, highlights, and reactive ground shadow.
+- Use rotation.y or rotation.x for the main flip/spin axis. Use scale.x squash at edge-on frames to sell thickness. Use translation.y for jump/lift and shadow scale/opacity for gravity.
+- The idle state must show the full designed object, not a flat placeholder disc. Active states must show the object becoming edge-on, then returning to a readable face.
+- Use layered rings, offset side surfaces, and highlight strokes to fake thickness. Do not represent a 3D object as one ellipse plus a shadow.
+
 Design quality rules:
 - Never return a single plain circle/rectangle/blob as the main result.
 - Idle must show a complete designed object, not only one hidden/outcome layer. The user should see the full designed subject before pressing another state.
