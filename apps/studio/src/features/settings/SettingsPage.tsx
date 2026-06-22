@@ -4,6 +4,7 @@
  * Extracted from App.tsx for modularity.
  */
 
+import { useEffect, useState } from "react";
 import { Cpu, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import type { LocalAdapter, ProviderMode, ThemeMode } from "../../types";
 import { byokProviders } from "../../types";
@@ -28,8 +29,19 @@ type SettingsPageProps = {
   desktopRuntime: boolean;
   onRefreshProviders: () => void;
   onSaveProvider: () => void;
-  onTestProvider: () => void;
+  onTestProvider: () => void | Promise<void>;
 };
+
+type CachedProviderSettings = {
+  providerMode?: ProviderMode;
+  selectedLocalAdapterId?: string;
+  selectedByokProviderId?: string;
+  apiKey?: string;
+  providerEndpoint?: string;
+  providerModel?: string;
+};
+
+const PROVIDER_SETTINGS_STORAGE_KEY = "strut-studio.provider-settings-v1";
 
 const themeOptions: Array<{ id: ThemeMode; icon: typeof Sun; label: string }> = [
   { id: "system", icon: Monitor, label: "System" },
@@ -58,6 +70,38 @@ export function SettingsPage({
   onSaveProvider,
   onTestProvider,
 }: SettingsPageProps) {
+  const [providerUiMessage, setProviderUiMessage] = useState("");
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(PROVIDER_SETTINGS_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const cached = JSON.parse(raw) as CachedProviderSettings;
+      if (cached.providerMode === "local" || cached.providerMode === "byok") setProviderMode(cached.providerMode);
+      if (cached.selectedLocalAdapterId) setSelectedLocalAdapterId(cached.selectedLocalAdapterId);
+      if (cached.selectedByokProviderId && byokProviders.some((provider) => provider.id === cached.selectedByokProviderId)) {
+        setSelectedByokProviderId(cached.selectedByokProviderId);
+      }
+      if (typeof cached.apiKey === "string") setApiKey(cached.apiKey);
+      if (typeof cached.providerEndpoint === "string") setProviderEndpoint(cached.providerEndpoint);
+      if (typeof cached.providerModel === "string") setProviderModel(cached.providerModel);
+    } catch {
+      window.localStorage.removeItem(PROVIDER_SETTINGS_STORAGE_KEY);
+    }
+  }, [setApiKey, setProviderEndpoint, setProviderMode, setProviderModel, setSelectedByokProviderId, setSelectedLocalAdapterId]);
+
+  useEffect(() => {
+    const payload: CachedProviderSettings = {
+      providerMode,
+      selectedLocalAdapterId,
+      selectedByokProviderId,
+      apiKey,
+      providerEndpoint,
+      providerModel,
+    };
+    window.localStorage.setItem(PROVIDER_SETTINGS_STORAGE_KEY, JSON.stringify(payload));
+  }, [apiKey, providerEndpoint, providerMode, providerModel, selectedByokProviderId, selectedLocalAdapterId]);
+
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0];
   const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
   const activeProviderLabel = providerMode === "local" ? activeLocalAdapter?.name ?? "None" : activeByokProvider.name;
@@ -77,6 +121,16 @@ export function SettingsPage({
     setSelectedByokProviderId(provider.id);
     setProviderEndpoint(provider.endpoint);
     setProviderModel(provider.model);
+  };
+
+  const handleTestProvider = async () => {
+    setProviderUiMessage("Running provider smoke test...");
+    try {
+      await onTestProvider();
+      setProviderUiMessage("Smoke test finished. Check the top status bar for the provider response or error body.");
+    } catch (error) {
+      setProviderUiMessage(`Smoke test failed before the provider call: ${String(error)}`);
+    }
   };
 
   return (
@@ -137,18 +191,16 @@ export function SettingsPage({
           </div>
 
           {providerMode === "local" ? (
-            <>
-              <div className="provider-list" aria-label="Local providers">
-                {localAdapters.map((adapter) => (
-                  <ProviderCard
-                    key={adapter.id}
-                    adapter={adapter}
-                    selected={selectedLocalAdapterId === adapter.id}
-                    onSelect={() => setSelectedLocalAdapterId(adapter.id)}
-                  />
-                ))}
-              </div>
-            </>
+            <div className="provider-list" aria-label="Local providers">
+              {localAdapters.map((adapter) => (
+                <ProviderCard
+                  key={adapter.id}
+                  adapter={adapter}
+                  selected={selectedLocalAdapterId === adapter.id}
+                  onSelect={() => setSelectedLocalAdapterId(adapter.id)}
+                />
+              ))}
+            </div>
           ) : null}
 
           {providerMode === "byok" ? (
@@ -221,12 +273,18 @@ export function SettingsPage({
               type="button"
               disabled={!desktopRuntime}
               title={desktopRuntime ? "Run a real provider smoke test" : "Available in the desktop app"}
-              onClick={onTestProvider}
+              onClick={handleTestProvider}
             >
               <RefreshCw size={14} />
               Test selected provider
             </button>
           </div>
+
+          {providerUiMessage ? (
+            <div className="provider-check-status pending" role="status">
+              <span>{providerUiMessage}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
