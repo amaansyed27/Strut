@@ -83,7 +83,7 @@ function cssTransform(transform: CssStrutTransform | undefined): string {
   const t = transform ?? {};
   const scale = t.scale ?? 1;
   return [
-    `translate3d(${t.x ?? 0}px, ${t.y ?? 0}px, ${t.z ?? 0}px)`,
+    `translate3d(${t.x ?? 0}px, ${t.y}px, ${t.z ?? 0}px)`,
     `rotateX(${t.rotateX ?? 0}deg)`,
     `rotateY(${t.rotateY ?? 0}deg)`,
     `rotateZ(${t.rotateZ ?? t.rotate ?? 0}deg)`,
@@ -193,7 +193,7 @@ export function mountCssStrut(target: HTMLElement, model: CssStrutDocument, opti
       element.classList.forEach((className) => { if (className.startsWith("state-")) element.classList.remove(className); });
       element.classList.add(`state-${cssIdent(state)}`);
       element.dataset.state = state;
-      for (const animated of element.querySelectorAll<HTMLElement>("[data-strut-layer]")) {
+      for (const animated of Array.from(element.querySelectorAll<HTMLElement>("[data-strut-layer]"))) {
         animated.style.animation = "none";
         void animated.offsetWidth;
         animated.style.animation = "";
