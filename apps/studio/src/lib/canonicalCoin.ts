@@ -1,5 +1,7 @@
 import type { StrutDocument, StrutNode, Timeline } from "../types";
 
+type Easing = "linear" | "ease_in" | "ease_out" | "ease_in_out" | "steps";
+
 const id = (index: number) => `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
 
 const IDs = {
@@ -37,54 +39,23 @@ function transform(translate_x = 0, translate_y = 0, scale_x = 1, scale_y = 1) {
 }
 
 function group(idValue: string, name: string, role: string, children: StrutNode[], x = 0, y = 0, opacity = 1): StrutNode {
-  return {
-    id: idValue,
-    name,
-    kind: "group",
-    role,
-    transform: transform(x, y),
-    style: style(null, null, 0, opacity),
-    shape: { type: "none" },
-    children,
-  };
+  return { id: idValue, name, kind: "group", role, transform: transform(x, y), style: style(null, null, 0, opacity), shape: { type: "none" }, children };
 }
 
 function ellipse(idValue: string, name: string, role: string, rx: number, ry: number, fill: string | null, stroke: string | null, strokeWidth = 0, x = 0, y = 0, opacity = 1): StrutNode {
-  return {
-    id: idValue,
-    name,
-    kind: "ellipse",
-    role,
-    transform: transform(x, y),
-    style: style(fill, stroke, strokeWidth, opacity),
-    shape: { type: "ellipse", cx: 0, cy: 0, rx, ry },
-    children: [],
-  };
+  return { id: idValue, name, kind: "ellipse", role, transform: transform(x, y), style: style(fill, stroke, strokeWidth, opacity), shape: { type: "ellipse", cx: 0, cy: 0, rx, ry }, children: [] };
 }
 
 function path(idValue: string, name: string, role: string, d: string, fill: string | null, stroke: string | null, strokeWidth = 0, opacity = 1): StrutNode {
-  return {
-    id: idValue,
-    name,
-    kind: "path",
-    role,
-    transform: transform(),
-    style: style(fill, stroke, strokeWidth, opacity),
-    shape: { type: "path", d },
-    children: [],
-  };
+  return { id: idValue, name, kind: "path", role, transform: transform(), style: style(fill, stroke, strokeWidth, opacity), shape: { type: "path", d }, children: [] };
 }
 
 function value(v: number) {
   return { type: "number", value: v } as const;
 }
 
-function track(target: string, property: string, frames: Array<[number, number, Timeline["tracks"][number]["keyframes"][number]["easing"]]>) {
-  return {
-    target,
-    property,
-    keyframes: frames.map(([time_ms, v, easing]) => ({ time_ms, value: value(v), easing })),
-  };
+function track(target: string, property: string, frames: Array<[number, number, Easing]>) {
+  return { target, property, keyframes: frames.map(([time_ms, v, easing]) => ({ time_ms, value: value(v), easing })) };
 }
 
 function timeline(idValue: string, name: string, duration_ms: number, loops: boolean, tracks: NonNullable<Timeline["tracks"]>): Timeline {
