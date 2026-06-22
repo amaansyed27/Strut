@@ -74,13 +74,15 @@ pub(crate) fn canonical_coin_document(name: &str) -> strut_core::Document {
         coin_transform(480.0, 242.0),
         coin_style(None, None, 0.0, 1.0),
         vec![
-            coin_node("BackFace", "Back Face", strut_core::NodeKind::Ellipse, "back face", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 112.0, ry: 112.0 }, strut_core::Transform::default(), coin_style(Some("#c38a22"), Some("#7a4a0f"), 5.0, 0.0), vec![]),
-            coin_node("RimDepth", "Rim Depth", strut_core::NodeKind::Ellipse, "rim depth", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 118.0, ry: 112.0 }, coin_transform(10.0, 8.0), coin_style(Some("#b7791f"), Some("#5f370e"), 6.0, 0.82), vec![]),
-            coin_node("FrontFace", "Front Face", strut_core::NodeKind::Ellipse, "front face", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 112.0, ry: 112.0 }, strut_core::Transform::default(), coin_style(Some("#ffd76a"), Some("#7a4a0f"), 5.0, 1.0), vec![]),
-            coin_node("InnerRing", "Inner Ring", strut_core::NodeKind::Ellipse, "engraved ring", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 82.0, ry: 82.0 }, strut_core::Transform::default(), coin_style(None, Some("#fff2a8"), 5.0, 0.64), vec![]),
-            coin_node("CoinMark", "Coin Mark", strut_core::NodeKind::Path, "front emblem", strut_core::Shape::Path { d: "M-28 -24 L0 -46 L28 -24 L18 28 L-18 28 Z".to_string() }, strut_core::Transform::default(), coin_style(Some("#7a4a0f"), Some("#fff2a8"), 3.0, 0.72), vec![]),
-            coin_node("GlintA", "Glint A", strut_core::NodeKind::Path, "glint", strut_core::Shape::Path { d: "M-82 -54 C-36 -92 32 -92 80 -42".to_string() }, strut_core::Transform::default(), coin_style(None, Some("#fff7c2"), 10.0, 0.82), vec![]),
-            coin_node("GlintB", "Glint B", strut_core::NodeKind::Path, "glint", strut_core::Shape::Path { d: "M-54 68 C-10 90 42 78 72 40".to_string() }, strut_core::Transform::default(), coin_style(None, Some("#fff7c2"), 7.0, 0.42), vec![]),
+            coin_node("BackFace", "Back Face", strut_core::NodeKind::Ellipse, "back face", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 112.0, ry: 112.0 }, strut_core::Transform::default(), coin_style(Some("#f0a53a"), Some("#7a4a0f"), 5.0, 0.0), vec![]),
+            coin_node("RimDepth", "Rim Depth", strut_core::NodeKind::Ellipse, "rim depth", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 119.0, ry: 112.0 }, coin_transform(10.0, 8.0), coin_style(Some("#b56a16"), Some("#6b3f09"), 6.0, 0.86), vec![]),
+            coin_node("FrontFace", "Front Face", strut_core::NodeKind::Ellipse, "front face", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 112.0, ry: 112.0 }, strut_core::Transform::default(), coin_style(Some("#ffd76a"), Some("#8a550f"), 5.0, 1.0), vec![]),
+            coin_node("InnerRing", "Inner Ring", strut_core::NodeKind::Ellipse, "engraved ring", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 78.0, ry: 78.0 }, strut_core::Transform::default(), coin_style(None, Some("#fff4b8"), 6.0, 0.68), vec![]),
+            coin_node("Medallion", "Medallion", strut_core::NodeKind::Ellipse, "premium inner medallion", strut_core::Shape::Ellipse { cx: 0.0, cy: 0.0, rx: 52.0, ry: 52.0 }, strut_core::Transform::default(), coin_style(Some("#f2bd3f"), Some("#9f6416"), 4.0, 0.92), vec![]),
+            coin_node("FrontMark", "Heads Mark", strut_core::NodeKind::Text, "heads emblem", strut_core::Shape::Text { x: -26.0, y: 28.0, value: "H".to_string(), size: 82.0 }, strut_core::Transform::default(), coin_style(Some("#7a4a0f"), None, 0.0, 0.78), vec![]),
+            coin_node("BackMark", "Tails Mark", strut_core::NodeKind::Text, "tails emblem", strut_core::Shape::Text { x: -22.0, y: 28.0, value: "T".to_string(), size: 82.0 }, strut_core::Transform::default(), coin_style(Some("#7a4a0f"), None, 0.0, 0.0), vec![]),
+            coin_node("GlintA", "Glint A", strut_core::NodeKind::Path, "glint", strut_core::Shape::Path { d: "M-78 -58 C-36 -88 34 -88 78 -44".to_string() }, strut_core::Transform::default(), coin_style(None, Some("#fff8cc"), 9.0, 0.76), vec![]),
+            coin_node("GlintB", "Glint B", strut_core::NodeKind::Path, "glint", strut_core::Shape::Path { d: "M-52 70 C-10 90 42 78 70 42".to_string() }, strut_core::Transform::default(), coin_style(None, Some("#fff2a8"), 6.0, 0.38), vec![]),
         ],
     );
 
@@ -132,6 +134,8 @@ pub(crate) fn canonical_coin_document(name: &str) -> strut_core::Document {
                 coin_track("CoinGroup", "rotation", vec![(0, -8.0, strut_core::Easing::Linear), (1200, 720.0, strut_core::Easing::Linear)]),
                 coin_track("FrontFace", "opacity", vec![(0, 1.0, strut_core::Easing::Linear), (300, 0.0, strut_core::Easing::Linear), (600, 1.0, strut_core::Easing::Linear), (900, 0.0, strut_core::Easing::Linear), (1200, 1.0, strut_core::Easing::Linear)]),
                 coin_track("BackFace", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (300, 1.0, strut_core::Easing::Linear), (600, 0.0, strut_core::Easing::Linear), (900, 1.0, strut_core::Easing::Linear), (1200, 0.0, strut_core::Easing::Linear)]),
+                coin_track("FrontMark", "opacity", vec![(0, 0.78, strut_core::Easing::Linear), (300, 0.0, strut_core::Easing::Linear), (600, 0.78, strut_core::Easing::Linear), (900, 0.0, strut_core::Easing::Linear), (1200, 0.78, strut_core::Easing::Linear)]),
+                coin_track("BackMark", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (300, 0.78, strut_core::Easing::Linear), (600, 0.0, strut_core::Easing::Linear), (900, 0.78, strut_core::Easing::Linear), (1200, 0.0, strut_core::Easing::Linear)]),
                 coin_track("ReactiveShadow", "opacity", vec![(0, 0.22, strut_core::Easing::EaseOut), (360, 0.06, strut_core::Easing::EaseOut), (1200, 0.22, strut_core::Easing::EaseIn)]),
             ],
         },
@@ -147,8 +151,8 @@ pub(crate) fn canonical_coin_document(name: &str) -> strut_core::Document {
                 coin_track("ReactiveShadow", "scale.x", vec![(0, 0.7, strut_core::Easing::EaseOut), (340, 1.26, strut_core::Easing::EaseInOut), (760, 1.0, strut_core::Easing::EaseOut)]),
             ],
         },
-        strut_core::Timeline { id: id_to_uuid("coin-heads"), name: "heads".to_string(), duration_ms: 500, loops: false, tracks: vec![coin_track("FrontFace", "opacity", vec![(0, 1.0, strut_core::Easing::Linear), (500, 1.0, strut_core::Easing::Linear)]), coin_track("BackFace", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)])] },
-        strut_core::Timeline { id: id_to_uuid("coin-tails"), name: "tails".to_string(), duration_ms: 500, loops: false, tracks: vec![coin_track("FrontFace", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)]), coin_track("BackFace", "opacity", vec![(0, 1.0, strut_core::Easing::Linear), (500, 1.0, strut_core::Easing::Linear)])] },
+        strut_core::Timeline { id: id_to_uuid("coin-heads"), name: "heads".to_string(), duration_ms: 500, loops: false, tracks: vec![coin_track("FrontFace", "opacity", vec![(0, 1.0, strut_core::Easing::Linear), (500, 1.0, strut_core::Easing::Linear)]), coin_track("BackFace", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)]), coin_track("FrontMark", "opacity", vec![(0, 0.78, strut_core::Easing::Linear), (500, 0.78, strut_core::Easing::Linear)]), coin_track("BackMark", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)])] },
+        strut_core::Timeline { id: id_to_uuid("coin-tails"), name: "tails".to_string(), duration_ms: 500, loops: false, tracks: vec![coin_track("FrontFace", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)]), coin_track("BackFace", "opacity", vec![(0, 1.0, strut_core::Easing::Linear), (500, 1.0, strut_core::Easing::Linear)]), coin_track("FrontMark", "opacity", vec![(0, 0.0, strut_core::Easing::Linear), (500, 0.0, strut_core::Easing::Linear)]), coin_track("BackMark", "opacity", vec![(0, 0.78, strut_core::Easing::Linear), (500, 0.78, strut_core::Easing::Linear)])] },
     ];
 
     strut_core::Document {
