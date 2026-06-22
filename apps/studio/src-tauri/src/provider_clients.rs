@@ -7,7 +7,10 @@ use std::time::Duration;
 
 async fn json_or_detail(response: Response, label: &str) -> Result<Value, String> {
     let status = response.status();
-    let bytes = response.bytes().await.map_err(|error| format!("{label} response body read failed: {error}"))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("{label} response body read failed: {error}"))?;
     let body = String::from_utf8_lossy(&bytes).to_string();
     if !status.is_success() {
         return Err(format!("{label} {}", http_error_preview(status.as_u16(), &body)));
@@ -30,7 +33,17 @@ fn wants_json(system_prompt: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-async fn openai_like_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>, force_json: bool) -> Result<String, String> {
+fn supports_response_format(config: &ByokProviderConfig) -> bool {
+    matches!(config.provider_id.as_str(), "openai" | "azure-openai")
+}
+
+async fn openai_like_text(
+    prompt: &str,
+    config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
+    system_prompt: Option<&str>,
+    force_json: bool,
+) -> Result<String, String> {
     let client = http_client()?;
     let user_content = if references.is_empty() {
         json!(prompt)
@@ -47,7 +60,9 @@ async fn openai_like_text(prompt: &str, config: &ByokProviderConfig, references:
         ],
         "temperature": 0.2
     });
-    if force_json { payload["response_format"] = json!({"type":"json_object"}); }
+    if force_json && supports_response_format(config) {
+        payload["response_format"] = json!({"type":"json_object"});
+    }
     let token = config.api_key.as_deref().unwrap_or_default();
     let mut request = client.post(chat_url(&config.endpoint)).bearer_auth(token).json(&payload);
     if config.provider_id == "openrouter" {
@@ -60,11 +75,18 @@ async fn openai_like_text(prompt: &str, config: &ByokProviderConfig, references:
         .ok_or_else(|| "provider response did not include choices[0].message.content".to_string())
 }
 
-async fn openai_like_text_resilient(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
+async fn openai_like_text_resilient(
+    prompt: &str,
+    config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
+    system_prompt: Option<&str>,
+) -> Result<String, String> {
     let force_json = wants_json(system_prompt);
     match openai_like_text(prompt, config, references, system_prompt, force_json).await {
         Ok(text) => Ok(text),
-        Err(error) if force_json && should_retry_without_json_mode(&error) => openai_like_text(prompt, config, references, system_prompt, false).await,
+        Err(error) if force_json && should_retry_without_json_mode(&error) => {
+            openai_like_text(prompt, config, references, system_prompt, false).await
+        }
         Err(error) => Err(error),
     }
 }
@@ -79,7 +101,12 @@ fn should_retry_without_json_mode(error: &str) -> bool {
         || lower.contains("decoding response body")
 }
 
-async fn anthropic_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
+async fn anthropic_text(
+    prompt: &str,
+    config: &ByokProviderConfig,
+    references: &[ReferenceImageInput],
+    system_prompt: Option<&str>,
+) -> Result<String, String> {
     let client = http_client()?;
     let mut content = vec![json!({"type":"text","text": prompt_with_reference_context(prompt, references)})];
     content.extend(references.iter().filter_map(|reference| {
@@ -150,17 +177,15 @@ fn local_direct_args(definition: &LocalAdapterDefinition, reference_dir: Option<
     match definition.id {
         "codex" => {
             let mut args = vec!["exec".to_string(), "--json".to_string(), "--skip-git-repo-check".to_string()];
-            if cfg!(windows) { args.extend(["--sandbox".to_string(), "danger-full-access".to_string()]); }
-            else { args.extend(["--sandbox".to_string(), "workspace-write".to_string(), "-c".to_string(), "sandbox_workspace_write.network_access=true".to_string()]); }
             if let Some(dir) = reference_dir { args.extend(["--add-dir".to_string(), dir.display().to_string()]); }
             args.push(prompt.to_string());
             (args, String::new())
         }
-        "claude-code" => (vec!["-p".to_string(), prompt.to_string(), "--input-format".to_string(), "text".to_string(), "--output-format".to_string(), "stream-json".to_string(), "--verbose".to_string(), "--permission-mode".to_string(), "bypassPermissions".to_string()], String::new()),
-        "opencode" => (vec!["run".to_string(), prompt.to_string(), "--format".to_string(), "json".to_string(), "--dangerously-skip-permissions".to_string()], String::new()),
-        "cursor-agent" => (vec!["--print".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--stream-partial-output".to_string(), "--force".to_string(), "--trust".to_string()], String::new()),
-        "qoder" => (vec!["-p".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string(), "--yolo".to_string()], String::new()),
-        "copilot-cli" => (vec!["--allow-all-tools".to_string(), "--output-format".to_string(), "json".to_string(), prompt.to_string()], String::new()),
+        "claude-code" => (vec!["-p".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string()], String::new()),
+        "opencode" => (vec!["run".to_string(), prompt.to_string(), "--format".to_string(), "json".to_string()], String::new()),
+        "cursor-agent" => (vec!["--print".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string()], String::new()),
+        "qoder" => (vec!["-p".to_string(), prompt.to_string(), "--output-format".to_string(), "stream-json".to_string()], String::new()),
+        "copilot-cli" => (vec!["--output-format".to_string(), "json".to_string(), prompt.to_string()], String::new()),
         "gemini-cli" | "qwen" => (local_generation_args(definition, reference_dir), prompt.to_string()),
         _ => (local_generation_args(definition, reference_dir), prompt.to_string()),
     }
