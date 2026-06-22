@@ -18,6 +18,7 @@ Quality floor:
 
 Circular-object / coin / medallion grammar:
 - A coin-like prompt must include a rig/group plus named parts: Ground Shadow, Contact Shadow, Rim Depth Side, Outer Bevel, Front Face, Inner Bevel, Edge Ridges or Ribbed Rim, Front Emblem or Face Mark, Highlight Sweep, Micro Glints, Back Face/Back Mark if back is requested, and optional Motion Blur/Sparkle.
+- If the user asks for a coin flip but does not specify heads/tails artwork, create distinct default coin faces: a front HEADS/H mark and a back TAILS/T mark, with different face details. Do not leave the faces blank.
 - Front/back faces must not be two identical circles. The back face should have a different mark/detail and should be animated through opacity or rotation during flip.
 - Rim depth must be visible as side thickness or stacked edge layers, not just a stroke.
 - Flip motion must use rotation.y across 0/90/180/270/360, translation.y arc, scale squash on settle, shadow opacity/scale response, and glint sweep.
