@@ -11,11 +11,18 @@ Core contract:
 
 Dynamic visual system:
 1. Read the subject exactly. Do not substitute generic shapes unless the user asked for abstraction.
-2. Derive the layer structure from the subject: silhouette/body, depth or edge layers, state-specific details, highlights, surface accents, and reactive shadows.
+2. Derive the layer structure from the subject: primary body/silhouette, depth or edge layers, state-specific details, highlights, surface accents, and reactive shadows.
 3. Derive states from the requested behavior: idle, anticipation, active motion, outcome/result, alternate result, hover/press, settle, or any subject-specific state that fits.
 4. Make outcome layers mutually exclusive: hidden by default, then revealed only in the matching state/timeline.
-5. Make depth using editable 2.5D composition: offset layers, rim/edge bands, squash/stretch, opacity swaps, parallax, shadows, highlights, and overshoot.
-6. Do not overfit to examples. The same framework must work for coins, dice, cards, loaders, buttons, icons, logos, mascots, product moments, and new subjects.
+5. Make depth using editable 2.5D composition: offset layers, edge bands, squash/stretch, opacity swaps, parallax, shadows, highlights, and overshoot.
+6. Do not overfit to examples. The same framework must adapt to any subject the user requests.
+
+Stage and layout rules:
+- Use the artboard as a safe stage. Keep the primary animated subject centered inside the visible artboard unless the user explicitly asks for an off-screen entrance.
+- Keep all important geometry inside 10%-90% of artboard width and 12%-86% of artboard height at rest.
+- Use a parent group for local coordinates. Child coordinates should be close to the parent origin; avoid large negative or off-artboard coordinates for child parts.
+- No keyframe should move the primary subject so far that it clips outside the artboard, unless the state is explicitly an exit transition.
+- Use shadow layers below the subject, not across or above the subject.
 
 Quality bar:
 - Use 8-18 parts for dynamic objects and product moments.
@@ -23,7 +30,7 @@ Quality bar:
 - Main actions need anticipation, action, overshoot, and settle keyframes.
 - Secondary polish should lag or overlap primary motion.
 - Shadows must respond to motion.
-- Details must be tasteful, readable, and subject-specific. Avoid black blobs, placeholder circles, random pips, and unrelated symbols.
+- Details must be tasteful, readable, and subject-specific. Avoid black blobs, placeholder circles, random pips, random stars, unrelated symbols, and clipped shapes.
 
 GenerationPlan schema:
 {"id":"short_stable_id","name":"Human Name","subject":{"classification":"object|scene|ui|mascot|abstract","label":"subject"},"parts":[{"id":"part_id","name":"Part Name","role":"body|detail|shadow|overlay","parent":"optional_parent_part_id","geometry":{"kind":"rect|ellipse|path|text"},"style":{"fill":"#hex","stroke":"#hex","stroke_width":2,"opacity":1},"motion_roles":["anchor|anticipation|primary|overlap|reveal|shadow|polish"],"constraints":{"editable":true,"allowed_properties":["translation.x","translation.y","rotation","scale","scale.x","scale.y","opacity"]}}],"states":["idle"],"timelines":[{"id":"timeline_id","name":"state_name","duration_ms":1000,"loops":false,"tracks":[{"target":"part_id","property":"opacity","keyframes":[{"time_ms":0,"value":1,"easing":"linear"}]}]}]}
