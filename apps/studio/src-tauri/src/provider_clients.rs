@@ -71,7 +71,12 @@ async fn openai_like_text_resilient(prompt: &str, config: &ByokProviderConfig, r
 
 fn should_retry_without_json_mode(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
-    lower.contains("response_format") || lower.contains("json_object") || lower.contains("unsupported") || lower.contains("http 400")
+    lower.contains("response_format")
+        || lower.contains("json_object")
+        || lower.contains("unsupported")
+        || lower.contains("http 400")
+        || lower.contains("response body read failed")
+        || lower.contains("decoding response body")
 }
 
 async fn anthropic_text(prompt: &str, config: &ByokProviderConfig, references: &[ReferenceImageInput], system_prompt: Option<&str>) -> Result<String, String> {
@@ -227,7 +232,7 @@ pub async fn assistant_message_v2(prompt: String, provider: Option<GenerationPro
 #[tauri::command]
 pub async fn test_byok_provider_v2(config: ByokProviderConfig) -> Result<ProviderOperationResult, String> {
     ensure_byok_config(&config)?;
-    match byok_generate_text_v2("Return exactly {\"ok\":true} and nothing else.", &config, &[], Some("You are a connection test. Return compact JSON only.")).await {
+    match byok_generate_text_v2("Return exactly: strut-provider-ok", &config, &[], Some("You are a provider smoke test. Return only the requested text.")).await {
         Ok(text) => Ok(ProviderOperationResult { ok: true, status: format!("{} ready", provider_label(&config.provider_id)), detail: format!("provider returned: {}", response_preview(&text)) }),
         Err(error) => Ok(ProviderOperationResult { ok: false, status: format!("{} failed smoke test", provider_label(&config.provider_id)), detail: error }),
     }
@@ -248,5 +253,5 @@ pub fn save_byok_provider_v2(config: ByokProviderConfig) -> Result<ProviderOpera
     let path = provider_config_path()?;
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
     fs::write(&path, serde_json::to_string_pretty(&saved).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
-    Ok(ProviderOperationResult { ok: true, status: "provider config saved".to_string(), detail: format!("saved endpoint and model to {}; credentials stay in session/local UI storage", path.display()) })
+    Ok(ProviderOperationResult { ok: true, status: "provider config saved".to_string(), detail: format!("saved endpoint and model to {}; settings stay local", path.display()) })
 }
