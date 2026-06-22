@@ -16,6 +16,7 @@ pub mod provider_clients;
 pub mod layout_normalizer;
 pub mod quality_gate;
 mod dice_repair;
+mod coin_repair;
 
 pub use models::*;
 pub use project::*;
