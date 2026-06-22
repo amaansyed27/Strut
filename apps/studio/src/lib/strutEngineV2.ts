@@ -3,9 +3,16 @@ import type { StrutDocument, StrutNode, Timeline } from "../types";
 type Easing = "linear" | "ease_in" | "ease_out" | "ease_in_out" | "steps";
 type Bounds = { x: number; y: number; width: number; height: number; cx: number; cy: number };
 
+type VisualStats = {
+  visibleNonShadow: number;
+  visibleDetail: number;
+  visibleColors: number;
+  activeTracks: number;
+};
+
 const STATE_KEYWORDS = ["idle", "hover", "press", "success", "loading", "anticipation", "flip", "settle", "jump", "wave"];
 
-let counter = 700000;
+let counter = 800000;
 const nextId = (label: string) => `00000000-0000-4000-9000-${(counter++).toString(16).padStart(12, "0")}-${label}`.slice(0, 36);
 
 function cloneDocument(document: StrutDocument): StrutDocument {
@@ -14,14 +21,6 @@ function cloneDocument(document: StrutDocument): StrutDocument {
 
 function lower(value: string | undefined | null) {
   return (value ?? "").toLowerCase();
-}
-
-function style(fill: string | null, stroke: string | null, strokeWidth = 0, opacity = 1) {
-  return { fill, stroke, stroke_width: strokeWidth, opacity, linecap: "round", linejoin: "round" };
-}
-
-function transform(x = 0, y = 0, sx = 1, sy = 1) {
-  return { translate_x: x, translate_y: y, rotate: 0, rotate_x: 0, rotate_y: 0, scale_x: sx, scale_y: sy };
 }
 
 function value(v: number) {
@@ -73,10 +72,10 @@ function isShadowNode(node: StrutNode) {
 
 function isDetailNode(node: StrutNode) {
   const text = `${lower(node.name)} ${lower(node.role)}`;
-  return ["rim", "edge", "depth", "side", "bezel", "glint", "highlight", "spark", "emblem", "mark", "detail", "accent"].some((word) => text.includes(word));
+  return ["rim", "edge", "depth", "side", "bezel", "glint", "highlight", "spark", "emblem", "mark", "detail", "accent", "part", "eye", "arm", "leg", "face"].some((word) => text.includes(word));
 }
 
-function visualStats(document: StrutDocument) {
+function visualStats(document: StrutDocument): VisualStats {
   let visibleNonShadow = 0;
   let visibleDetail = 0;
   const colors = new Set<string>();
@@ -87,7 +86,8 @@ function visualStats(document: StrutDocument) {
     const fill = node.style?.fill?.trim().toLowerCase();
     if (fill && fill !== "none") colors.add(fill);
   });
-  return { visibleNonShadow, visibleDetail, visibleColors: colors.size };
+  const activeTracks = document.timelines.reduce((count, tl) => count + (tl.tracks ?? []).filter((t) => ["translation.x", "translation.y", "rotation", "rotation.x", "rotation.y", "scale", "scale.x", "scale.y", "opacity"].includes(t.property)).length, 0);
+  return { visibleNonShadow, visibleDetail, visibleColors: colors.size, activeTracks };
 }
 
 function findPrimaryNode(nodes: StrutNode[]): { node: StrutNode; bounds: Bounds } | null {
@@ -105,30 +105,11 @@ function findPrimaryNode(nodes: StrutNode[]): { node: StrutNode; bounds: Bounds 
   return best ? { node: best.node, bounds: best.bounds } : null;
 }
 
-function materialLayers(primary: StrutNode, bounds: Bounds): StrutNode[] {
-  const baseFill = primary.style?.fill && primary.style.fill !== "none" ? primary.style.fill : "#d8f3dc";
-  const stroke = primary.style?.stroke && primary.style.stroke !== "none" ? primary.style.stroke : "#12372a";
-  const shadow: StrutNode = {
-    id: nextId("shadow"), name: "Engine Reactive Shadow", kind: "ellipse", role: "shadow", transform: transform(bounds.cx, bounds.y + bounds.height + 28), style: style("#111827", null, 0, 0.18), shape: { type: "ellipse", cx: 0, cy: 0, rx: Math.max(42, bounds.width * 0.48), ry: Math.max(10, bounds.height * 0.08) }, children: [],
-  };
-  const depth: StrutNode = {
-    id: nextId("depth"), name: "Engine Depth Layer", kind: "rect", role: "depth edge", transform: transform(bounds.cx + 8, bounds.cy + 9), style: style(baseFill, stroke, 2, 0.42), shape: { type: "rect", x: -bounds.width / 2, y: -bounds.height / 2, width: bounds.width, height: bounds.height, rx: Math.min(26, Math.max(8, bounds.width * 0.08)) }, children: [],
-  };
-  const highlight: StrutNode = {
-    id: nextId("highlight"), name: "Engine Surface Highlight", kind: "path", role: "highlight glint", transform: transform(bounds.cx, bounds.cy), style: style(null, "#ffffff", 4, 0.72), shape: { type: "path", d: `M${-bounds.width * 0.28} ${-bounds.height * 0.28} C${-bounds.width * 0.08} ${-bounds.height * 0.45} ${bounds.width * 0.18} ${-bounds.height * 0.42} ${bounds.width * 0.34} ${-bounds.height * 0.2}` }, children: [],
-  };
-  const accent: StrutNode = {
-    id: nextId("accent"), name: "Engine Accent Detail", kind: "ellipse", role: "detail accent", transform: transform(bounds.cx, bounds.cy), style: style(null, "#0f172a", 3, 0.55), shape: { type: "ellipse", cx: 0, cy: 0, rx: Math.max(18, bounds.width * 0.24), ry: Math.max(12, bounds.height * 0.2) }, children: [],
-  };
-  return [shadow, depth, highlight, accent];
-}
-
 function requestedStates(prompt: string, document: StrutDocument) {
   const lowerPrompt = prompt.toLowerCase();
   const states = new Set(document.state_machines[0]?.states ?? ["idle"]);
   states.add("idle");
   for (const state of STATE_KEYWORDS) if (lowerPrompt.includes(state)) states.add(state);
-  if (lowerPrompt.includes("animate") || lowerPrompt.includes("animation")) states.add("idle");
   return Array.from(states);
 }
 
@@ -144,11 +125,10 @@ function hasTimeline(document: StrutDocument, state: string) {
   return document.timelines.some((tl) => tl.name === state);
 }
 
-function makeStateTimeline(state: string, target: string, shadowTarget: string | null): Timeline | null {
+function makeStateTimeline(state: string, target: string): Timeline | null {
   const baseTracks: NonNullable<Timeline["tracks"]> = [];
   if (state === "idle") {
     baseTracks.push(track(target, "translation.y", [[0, 0, "ease_in_out"], [800, -8, "ease_in_out"], [1600, 0, "ease_in_out"]]));
-    if (shadowTarget) baseTracks.push(track(shadowTarget, "scale.x", [[0, 1, "ease_in_out"], [800, 0.88, "ease_in_out"], [1600, 1, "ease_in_out"]]));
     return timeline("idle", 1600, true, baseTracks);
   }
   if (state === "hover") baseTracks.push(track(target, "translation.y", [[0, 0, "ease_out"], [420, -16, "ease_out"], [840, -10, "ease_in_out"]]));
@@ -164,8 +144,22 @@ function makeStateTimeline(state: string, target: string, shadowTarget: string |
     baseTracks.push(track(target, "rotation", [[0, 0, "linear"], [960, 360, "linear"]]));
   }
   if (!baseTracks.length) return null;
-  if (shadowTarget && ["hover", "jump", "flip", "settle"].includes(state)) baseTracks.push(track(shadowTarget, "opacity", [[0, 0.18, "ease_out"], [320, 0.06, "ease_out"], [900, 0.18, "ease_out"]]));
   return timeline(state, state === "flip" ? 960 : state === "jump" ? 1100 : 720, false, baseTracks);
+}
+
+export function engineIssuesV2(prompt: string, document: StrutDocument): string[] {
+  const issues: string[] = [];
+  const stats = visualStats(document);
+  const lowerPrompt = prompt.toLowerCase();
+  const needsPremium = ["premium", "2.5d", "3d", "mascot", "component", "flip", "jump", "wave", "hover", "press"].some((word) => lowerPrompt.includes(word));
+  if (needsPremium && stats.visibleNonShadow < 6) issues.push(`too few visible non-shadow layers (${stats.visibleNonShadow}/6)`);
+  if (needsPremium && stats.visibleDetail < 2) issues.push(`too few visible detail/rig layers (${stats.visibleDetail}/2)`);
+  if (needsPremium && stats.visibleColors < 3) issues.push(`too few visible material colors (${stats.visibleColors}/3)`);
+  if (needsPremium && stats.activeTracks < 8) issues.push(`too few active motion tracks (${stats.activeTracks}/8)`);
+  for (const state of requestedStates(prompt, document)) {
+    if (!document.state_machines[0]?.states?.includes(state)) issues.push(`missing state ${state}`);
+  }
+  return issues;
 }
 
 export function upgradeGeneratedDocumentV2(prompt: string, document: StrutDocument): StrutDocument {
@@ -174,24 +168,11 @@ export function upgradeGeneratedDocumentV2(prompt: string, document: StrutDocume
   if (!artboard) return next;
   const primary = findPrimaryNode(artboard.nodes);
   if (!primary) return next;
-
-  const stats = visualStats(next);
-  const addedLayers = stats.visibleNonShadow < 6 || stats.visibleDetail < 2 || stats.visibleColors < 3;
-  let engineShadowId: string | null = null;
-  if (addedLayers) {
-    const layers = materialLayers(primary.node, primary.bounds);
-    engineShadowId = layers[0]?.id ?? null;
-    artboard.nodes.push(...layers);
-  } else {
-    visitNodes(artboard.nodes, (node) => { if (!engineShadowId && isShadowNode(node)) engineShadowId = node.id; });
-  }
-
   const states = requestedStates(prompt, next);
   ensureStateMachine(next, states);
-  const motionTarget = primary.node.id;
   for (const state of states) {
     if (hasTimeline(next, state)) continue;
-    const generated = makeStateTimeline(state, motionTarget, engineShadowId);
+    const generated = makeStateTimeline(state, primary.node.id);
     if (generated) next.timelines.push(generated);
   }
   return next;
