@@ -16,7 +16,6 @@ pub mod provider_clients;
 pub mod layout_normalizer;
 pub mod quality_gate;
 mod dice_repair;
-mod coin_repair;
 
 pub use models::*;
 pub use project::*;
@@ -35,8 +34,6 @@ pub use utils::*;
 pub use provider_clients::*;
 pub use layout_normalizer::*;
 pub use quality_gate::*;
-
-
 
 use base64::Engine as _;
 use std::collections::HashMap;
@@ -75,7 +72,6 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
 
 #[cfg(test)]
 mod tests;
