@@ -15,12 +15,7 @@ impl Bounds {
     fn center_x(self) -> f32 { (self.min_x + self.max_x) / 2.0 }
     fn center_y(self) -> f32 { (self.min_y + self.max_y) / 2.0 }
     fn merge(self, other: Bounds) -> Bounds {
-        Bounds {
-            min_x: self.min_x.min(other.min_x),
-            min_y: self.min_y.min(other.min_y),
-            max_x: self.max_x.max(other.max_x),
-            max_y: self.max_y.max(other.max_y),
-        }
+        Bounds { min_x: self.min_x.min(other.min_x), min_y: self.min_y.min(other.min_y), max_x: self.max_x.max(other.max_x), max_y: self.max_y.max(other.max_y) }
     }
 }
 
@@ -43,24 +38,12 @@ fn normalize_document_layout(document: &mut strut_core::Document) {
     ensure_action_motion(document);
 
     for artboard in &mut document.artboards {
-        let Some(bounds) = artboard.nodes.iter().filter_map(|node| node_bounds(node, 0.0, 0.0)).reduce(|a, b| a.merge(b)) else {
-            continue;
-        };
-        if bounds.width() <= 1.0 || bounds.height() <= 1.0 {
-            continue;
-        }
-
+        let Some(bounds) = artboard.nodes.iter().filter_map(|node| node_bounds(node, 0.0, 0.0)).reduce(|a, b| a.merge(b)) else { continue; };
+        if bounds.width() <= 1.0 || bounds.height() <= 1.0 { continue; }
         let width = artboard.width.max(1.0);
         let height = artboard.height.max(1.0);
-        let should_recenter = bounds.min_x < width * 0.08
-            || bounds.max_x > width * 0.92
-            || bounds.min_y < height * 0.10
-            || bounds.max_y > height * 0.86;
-
-        if !should_recenter {
-            continue;
-        }
-
+        let should_recenter = bounds.min_x < width * 0.08 || bounds.max_x > width * 0.92 || bounds.min_y < height * 0.10 || bounds.max_y > height * 0.86;
+        if !should_recenter { continue; }
         let dx = (width / 2.0 - bounds.center_x()).clamp(-width * 0.45, width * 0.45);
         let dy = (height * 0.46 - bounds.center_y()).clamp(-height * 0.38, height * 0.38);
         for node in &mut artboard.nodes {
@@ -79,7 +62,7 @@ fn normalize_materials(document: &mut strut_core::Document) {
 }
 
 fn normalize_node_material(node: &mut strut_core::Node) {
-    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("" )).to_ascii_lowercase();
+    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("")).to_ascii_lowercase();
     let fill_is_weak = fill_is_missing_or_too_dark(node.style.fill.as_deref());
 
     if text.contains("shadow") {
@@ -88,25 +71,19 @@ fn normalize_node_material(node: &mut strut_core::Node) {
         }
         node.style.opacity = node.style.opacity.min(0.30);
     } else if text.contains("gold") || text.contains("yellow") || text.contains("amber") {
-        if fill_is_weak {
-            node.style.fill = Some("#f7c948".to_string());
-        }
+        if fill_is_weak { node.style.fill = Some("#f7c948".to_string()); }
         if node.style.stroke.as_deref().map_or(true, |stroke| stroke.eq_ignore_ascii_case("none")) {
             node.style.stroke = Some("#a16207".to_string());
             node.style.stroke_width = node.style.stroke_width.max(2.0);
         }
     } else if text.contains("silver") || text.contains("chrome") || text.contains("steel") {
-        if fill_is_weak {
-            node.style.fill = Some("#cbd5e1".to_string());
-        }
+        if fill_is_weak { node.style.fill = Some("#cbd5e1".to_string()); }
         if node.style.stroke.as_deref().map_or(true, |stroke| stroke.eq_ignore_ascii_case("none")) {
             node.style.stroke = Some("#64748b".to_string());
             node.style.stroke_width = node.style.stroke_width.max(2.0);
         }
     } else if text.contains("rim") || text.contains("edge") || text.contains("depth") || text.contains("side") {
-        if fill_is_weak {
-            node.style.fill = Some("#b7791f".to_string());
-        }
+        if fill_is_weak { node.style.fill = Some("#b7791f".to_string()); }
         if node.style.stroke.as_deref().map_or(true, |stroke| stroke.eq_ignore_ascii_case("none")) {
             node.style.stroke = Some("#7c4a03".to_string());
             node.style.stroke_width = node.style.stroke_width.max(2.0);
@@ -117,7 +94,7 @@ fn normalize_node_material(node: &mut strut_core::Node) {
             node.style.stroke_width = node.style.stroke_width.max(3.0);
         }
         node.style.opacity = node.style.opacity.max(0.55);
-    } else if fill_is_weak && !matches!(node.shape, strut_core::Shape::None) {
+    } else if fill_is_weak && !matches!(&node.shape, strut_core::Shape::None) {
         node.style.fill = Some("#94a3b8".to_string());
     }
 
@@ -129,9 +106,7 @@ fn normalize_node_material(node: &mut strut_core::Node) {
 fn fill_is_missing_or_too_dark(fill: Option<&str>) -> bool {
     let Some(fill) = fill else { return true; };
     let fill = fill.trim();
-    if fill.is_empty() || fill.eq_ignore_ascii_case("none") || fill.eq_ignore_ascii_case("transparent") {
-        return true;
-    }
+    if fill.is_empty() || fill.eq_ignore_ascii_case("none") || fill.eq_ignore_ascii_case("transparent") { return true; }
     let Some((r, g, b)) = parse_hex_rgb(fill) else { return false; };
     let luma = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
     luma < 46.0
@@ -150,18 +125,11 @@ fn ensure_action_motion(document: &mut strut_core::Document) {
     let primary = primary_motion_target(document);
     let shadow = shadow_target(document);
     let Some(primary) = primary else { return; };
-
     for timeline in &mut document.timelines {
         let name = timeline.name.to_ascii_lowercase();
-        if !is_action_timeline(&name) {
-            continue;
-        }
-        let active_track_count = timeline.tracks.iter().filter(|track| {
-            track.target == primary && is_transform_track(&track.property)
-        }).count();
-        if active_track_count < 2 {
-            add_action_tracks(timeline, primary, shadow);
-        }
+        if !is_action_timeline(&name) { continue; }
+        let active_track_count = timeline.tracks.iter().filter(|track| track.target == primary && is_transform_track(&track.property)).count();
+        if active_track_count < 2 { add_action_tracks(timeline, primary, shadow); }
     }
 }
 
@@ -169,28 +137,22 @@ fn primary_motion_target(document: &strut_core::Document) -> Option<Uuid> {
     let mut fallback = None;
     for artboard in &document.artboards {
         for node in &artboard.nodes {
-            if let Some(id) = find_primary_node(node, &mut fallback) {
-                return Some(id);
-            }
+            if let Some(id) = find_primary_node(node, &mut fallback) { return Some(id); }
         }
     }
     fallback
 }
 
 fn find_primary_node(node: &strut_core::Node, fallback: &mut Option<Uuid>) -> Option<Uuid> {
-    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("" )).to_ascii_lowercase();
-    let is_shape = !matches!(node.shape, strut_core::Shape::None);
+    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("")).to_ascii_lowercase();
+    let is_shape = !matches!(&node.shape, strut_core::Shape::None);
     let is_shadow_or_polish = text.contains("shadow") || text.contains("glint") || text.contains("highlight") || text.contains("mark") || text.contains("text");
     if is_shape && !is_shadow_or_polish {
         if fallback.is_none() { *fallback = Some(node.id); }
-        if text.contains("body") || text.contains("base") || text.contains("face") || text.contains("main") || text.contains("surface") {
-            return Some(node.id);
-        }
+        if text.contains("body") || text.contains("base") || text.contains("face") || text.contains("main") || text.contains("surface") { return Some(node.id); }
     }
     for child in &node.children {
-        if let Some(id) = find_primary_node(child, fallback) {
-            return Some(id);
-        }
+        if let Some(id) = find_primary_node(child, fallback) { return Some(id); }
     }
     None
 }
@@ -198,23 +160,17 @@ fn find_primary_node(node: &strut_core::Node, fallback: &mut Option<Uuid>) -> Op
 fn shadow_target(document: &strut_core::Document) -> Option<Uuid> {
     for artboard in &document.artboards {
         for node in &artboard.nodes {
-            if let Some(id) = find_named_node(node, "shadow") {
-                return Some(id);
-            }
+            if let Some(id) = find_named_node(node, "shadow") { return Some(id); }
         }
     }
     None
 }
 
 fn find_named_node(node: &strut_core::Node, needle: &str) -> Option<Uuid> {
-    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("" )).to_ascii_lowercase();
-    if text.contains(needle) && !matches!(node.shape, strut_core::Shape::None) {
-        return Some(node.id);
-    }
+    let text = format!("{} {}", node.name, node.role.as_deref().unwrap_or("")).to_ascii_lowercase();
+    if text.contains(needle) && !matches!(&node.shape, strut_core::Shape::None) { return Some(node.id); }
     for child in &node.children {
-        if let Some(id) = find_named_node(child, needle) {
-            return Some(id);
-        }
+        if let Some(id) = find_named_node(child, needle) { return Some(id); }
     }
     None
 }
@@ -245,11 +201,7 @@ fn number_track(target: Uuid, property: &str, frames: Vec<(u32, f32)>) -> strut_
     strut_core::Track {
         target,
         property: property.to_string(),
-        keyframes: frames.into_iter().map(|(time_ms, value)| strut_core::Keyframe {
-            time_ms,
-            value: strut_core::PropertyValue::Number(value),
-            easing: strut_core::Easing::EaseInOut,
-        }).collect(),
+        keyframes: frames.into_iter().map(|(time_ms, value)| strut_core::Keyframe { time_ms, value: strut_core::PropertyValue::Number(value), easing: strut_core::Easing::EaseInOut }).collect(),
     }
 }
 
@@ -281,9 +233,8 @@ fn path_bounds(d: &str, tx: f32, ty: f32) -> Option<Bounds> {
     let mut nums = Vec::<f32>::new();
     let mut current = String::new();
     for ch in d.chars() {
-        if ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.') {
-            current.push(ch);
-        } else if !current.is_empty() {
+        if ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.') { current.push(ch); }
+        else if !current.is_empty() {
             if let Ok(value) = current.parse::<f32>() { nums.push(value); }
             current.clear();
         }
