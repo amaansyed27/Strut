@@ -195,6 +195,19 @@ async fn call_provider_v2(prompt: &str, provider: &GenerationProvider, reference
     }
 }
 
+async fn improve_if_needed(prompt: &str, provider: &GenerationProvider, references: &[ReferenceImageInput], system_prompt: &str, result: AssistantResult) -> AssistantResult {
+    let Some(retry_prompt) = quality_repair_prompt(prompt, &result) else {
+        return result;
+    };
+    let Ok(retry_text) = call_provider_v2(&retry_prompt, provider, references, system_prompt).await else {
+        return result;
+    };
+    match crate::commands::parse_assistant_result_from_text(&retry_text) {
+        Ok(retry_result) => retry_result,
+        Err(_) => result,
+    }
+}
+
 #[tauri::command]
 pub async fn assistant_message_v2(prompt: String, provider: Option<GenerationProvider>, references: Option<Vec<ReferenceImageInput>>, context: Option<GenerationContext>) -> Result<AssistantResult, String> {
     let references = references.unwrap_or_default();
@@ -212,16 +225,19 @@ pub async fn assistant_message_v2(prompt: String, provider: Option<GenerationPro
     }
     let text = call_provider_v2(&prompt, &provider, &references, &system_prompt).await?;
     match crate::commands::parse_assistant_result_from_text(&text) {
-        Ok(result) => Ok(result),
+        Ok(result) => Ok(improve_if_needed(&prompt, &provider, &references, &system_prompt, result).await),
         Err(first_error) => {
             let repair_prompt = generation_plan_repair_prompt(&prompt, &text, &first_error);
             let repair_text = call_provider_v2(&repair_prompt, &provider, &references, &system_prompt).await?;
             match crate::commands::parse_assistant_result_from_text(&repair_text) {
-                Ok(result) => Ok(result),
+                Ok(result) => Ok(improve_if_needed(&prompt, &provider, &references, &system_prompt, result).await),
                 Err(repair_error) => {
                     let compact_prompt = compact_plan_prompt(&prompt, &repair_error);
                     let compact_text = call_provider_v2(&compact_prompt, &provider, &references, &system_prompt).await?;
-                    crate::commands::parse_assistant_result_from_text(&compact_text).map_err(|plan_error| format!("Provider did not return valid Strut animation JSON after 3 attempts. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}", response_preview(&compact_text)))
+                    match crate::commands::parse_assistant_result_from_text(&compact_text) {
+                        Ok(result) => Ok(improve_if_needed(&prompt, &provider, &references, &system_prompt, result).await),
+                        Err(plan_error) => Err(format!("Provider did not return valid Strut animation JSON after 3 attempts. First error: {first_error}. Repair error: {repair_error}. Plan error: {plan_error}. Response preview: {}", response_preview(&compact_text))),
+                    }
                 }
             }
         }
