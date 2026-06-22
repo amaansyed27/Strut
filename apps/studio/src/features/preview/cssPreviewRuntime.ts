@@ -1,8 +1,11 @@
 import "./cssPreviewRuntime.css";
 
 const INSTALLED_FLAG = "__strutCssPreviewRuntimeInstalled";
+const BACKGROUND_KEY = "strut.preview.background";
+const BACKGROUND_MODES = ["transparent", "white", "black"] as const;
 
 type RuntimeWindow = Window & typeof globalThis & Record<string, unknown>;
+type PreviewBackgroundMode = (typeof BACKGROUND_MODES)[number];
 
 export function installCssPreviewRuntime() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -33,12 +36,18 @@ export function installCssPreviewRuntime() {
 }
 
 function enhancePreviewStages() {
+  const mode = currentBackgroundMode();
+  document.documentElement.dataset.strutPreviewBackground = mode;
   const previews = document.querySelectorAll<SVGSVGElement>("svg.character-preview");
   previews.forEach((svg) => {
     svg.removeAttribute("data-css-preview-hidden");
     svg.setAttribute("data-css-preview-enhanced", "true");
     const parent = svg.parentElement;
     parent?.querySelectorAll(":scope > .css-character-preview").forEach((node) => node.remove());
+    if (parent instanceof HTMLElement) {
+      parent.dataset.previewBackground = mode;
+      ensureBackgroundToggle(parent, mode);
+    }
     const scene = svg.querySelector<SVGGElement>(".document-scene");
     scene?.setAttribute("data-css-scene", "true");
     Array.from(svg.querySelectorAll<SVGGElement>(".strut-node")).forEach((group, index) => {
@@ -49,6 +58,47 @@ function enhancePreviewStages() {
       group.style.setProperty("--layer-delay", `${Math.min(index * 34, 360)}ms`);
     });
   });
+}
+
+function ensureBackgroundToggle(stage: HTMLElement, mode: PreviewBackgroundMode) {
+  let toggle = stage.querySelector<HTMLElement>(":scope > .preview-background-toggle");
+  if (!toggle) {
+    toggle = document.createElement("div");
+    toggle.className = "preview-background-toggle";
+    toggle.setAttribute("aria-label", "Preview background");
+    toggle.setAttribute("role", "group");
+    for (const option of BACKGROUND_MODES) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.previewBackgroundOption = option;
+      button.textContent = option === "transparent" ? "Trans" : titleCase(option);
+      button.title = `Preview background: ${option}`;
+      button.addEventListener("click", () => setBackgroundMode(option));
+      toggle.appendChild(button);
+    }
+    stage.appendChild(toggle);
+  }
+  Array.from(toggle.querySelectorAll<HTMLButtonElement>("button[data-preview-background-option]")).forEach((button) => {
+    button.dataset.active = button.dataset.previewBackgroundOption === mode ? "true" : "false";
+  });
+}
+
+function setBackgroundMode(mode: PreviewBackgroundMode) {
+  window.localStorage.setItem(BACKGROUND_KEY, mode);
+  document.documentElement.dataset.strutPreviewBackground = mode;
+  document.querySelectorAll<HTMLElement>(".preview-stage").forEach((stage) => {
+    stage.dataset.previewBackground = mode;
+    ensureBackgroundToggle(stage, mode);
+  });
+}
+
+function currentBackgroundMode(): PreviewBackgroundMode {
+  const stored = window.localStorage.getItem(BACKGROUND_KEY);
+  return isBackgroundMode(stored) ? stored : "transparent";
+}
+
+function isBackgroundMode(value: string | null): value is PreviewBackgroundMode {
+  return BACKGROUND_MODES.some((mode) => mode === value);
 }
 
 function semanticTokens(value: string) {
@@ -73,4 +123,8 @@ function tiltFor(semantic: string, index: number) {
 
 function hasAny(value: string, tokens: string[]) {
   return tokens.some((token) => value.includes(token));
+}
+
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
