@@ -215,7 +215,7 @@ pub async fn assistant_message_v2(prompt: String, provider: Option<GenerationPro
     if let Some(result) = builtin_motion_result(&prompt) {
         return Ok(result);
     }
-    let mut system_prompt = format!("{}\n\n{}", ASSISTANT_ROUTER_SYSTEM_PROMPT, GENERATION_PLAN_SYSTEM_PROMPT);
+    let mut system_prompt = format!("{}\n\n{}", ASSISTANT_ROUTER_SYSTEM_PROMPT, DYNAMIC_GENERATION_SYSTEM_PROMPT);
     if let Some(ctx) = context.as_ref() {
         if let Some(project_name) = &ctx.project_name { system_prompt.push_str(&format!("\nProject: {project_name}")); }
         if let Some(chat_title) = &ctx.active_chat_title { system_prompt.push_str(&format!("\nChat: {chat_title}")); }
