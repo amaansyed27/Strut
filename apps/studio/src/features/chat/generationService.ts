@@ -4,7 +4,7 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
-import { upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
+import { engineIssuesV2, upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
 import type {
   AssistantResult,
   GenerationContext,
@@ -42,10 +42,19 @@ function requestKey(
   });
 }
 
-function generationCommand(provider: GenerationProvider) {
-  return provider.mode === "byok" && provider.byok?.providerId === "openrouter"
-    ? "assistant_message_openrouter_v2"
-    : "assistant_message_v2";
+function finalizeDocumentResult(prompt: string, result: AssistantResult): AssistantResult {
+  if (result.kind !== "document_created" && result.kind !== "document_updated") return result;
+  const document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
+  const issues = engineIssuesV2(prompt, document);
+  if (issues.length) {
+    return {
+      kind: "chat",
+      source: "quality-gate",
+      message: `Generation blocked: ${issues.join("; ")}. The provider returned a structurally valid scene, but it is visually too weak to save.`,
+    };
+  }
+  result.document = document;
+  return result;
 }
 
 export const generationService = {
@@ -68,17 +77,12 @@ export const generationService = {
       return inFlightAssistantMessage.promise;
     }
 
-    const promise = tauriInvoke<AssistantResult>(generationCommand(provider), {
+    const promise = tauriInvoke<AssistantResult>("assistant_message_v2", {
       prompt,
       provider,
       references: imageReferences,
       context,
-    }).then((result) => {
-      if (result.kind === "document_created" || result.kind === "document_updated") {
-        result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
-      }
-      return result;
-    }).finally(() => {
+    }).then((result) => finalizeDocumentResult(prompt, result)).finally(() => {
       if (inFlightAssistantMessage?.key === key) {
         inFlightAssistantMessage = null;
       }
