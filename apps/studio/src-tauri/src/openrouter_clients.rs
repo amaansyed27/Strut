@@ -56,13 +56,22 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
         .ok_or_else(|| format!("OpenRouter response missing message content. Body: {}", response_preview(&body)))
 }
 
+fn normalize_openrouter_value(mut value: Value) -> Value {
+    let fallback_name = value.get("message").and_then(Value::as_str).unwrap_or("Generated animation").to_string();
+    if let Some(plan) = value.get_mut("document").and_then(|document| document.get_mut("plan")) {
+        if plan.get("name").and_then(Value::as_str).unwrap_or("").trim().is_empty() { plan["name"] = json!(fallback_name); }
+        if plan.get("id").and_then(Value::as_str).unwrap_or("").trim().is_empty() { plan["id"] = json!("openrouter_generated_motion"); }
+        if plan.get("subject").is_none() { plan["subject"] = json!({"classification":"object","label":"generated animation"}); }
+    }
+    value
+}
+
 fn parse_openrouter_result(text: &str) -> Result<AssistantResult, String> {
     if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        let value = normalize_openrouter_value(value);
         if let Some(kind) = value.get("kind").and_then(Value::as_str) {
             let message = value.get("message").and_then(Value::as_str).unwrap_or("").to_string();
-            if kind == "chat" {
-                return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() });
-            }
+            if kind == "chat" { return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() }); }
             if matches!(kind, "document_created" | "document_updated") {
                 let document_value = value.get("document").ok_or_else(|| "OpenRouter result missing document".to_string())?;
                 if let Ok(document) = serde_json::from_value::<strut_core::Document>(document_value.clone()) {
@@ -75,6 +84,7 @@ fn parse_openrouter_result(text: &str) -> Result<AssistantResult, String> {
                 }
             }
         }
+        if let Ok(result) = crate::commands::parse_assistant_result_value(value) { return Ok(result); }
     }
     crate::commands::parse_assistant_result_from_text(text)
 }
