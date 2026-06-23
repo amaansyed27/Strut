@@ -21,11 +21,6 @@ type InFlightGeneration = {
 
 let inFlightAssistantMessage: InFlightGeneration | null = null;
 
-const GENERATION_HINTS = [
-  "generate", "create", "make", "build", "animate", "animation", "motion", "loader", "logo", "mascot",
-  "icon", "badge", "dice", "coin", "flip", "scene", "export", "draw", "design", "button", "component",
-];
-
 function requestKey(
   prompt: string,
   provider: GenerationProvider,
@@ -47,37 +42,6 @@ function requestKey(
   });
 }
 
-function localGreeting(prompt: string): AssistantResult | null {
-  const value = prompt.trim().toLowerCase().replace(/[!.\s]+$/g, "");
-  if (!["hi", "hello", "hey", "yo", "sup"].includes(value)) return null;
-  return {
-    kind: "chat",
-    source: "local",
-    message: "Hi. Describe the animation you want, or say `generate it` after we plan it.",
-  } as AssistantResult;
-}
-
-function looksAffirmativeGenerate(prompt: string) {
-  const value = prompt.trim().toLowerCase();
-  return [
-    "yes", "yes please", "go ahead", "please go ahead", "do it", "make it", "make it now",
-    "generate", "generate it", "create it", "build it", "animate it", "yes make it", "yes generate it",
-  ].some((phrase) => value === phrase || value.includes(phrase));
-}
-
-function containsGenerationHint(value: string) {
-  const lower = value.toLowerCase();
-  return GENERATION_HINTS.some((hint) => lower.includes(hint));
-}
-
-function resolvePrompt(prompt: string, context: GenerationContext) {
-  if (!looksAffirmativeGenerate(prompt)) return prompt;
-  const history = [...(context.chatHistory ?? [])].reverse();
-  const priorUserRequest = history.find((message) => message.role === "user" && containsGenerationHint(message.text));
-  if (!priorUserRequest) return prompt;
-  return `${priorUserRequest.text.trim()}\n\nProceed now and generate the animation. Do not ask for confirmation or describe a plan.`;
-}
-
 export const generationService = {
   async assistantMessage(
     prompt: string,
@@ -85,10 +49,6 @@ export const generationService = {
     references: ReferenceAttachment[],
     context: GenerationContext,
   ): Promise<AssistantResult> {
-    const local = references.length === 0 ? localGreeting(prompt) : null;
-    if (local) return local;
-
-    const resolvedPrompt = resolvePrompt(prompt, context);
     const imageReferences = references
       .filter((ref) => ref.kind !== "layer" && ref.dataUrl?.startsWith("data:image/"))
       .map((ref) => ({
@@ -97,19 +57,19 @@ export const generationService = {
         dataUrl: ref.dataUrl ?? "",
       }));
 
-    const key = requestKey(resolvedPrompt, provider, imageReferences, context);
+    const key = requestKey(prompt, provider, imageReferences, context);
     if (inFlightAssistantMessage?.key === key) {
       return inFlightAssistantMessage.promise;
     }
 
     const promise = tauriInvoke<AssistantResult>("assistant_message_v2", {
-      prompt: resolvedPrompt,
+      prompt,
       provider,
       references: imageReferences,
       context,
     }).then((result) => {
       if (result.kind === "document_created" || result.kind === "document_updated") {
-        result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(resolvedPrompt, result.document));
+        result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
       }
       return result;
     }).finally(() => {
