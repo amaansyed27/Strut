@@ -1,6 +1,19 @@
 use crate::*;
 use serde_json::{json, Value};
 
+const OPENROUTER_COMPACT_PLAN_RULES: &str = r#"
+
+OpenRouter economy generation mode:
+- Return one compact JSON object only.
+- Preferred shape: {"plan": <GenerationPlan>, "operations": []}.
+- Do not return a full StrutDocument.
+- Do not return {"kind":"document_created","document":...} unless the document is a real StrutDocument.
+- GenerationPlan must include id, name, subject, parts, states, timelines.
+- Keep parts to 10-18 semantic layers. Keep timelines compact but active.
+- Use supported properties only: translation.x, translation.y, rotation, scale, scale.x, scale.y, opacity.
+- For coin prompts include named parts for shadow, rim depth, front face, back face, H mark, T mark, edge ridges, highlight sweep, and glints.
+"#;
+
 async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_prompt: &str, references: &[ReferenceImageInput]) -> Result<String, String> {
     ensure_byok_config(config)?;
     let user_content = if references.is_empty() {
@@ -28,6 +41,17 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
         .ok_or_else(|| format!("OpenRouter response missing message content. Body: {}", response_preview(&json_body.to_string())))
 }
 
+fn openrouter_generation_system_prompt(context: Option<&GenerationContext>) -> String {
+    let mut text = format!("{}{}", GENERATION_PLAN_SYSTEM_PROMPT, OPENROUTER_COMPACT_PLAN_RULES);
+    if let Some(ctx) = context {
+        text.push_str("\n\nStrut workspace context:");
+        if let Some(project_name) = &ctx.project_name { text.push_str(&format!("\n- Project: {project_name}")); }
+        if let Some(chat_title) = &ctx.active_chat_title { text.push_str(&format!("\n- Chat: {chat_title}")); }
+        if let Some(summary) = &ctx.current_document_summary { text.push_str(&format!("\n- Current scene: {summary}")); }
+    }
+    text
+}
+
 fn normalize_openrouter_value(mut value: Value) -> Value {
     let fallback_name = value.get("message").and_then(Value::as_str).unwrap_or("Generated animation").to_string();
     if let Some(plan) = value.get_mut("document").and_then(|document| document.get_mut("plan")) {
@@ -39,6 +63,15 @@ fn normalize_openrouter_value(mut value: Value) -> Value {
 }
 
 fn parse_openrouter_result(text: &str) -> Result<AssistantResult, String> {
+    if let Ok(document) = document_from_generation_plan_text(text) {
+        return Ok(AssistantResult::DocumentCreated {
+            message: "Generated compact OpenRouter animation plan.".to_string(),
+            source: "openrouter-compact-plan".to_string(),
+            document,
+            plan_summary: None,
+            operation_count: None,
+        });
+    }
     if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
         let value = normalize_openrouter_value(value);
         if let Some(kind) = value.get("kind").and_then(Value::as_str) {
@@ -66,18 +99,13 @@ pub async fn assistant_message_openrouter_v2(prompt: String, provider: Option<Ge
     let references = references.unwrap_or_default();
     let provider = provider.ok_or_else(|| "Select OpenRouter first.".to_string())?;
     let config = provider.byok.as_ref().ok_or_else(|| "OpenRouter config missing.".to_string())?;
-    let mut system_prompt = format!("{}\n\n{}", ASSISTANT_ROUTER_SYSTEM_PROMPT, DYNAMIC_GENERATION_SYSTEM_PROMPT);
-    if let Some(ctx) = context.as_ref() {
-        if let Some(project_name) = &ctx.project_name { system_prompt.push_str(&format!("\nProject: {project_name}")); }
-        if let Some(chat_title) = &ctx.active_chat_title { system_prompt.push_str(&format!("\nChat: {chat_title}")); }
-        if let Some(summary) = &ctx.current_document_summary { system_prompt.push_str(&format!("\n\nThe scene currently contains this document:\n{summary}")); }
-    }
     if should_route_to_chat_response(&prompt, context.as_ref()) {
         let chat_prompt = chat_system_prompt(&prompt, context.as_ref());
         let message = openrouter_text(config, &prompt, &chat_prompt, &references).await?;
         return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() });
     }
+    let system_prompt = openrouter_generation_system_prompt(context.as_ref());
     let text = openrouter_text(config, &prompt, &system_prompt, &references).await?;
-    let result = parse_openrouter_result(&text).map_err(|error| format!("OpenRouter returned invalid Strut JSON: {error}. Response preview: {}", response_preview(&text)))?;
+    let result = parse_openrouter_result(&text).map_err(|error| format!("OpenRouter returned invalid compact Strut plan: {error}. Response preview: {}", response_preview(&text)))?;
     Ok(normalize_assistant_result_layout(result))
 }
