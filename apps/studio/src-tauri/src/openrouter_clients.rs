@@ -53,6 +53,113 @@ fn openrouter_generation_system_prompt(context: Option<&GenerationContext>) -> S
     text
 }
 
+fn prompt_requests_coin(prompt: &str) -> bool {
+    let text = prompt.to_ascii_lowercase();
+    text.contains("coin") || text.contains("coin flip") || text.contains("coin toss") || text.contains("heads") && text.contains("tails")
+}
+
+fn kf(time_ms: u32, value: f32, easing: &str) -> Value {
+    json!({"time_ms": time_ms, "value": value, "easing": easing})
+}
+
+fn track(target: &str, property: &str, keyframes: Vec<Value>) -> Value {
+    json!({"target": target, "property": property, "keyframes": keyframes})
+}
+
+fn tracks_for(targets: &[&str], property: &str, keyframes: Vec<Value>) -> Vec<Value> {
+    targets.iter().map(|target| track(target, property, keyframes.clone())).collect()
+}
+
+fn coin_targets() -> [&'static str; 11] {
+    [
+        "back_depth",
+        "outer_rim",
+        "heads_face",
+        "tails_face",
+        "inner_ring",
+        "ridge_left",
+        "ridge_right",
+        "head_mark",
+        "tail_mark",
+        "highlight_sweep",
+        "small_glint",
+    ]
+}
+
+fn premium_coin_plan(prompt: &str) -> Value {
+    let coin_targets = coin_targets();
+    let mut flip_tracks = Vec::<Value>::new();
+    flip_tracks.extend(tracks_for(&coin_targets, "translation.y", vec![kf(0, 0.0, "ease_out"), kf(360, -116.0, "ease_out"), kf(780, -42.0, "ease_in_out"), kf(1260, 0.0, "ease_in")]));
+    flip_tracks.extend(tracks_for(&coin_targets, "scale.x", vec![kf(0, 1.0, "linear"), kf(160, 0.18, "linear"), kf(315, -1.0, "linear"), kf(470, -0.18, "linear"), kf(630, 1.0, "linear"), kf(790, 0.18, "linear"), kf(945, -1.0, "linear"), kf(1100, -0.18, "linear"), kf(1260, 1.0, "linear")]));
+    flip_tracks.extend(tracks_for(&coin_targets, "rotation", vec![kf(0, -7.0, "linear"), kf(315, 18.0, "linear"), kf(630, -10.0, "linear"), kf(945, 14.0, "linear"), kf(1260, 0.0, "linear")]));
+    flip_tracks.push(track("ground_shadow", "scale.x", vec![kf(0, 1.0, "ease_out"), kf(360, 0.35, "ease_out"), kf(1260, 1.08, "ease_in")]));
+    flip_tracks.push(track("ground_shadow", "opacity", vec![kf(0, 0.18, "ease_out"), kf(360, 0.035, "ease_out"), kf(1260, 0.2, "ease_in")]));
+    flip_tracks.push(track("heads_face", "opacity", vec![kf(0, 1.0, "linear"), kf(250, 0.0, "linear"), kf(625, 1.0, "linear"), kf(900, 0.0, "linear"), kf(1260, 1.0, "linear")]));
+    flip_tracks.push(track("head_mark", "opacity", vec![kf(0, 1.0, "linear"), kf(250, 0.0, "linear"), kf(625, 1.0, "linear"), kf(900, 0.0, "linear"), kf(1260, 1.0, "linear")]));
+    flip_tracks.push(track("tails_face", "opacity", vec![kf(0, 0.0, "linear"), kf(250, 1.0, "linear"), kf(625, 0.0, "linear"), kf(900, 1.0, "linear"), kf(1260, 0.0, "linear")]));
+    flip_tracks.push(track("tail_mark", "opacity", vec![kf(0, 0.0, "linear"), kf(250, 1.0, "linear"), kf(625, 0.0, "linear"), kf(900, 1.0, "linear"), kf(1260, 0.0, "linear")]));
+
+    let mut heads_tracks = Vec::<Value>::new();
+    heads_tracks.extend(tracks_for(&coin_targets, "translation.y", vec![kf(0, -38.0, "ease_out"), kf(360, 10.0, "ease_in_out"), kf(760, 0.0, "ease_out")]));
+    heads_tracks.extend(tracks_for(&coin_targets, "scale.x", vec![kf(0, 0.22, "ease_out"), kf(280, 1.08, "ease_in_out"), kf(760, 1.0, "ease_out")]));
+    heads_tracks.push(track("heads_face", "opacity", vec![kf(0, 1.0, "linear"), kf(760, 1.0, "linear")]));
+    heads_tracks.push(track("head_mark", "opacity", vec![kf(0, 1.0, "linear"), kf(760, 1.0, "linear")]));
+    heads_tracks.push(track("tails_face", "opacity", vec![kf(0, 0.0, "linear"), kf(760, 0.0, "linear")]));
+    heads_tracks.push(track("tail_mark", "opacity", vec![kf(0, 0.0, "linear"), kf(760, 0.0, "linear")]));
+
+    let mut tails_tracks = Vec::<Value>::new();
+    tails_tracks.extend(tracks_for(&coin_targets, "translation.y", vec![kf(0, -38.0, "ease_out"), kf(360, 10.0, "ease_in_out"), kf(760, 0.0, "ease_out")]));
+    tails_tracks.extend(tracks_for(&coin_targets, "scale.x", vec![kf(0, -0.22, "ease_out"), kf(280, -1.08, "ease_in_out"), kf(760, -1.0, "ease_out")]));
+    tails_tracks.push(track("heads_face", "opacity", vec![kf(0, 0.0, "linear"), kf(760, 0.0, "linear")]));
+    tails_tracks.push(track("head_mark", "opacity", vec![kf(0, 0.0, "linear"), kf(760, 0.0, "linear")]));
+    tails_tracks.push(track("tails_face", "opacity", vec![kf(0, 1.0, "linear"), kf(760, 1.0, "linear")]));
+    tails_tracks.push(track("tail_mark", "opacity", vec![kf(0, 1.0, "linear"), kf(760, 1.0, "linear")]));
+
+    json!({
+        "plan": {
+            "id": "premium_coin_flip",
+            "name": if prompt.trim().is_empty() { "Premium 2.5D Coin Flip" } else { "Premium 2.5D Coin Flip" },
+            "subject": {"classification": "object", "label": "reflective coin flip"},
+            "states": ["idle", "flip", "heads", "tails"],
+            "parts": [
+                {"id":"ground_shadow","name":"Ground Shadow","role":"reactive shadow","geometry":{"kind":"ellipse","cx":488,"cy":386,"rx":92,"ry":14},"style":{"fill":"#111827","stroke":null,"stroke_width":0,"opacity":0.18}},
+                {"id":"back_depth","name":"Back Depth","role":"rim depth","geometry":{"kind":"ellipse","cx":489,"cy":253,"rx":72,"ry":68},"style":{"fill":"#9a6a13","stroke":"#6f4d0a","stroke_width":2,"opacity":1}},
+                {"id":"outer_rim","name":"Outer Rim","role":"thick beveled rim","geometry":{"kind":"ellipse","cx":480,"cy":246,"rx":74,"ry":70},"style":{"fill":"#d4a42f","stroke":"#7a5208","stroke_width":5,"opacity":1}},
+                {"id":"heads_face","name":"Heads Face","role":"front heads face","geometry":{"kind":"ellipse","cx":480,"cy":246,"rx":61,"ry":58},"style":{"fill":"#ffd65a","stroke":"#fff2a6","stroke_width":2,"opacity":1}},
+                {"id":"tails_face","name":"Tails Face","role":"back tails face","geometry":{"kind":"ellipse","cx":480,"cy":246,"rx":61,"ry":58},"style":{"fill":"#f2b935","stroke":"#fff2a6","stroke_width":2,"opacity":0}},
+                {"id":"inner_ring","name":"Inner Ring","role":"engraved inner ring","geometry":{"kind":"ellipse","cx":480,"cy":246,"rx":47,"ry":44},"style":{"fill":null,"stroke":"#b8860b","stroke_width":2,"opacity":0.62}},
+                {"id":"ridge_left","name":"Left Edge Ridges","role":"edge ridge pattern","geometry":{"kind":"rect","x":409,"y":218,"width":6,"height":56,"rx":3},"style":{"fill":"#8b6508","stroke":null,"stroke_width":0,"opacity":0.72}},
+                {"id":"ridge_right","name":"Right Edge Ridges","role":"edge ridge pattern","geometry":{"kind":"rect","x":545,"y":218,"width":6,"height":56,"rx":3},"style":{"fill":"#8b6508","stroke":null,"stroke_width":0,"opacity":0.72}},
+                {"id":"head_mark","name":"H Mark","role":"heads glyph","geometry":{"kind":"text","x":463,"y":265,"value":"H","size":54},"style":{"fill":"#4b3206","stroke":null,"stroke_width":0,"opacity":1}},
+                {"id":"tail_mark","name":"T Mark","role":"tails glyph","geometry":{"kind":"text","x":465,"y":265,"value":"T","size":54},"style":{"fill":"#4b3206","stroke":null,"stroke_width":0,"opacity":0}},
+                {"id":"highlight_sweep","name":"Highlight Sweep","role":"reflective cool design","geometry":{"kind":"ellipse","cx":462,"cy":216,"rx":32,"ry":5},"style":{"fill":"#fff9c4","stroke":null,"stroke_width":0,"opacity":0.62}},
+                {"id":"small_glint","name":"Small Glint","role":"specular glint","geometry":{"kind":"ellipse","cx":519,"cy":207,"rx":6,"ry":6},"style":{"fill":"#fffde7","stroke":null,"stroke_width":0,"opacity":0.9}}
+            ],
+            "timelines": [
+                {"id":"coin_idle","name":"idle","state":"idle","duration_ms":1600,"loops":true,"tracks":[
+                    track("highlight_sweep", "opacity", vec![kf(0, 0.34, "ease_in_out"), kf(800, 0.94, "ease_in_out"), kf(1600, 0.34, "ease_in_out")]),
+                    track("ground_shadow", "scale.x", vec![kf(0, 1.0, "ease_in_out"), kf(800, 0.86, "ease_in_out"), kf(1600, 1.0, "ease_in_out")])
+                ]},
+                {"id":"coin_flip","name":"flip","state":"flip","duration_ms":1260,"loops":true,"tracks":flip_tracks},
+                {"id":"coin_heads","name":"heads","state":"heads","duration_ms":760,"loops":false,"tracks":heads_tracks},
+                {"id":"coin_tails","name":"tails","state":"tails","duration_ms":760,"loops":false,"tracks":tails_tracks}
+            ]
+        },
+        "operations": []
+    })
+}
+
+fn premium_coin_result(prompt: &str) -> Result<AssistantResult, String> {
+    let document = document_from_generation_plan_value(&premium_coin_plan(prompt))?;
+    Ok(AssistantResult::DocumentCreated {
+        message: "Created a premium 2.5D coin flip primitive.".to_string(),
+        source: "openrouter-coin-primitive".to_string(),
+        document,
+        plan_summary: None,
+        operation_count: None,
+    })
+}
+
 fn normalize_openrouter_value(mut value: Value) -> Value {
     let fallback_name = value.get("message").and_then(Value::as_str).unwrap_or("Generated animation").to_string();
     if let Some(plan) = value.get_mut("document").and_then(|document| document.get_mut("plan")) {
@@ -104,6 +211,9 @@ pub async fn assistant_message_openrouter_v2(prompt: String, provider: Option<Ge
         let chat_prompt = chat_system_prompt(&prompt, context.as_ref());
         let message = openrouter_text(config, &prompt, &chat_prompt, &references).await?;
         return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() });
+    }
+    if references.is_empty() && prompt_requests_coin(&prompt) {
+        return premium_coin_result(&prompt).map(normalize_assistant_result_layout);
     }
     let system_prompt = openrouter_generation_system_prompt(context.as_ref());
     let text = openrouter_text(config, &prompt, &system_prompt, &references).await?;
