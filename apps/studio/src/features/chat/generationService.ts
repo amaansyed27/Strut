@@ -14,6 +14,34 @@ import type {
 } from "../../types";
 import type { MotionSpec } from "../../lib/motionArtifacts";
 
+type InFlightGeneration = {
+  key: string;
+  promise: Promise<AssistantResult>;
+};
+
+let inFlightAssistantMessage: InFlightGeneration | null = null;
+
+function requestKey(
+  prompt: string,
+  provider: GenerationProvider,
+  references: { name: string; mimeType?: string; dataUrl: string }[],
+  context: GenerationContext,
+) {
+  return JSON.stringify({
+    prompt,
+    provider,
+    references: references.map((reference) => ({
+      name: reference.name,
+      mimeType: reference.mimeType,
+      bytes: reference.dataUrl.length,
+      signature: reference.dataUrl.slice(0, 64),
+    })),
+    chat: context.activeChatTitle,
+    project: context.projectName,
+    document: context.currentDocumentSummary,
+  });
+}
+
 export const generationService = {
   async assistantMessage(
     prompt: string,
@@ -29,17 +57,29 @@ export const generationService = {
         dataUrl: ref.dataUrl ?? "",
       }));
 
-    const result = await tauriInvoke<AssistantResult>("assistant_message_v2", {
+    const key = requestKey(prompt, provider, imageReferences, context);
+    if (inFlightAssistantMessage?.key === key) {
+      return inFlightAssistantMessage.promise;
+    }
+
+    const promise = tauriInvoke<AssistantResult>("assistant_message_v2", {
       prompt,
       provider,
       references: imageReferences,
       context,
+    }).then((result) => {
+      if (result.kind === "document_created" || result.kind === "document_updated") {
+        result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
+      }
+      return result;
+    }).finally(() => {
+      if (inFlightAssistantMessage?.key === key) {
+        inFlightAssistantMessage = null;
+      }
     });
 
-    if (result.kind === "document_created" || result.kind === "document_updated") {
-      result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
-    }
-    return result;
+    inFlightAssistantMessage = { key, promise };
+    return promise;
   },
 
   async motionSpecRoute(prompt: string): Promise<MotionSpec | null> {
