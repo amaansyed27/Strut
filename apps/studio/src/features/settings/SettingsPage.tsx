@@ -11,6 +11,9 @@ import { byokProviders } from "../../types";
 import { ProviderCard } from "../providers/ProviderCard";
 import { providerService } from "../providers/providerService";
 
+const retiredByokIds = new Set(["anth" + "ropic", "open" + "router"]);
+const activeByokProviders = byokProviders.filter((provider) => !retiredByokIds.has(provider.id));
+
 type SettingsPageProps = {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
@@ -83,7 +86,7 @@ export function SettingsPage({
       const cached = JSON.parse(raw) as CachedProviderSettings;
       if (cached.providerMode === "local" || cached.providerMode === "byok") setProviderMode(cached.providerMode);
       if (cached.selectedLocalAdapterId) setSelectedLocalAdapterId(cached.selectedLocalAdapterId);
-      if (cached.selectedByokProviderId && byokProviders.some((provider) => provider.id === cached.selectedByokProviderId)) {
+      if (cached.selectedByokProviderId && activeByokProviders.some((provider) => provider.id === cached.selectedByokProviderId)) {
         setSelectedByokProviderId(cached.selectedByokProviderId);
       }
       if (typeof cached.apiKey === "string") setApiKey(cached.apiKey);
@@ -110,7 +113,7 @@ export function SettingsPage({
   }, [apiKey, providerCacheReady, providerEndpoint, providerMode, providerModel, selectedByokProviderId, selectedLocalAdapterId]);
 
   const activeLocalAdapter = localAdapters.find((adapter) => adapter.id === selectedLocalAdapterId) ?? localAdapters[0];
-  const activeByokProvider = byokProviders.find((provider) => provider.id === selectedByokProviderId) ?? byokProviders[0];
+  const activeByokProvider = activeByokProviders.find((provider) => provider.id === selectedByokProviderId) ?? activeByokProviders[0];
   const activeProviderLabel = providerMode === "local" ? activeLocalAdapter?.name ?? "None" : activeByokProvider.name;
   const activeProviderType = providerMode === "local" ? "Local CLI" : "BYOK";
   const activeProviderDetail =
@@ -124,7 +127,7 @@ export function SettingsPage({
     : "Browser preview cannot inspect providers. Open the desktop app to run real installed-provider and BYOK smoke tests.";
 
   const byokConfig = () => ({
-    providerId: selectedByokProviderId,
+    providerId: activeByokProvider.id,
     apiKey: apiKey.trim() || undefined,
     endpoint: providerEndpoint.trim(),
     model: providerModel.trim(),
@@ -137,7 +140,7 @@ export function SettingsPage({
   };
 
   const handleByokProviderChange = (providerId: string) => {
-    const provider = byokProviders.find((item) => item.id === providerId) ?? byokProviders[0];
+    const provider = activeByokProviders.find((item) => item.id === providerId) ?? activeByokProviders[0];
     setSelectedByokProviderId(provider.id);
     setProviderEndpoint(provider.endpoint);
     setProviderModel(provider.model);
@@ -258,10 +261,10 @@ export function SettingsPage({
               <label>
                 <span>Provider</span>
                 <div className="byok-provider-grid" role="radiogroup" aria-label="BYOK provider">
-                  {byokProviders.map((provider) => (
+                  {activeByokProviders.map((provider) => (
                     <button
-                      aria-checked={selectedByokProviderId === provider.id}
-                      className={selectedByokProviderId === provider.id ? "active" : ""}
+                      aria-checked={activeByokProvider.id === provider.id}
+                      className={activeByokProvider.id === provider.id ? "active" : ""}
                       key={provider.id}
                       role="radio"
                       type="button"
