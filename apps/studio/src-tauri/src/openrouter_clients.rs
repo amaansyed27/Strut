@@ -1,16 +1,18 @@
 use crate::*;
 use serde_json::{json, Value};
 
-const OPENROUTER_COMPACT_PLAN_RULES: &str = r#"
-
-OpenRouter economy generation mode:
-- Return one compact JSON object only.
-- Preferred shape: {"plan": <GenerationPlan>, "operations": []}.
-- Do not return a full StrutDocument.
-- Do not return {"kind":"document_created","document":...} unless the document is a real StrutDocument.
-- GenerationPlan must include id, name, subject, parts, states, timelines.
-- Keep parts to 10-18 semantic layers. Keep timelines compact but active.
-- Use supported properties only: translation.x, translation.y, rotation, scale, scale.x, scale.y, opacity.
+const OPENROUTER_COMPACT_PLAN_SYSTEM: &str = r#"You are Strut's compact animation planner.
+Output only raw JSON. No markdown. No explanation. No full StrutDocument.
+Return exactly this envelope:
+{"plan":{"id":"short_id","name":"Human Name","subject":{"classification":"object|scene|ui|mascot|abstract","label":"subject"},"parts":[Part],"states":["idle","active","settle"],"timelines":[Timeline]},"operations":[]}
+Part fields: id, name, role, geometry, style, motion_roles, constraints.
+Geometry kinds only: rect, ellipse, path, text.
+Style fields: fill, stroke, stroke_width, opacity.
+Constraints must use allowed_properties: translation.x, translation.y, rotation, scale, scale.x, scale.y, opacity.
+Timeline fields: id, name, duration_ms, loops, tracks.
+Track fields: target, property, keyframes. Every target must match a part id.
+Keyframe fields: time_ms, value as a number, easing.
+Quality rules: build the exact subject from semantic editable layers; use 10-18 parts for dynamic objects; include shadow/depth/highlight/detail layers when the prompt asks for premium, reflective, 2.5D, or 3D-style motion; timelines must include active motion, not just opacity.
 "#;
 
 async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_prompt: &str, references: &[ReferenceImageInput]) -> Result<String, String> {
@@ -41,9 +43,9 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
 }
 
 fn openrouter_generation_system_prompt(context: Option<&GenerationContext>) -> String {
-    let mut text = format!("{}{}", GENERATION_PLAN_SYSTEM_PROMPT, OPENROUTER_COMPACT_PLAN_RULES);
+    let mut text = OPENROUTER_COMPACT_PLAN_SYSTEM.to_string();
     if let Some(ctx) = context {
-        text.push_str("\n\nStrut workspace context:");
+        text.push_str("\nWorkspace context:");
         if let Some(project_name) = &ctx.project_name { text.push_str(&format!("\n- Project: {project_name}")); }
         if let Some(chat_title) = &ctx.active_chat_title { text.push_str(&format!("\n- Chat: {chat_title}")); }
         if let Some(summary) = &ctx.current_document_summary { text.push_str(&format!("\n- Current scene: {summary}")); }
