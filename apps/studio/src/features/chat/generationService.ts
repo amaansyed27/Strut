@@ -4,7 +4,7 @@
 
 import { tauriInvoke } from "../../lib/tauriClient";
 import { ensureVisibleGeneratedDocument } from "../../lib/layoutBounds";
-import { engineIssuesV2, upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
+import { upgradeGeneratedDocumentV2 } from "../../lib/strutEngineV2";
 import type {
   AssistantResult,
   GenerationContext,
@@ -42,21 +42,6 @@ function requestKey(
   });
 }
 
-function finalizeDocumentResult(prompt: string, result: AssistantResult): AssistantResult {
-  if (result.kind !== "document_created" && result.kind !== "document_updated") return result;
-  const document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
-  const issues = engineIssuesV2(prompt, document);
-  if (issues.length) {
-    return {
-      kind: "chat",
-      source: "quality-gate",
-      message: `Generation blocked: ${issues.join("; ")}. The provider returned a structurally valid scene, but it is visually too weak to save.`,
-    };
-  }
-  result.document = document;
-  return result;
-}
-
 export const generationService = {
   async assistantMessage(
     prompt: string,
@@ -82,7 +67,12 @@ export const generationService = {
       provider,
       references: imageReferences,
       context,
-    }).then((result) => finalizeDocumentResult(prompt, result)).finally(() => {
+    }).then((result) => {
+      if (result.kind === "document_created" || result.kind === "document_updated") {
+        result.document = ensureVisibleGeneratedDocument(upgradeGeneratedDocumentV2(prompt, result.document));
+      }
+      return result;
+    }).finally(() => {
       if (inFlightAssistantMessage?.key === key) {
         inFlightAssistantMessage = null;
       }
