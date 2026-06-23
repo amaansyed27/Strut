@@ -32,7 +32,9 @@ Plan contract:
 - Supported timeline properties only: translation.x, translation.y, rotation, rotation.x, rotation.y, scale, scale.x, scale.y, opacity.
 - Every timeline track target must match a part id.
 - Every requested state must exist in states and must have a matching timeline with visible active motion.
-- If prompt asks for letters, numbers, labels, marks, symbols, or text, create visible text parts for each requested mark.
+- For compound objects, choose one primary surface/body part and set secondary parts' parent field to that primary part id so marks, highlights, rim/depth, and details move as one object.
+- Timelines should target the primary parent part for object motion and separate shadow/highlight/detail parts for secondary response.
+- If prompt asks for letters, numbers, labels, marks, symbols, or text, create visible text parts for each requested mark. Text must have high-contrast fill, a readable size, and a parent matching the surface it belongs to.
 - If prompt asks for front/back, sides, edge pattern, rim, thickness, reflection, 2.5D, or 3D-style, create separate semantic layers for surface, side/depth, edge/detail, highlight/glint, and shadow. Do not collapse them into one flat shape.
 
 Quality floor:
