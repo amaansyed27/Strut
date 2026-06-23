@@ -1,15 +1,8 @@
 use crate::*;
-use reqwest::header;
 use serde_json::{json, Value};
-
-fn openrouter_chat_url(endpoint: &str) -> String {
-    let base = endpoint_base(endpoint);
-    if base.ends_with("/chat/completions") { base } else { format!("{base}/chat/completions") }
-}
 
 async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_prompt: &str, references: &[ReferenceImageInput]) -> Result<String, String> {
     ensure_byok_config(config)?;
-    let client = http_client()?;
     let user_content = if references.is_empty() {
         json!(prompt)
     } else {
@@ -28,32 +21,11 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
         "max_tokens": 2048
     });
     let token = config.api_key.as_deref().unwrap_or_default();
-    let auth_scheme = ["Bear", "er"].concat();
-    let response = client.post(openrouter_chat_url(&config.endpoint))
-        .header(header::ACCEPT, "application/json")
-        .header(header::ACCEPT_ENCODING, "identity")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::AUTHORIZATION, format!("{auth_scheme} {token}"))
-        .header("HTTP-Referer", "https://github.com/amaansyed27/Strut")
-        .header("X-Title", "Strut Studio")
-        .header("X-OpenRouter-Metadata", "disabled")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|error| format!("OpenRouter request failed: {error}"))?;
-    let status = response.status();
-    let bytes = match response.bytes().await {
-        Ok(bytes) => bytes,
-        Err(error) if !status.is_success() => return Err(format!("OpenRouter HTTP {} (body unavailable: {error})", status.as_u16())),
-        Err(error) => return Err(format!("OpenRouter body unavailable: {error}")),
-    };
-    let body = String::from_utf8_lossy(&bytes).to_string();
-    if !status.is_success() { return Err(format!("OpenRouter {}", http_error_preview(status.as_u16(), &body))); }
-    let json_body = serde_json::from_str::<Value>(&body).map_err(|error| format!("OpenRouter returned non-JSON: {error}. Body: {}", response_preview(&body)))?;
+    let json_body = post_openrouter_chat_with_curl(&config.endpoint, token, &payload)?;
     json_body.pointer("/choices/0/message/content")
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("OpenRouter response missing message content. Body: {}", response_preview(&body)))
+        .ok_or_else(|| format!("OpenRouter response missing message content. Body: {}", response_preview(&json_body.to_string())))
 }
 
 fn normalize_openrouter_value(mut value: Value) -> Value {
