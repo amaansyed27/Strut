@@ -75,6 +75,23 @@ function isDetailNode(node: StrutNode) {
   return ["rim", "edge", "depth", "side", "bezel", "glint", "highlight", "spark", "emblem", "mark", "detail", "accent", "part", "eye", "arm", "leg", "face"].some((word) => text.includes(word));
 }
 
+function textNodeValues(document: StrutDocument) {
+  const values: string[] = [];
+  visitNodes(document.artboards[0]?.nodes ?? [], (node, opacity) => {
+    if (opacity <= 0.08 || node.shape?.type !== "text") return;
+    values.push(node.shape.value.trim());
+  });
+  return values;
+}
+
+function requestedTextMarks(prompt: string) {
+  const marks = new Set<string>();
+  for (const match of prompt.matchAll(/["'“”‘’]([A-Za-z0-9]{1,8})["'“”‘’]/g)) marks.add(match[1].toUpperCase());
+  for (const match of prompt.matchAll(/\b([A-Z0-9]{1,3})\b\s*(?:written|letter|mark|text|symbol|on\s+(?:one|the)?\s*side)/g)) marks.add(match[1].toUpperCase());
+  for (const match of prompt.matchAll(/\b(?:written|letter|mark|text|symbol)\s+(?:as\s+)?([A-Z0-9]{1,3})\b/g)) marks.add(match[1].toUpperCase());
+  return Array.from(marks).filter((mark) => !["AI", "UI", "SVG", "CSS", "API"].includes(mark));
+}
+
 function visualStats(document: StrutDocument): VisualStats {
   let visibleNonShadow = 0;
   let visibleDetail = 0;
@@ -156,6 +173,10 @@ export function engineIssuesV2(prompt: string, document: StrutDocument): string[
   if (needsPremium && stats.visibleDetail < 2) issues.push(`too few visible detail/rig layers (${stats.visibleDetail}/2)`);
   if (needsPremium && stats.visibleColors < 3) issues.push(`too few visible material colors (${stats.visibleColors}/3)`);
   if (needsPremium && stats.activeTracks < 8) issues.push(`too few active motion tracks (${stats.activeTracks}/8)`);
+  const visibleText = textNodeValues(document).map((text) => text.toUpperCase());
+  for (const mark of requestedTextMarks(prompt)) {
+    if (!visibleText.some((text) => text.includes(mark))) issues.push(`missing requested visible text mark "${mark}"`);
+  }
   for (const state of requestedStates(prompt, document)) {
     if (!document.state_machines[0]?.states?.includes(state)) issues.push(`missing state ${state}`);
   }
