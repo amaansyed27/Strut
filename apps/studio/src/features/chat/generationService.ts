@@ -42,6 +42,12 @@ function requestKey(
   });
 }
 
+function generationCommand(provider: GenerationProvider) {
+  return provider.mode === "byok" && provider.byok?.providerId === "openrouter"
+    ? "assistant_message_openrouter_v2"
+    : "assistant_message_v2";
+}
+
 export const generationService = {
   async assistantMessage(
     prompt: string,
@@ -62,7 +68,7 @@ export const generationService = {
       return inFlightAssistantMessage.promise;
     }
 
-    const promise = tauriInvoke<AssistantResult>("assistant_message_v2", {
+    const promise = tauriInvoke<AssistantResult>(generationCommand(provider), {
       prompt,
       provider,
       references: imageReferences,
