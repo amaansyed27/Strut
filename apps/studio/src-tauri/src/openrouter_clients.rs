@@ -23,9 +23,9 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
             {"role":"system","content": system_prompt},
             {"role":"user","content": user_content}
         ],
-        "temperature": 0.2,
+        "temperature": 0.15,
         "stream": false,
-        "max_tokens": 4096
+        "max_tokens": 2048
     });
     let token = config.api_key.as_deref().unwrap_or_default();
     let auth_scheme = ["Bear", "er"].concat();
