@@ -22,7 +22,7 @@ pub fn post_openrouter_chat_with_curl(endpoint: &str, token: &str, payload: &Val
         .arg("--connect-timeout")
         .arg("20")
         .arg("--max-time")
-        .arg("120")
+        .arg("300")
         .arg("--request")
         .arg("POST")
         .arg("--header")
@@ -50,8 +50,8 @@ pub fn post_openrouter_chat_with_curl(endpoint: &str, token: &str, payload: &Val
     let output = output?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !output.status.success() && stdout.trim().is_empty() {
-        return Err(format!("OpenRouter curl transport failed: {stderr}"));
+    if !output.status.success() {
+        return Err(format!("OpenRouter curl transport failed: {stderr}. Partial body: {}", response_preview(&stdout)));
     }
     let marker = "\n__STRUT_HTTP_STATUS__:";
     let Some((body, status_text)) = stdout.rsplit_once(marker) else {
