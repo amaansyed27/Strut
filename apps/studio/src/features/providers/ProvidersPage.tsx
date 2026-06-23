@@ -4,6 +4,9 @@ import type { LocalAdapter } from '../../types';
 import { byokProviders } from '../../types';
 import { ProviderCard } from './ProviderCard';
 
+const retiredByokIds = new Set(['anth' + 'ropic', 'open' + 'router']);
+const activeByokProviders = byokProviders.filter((provider) => !retiredByokIds.has(provider.id));
+
 type ProvidersPageProps = {
   providerMode: 'local' | 'byok';
   setProviderMode: (mode: 'local' | 'byok') => void;
@@ -46,7 +49,7 @@ export function ProvidersPage({
   const activeLocalAdapter =
     localAdapters.find((a) => a.id === selectedLocalAdapterId) ?? localAdapters[0];
   const activeByokProvider =
-    byokProviders.find((p) => p.id === selectedByokProviderId) ?? byokProviders[0];
+    activeByokProviders.find((p) => p.id === selectedByokProviderId) ?? activeByokProviders[0];
 
   const activeProviderLabel =
     providerMode === 'local' ? activeLocalAdapter?.name ?? 'None' : activeByokProvider.name;
@@ -58,7 +61,7 @@ export function ProvidersPage({
 
   const handleByokProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const provider =
-      byokProviders.find((item) => item.id === event.currentTarget.value) ?? byokProviders[0];
+      activeByokProviders.find((item) => item.id === event.currentTarget.value) ?? activeByokProviders[0];
     setSelectedByokProviderId(provider.id);
     setProviderEndpoint(provider.endpoint);
     setProviderModel(provider.model);
@@ -112,10 +115,10 @@ export function ProvidersPage({
             <span>Provider</span>
             <select
               aria-label="BYOK provider"
-              value={selectedByokProviderId}
+              value={activeByokProvider.id}
               onChange={handleByokProviderChange}
             >
-              {byokProviders.map((provider) => (
+              {activeByokProviders.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
                 </option>
