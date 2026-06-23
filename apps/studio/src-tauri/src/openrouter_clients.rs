@@ -56,6 +56,29 @@ async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_promp
         .ok_or_else(|| format!("OpenRouter response missing message content. Body: {}", response_preview(&body)))
 }
 
+fn parse_openrouter_result(text: &str) -> Result<AssistantResult, String> {
+    if let Ok(value) = serde_json::from_str::<Value>(text.trim()) {
+        if let Some(kind) = value.get("kind").and_then(Value::as_str) {
+            let message = value.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+            if kind == "chat" {
+                return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() });
+            }
+            if matches!(kind, "document_created" | "document_updated") {
+                let document_value = value.get("document").ok_or_else(|| "OpenRouter result missing document".to_string())?;
+                if let Ok(document) = serde_json::from_value::<strut_core::Document>(document_value.clone()) {
+                    strut_format::validate_document(&document).map_err(|error| error.to_string())?;
+                    return if kind == "document_created" {
+                        Ok(AssistantResult::DocumentCreated { message, source: "openrouter".to_string(), document, plan_summary: None, operation_count: None })
+                    } else {
+                        Ok(AssistantResult::DocumentUpdated { message, source: "openrouter".to_string(), document, plan_summary: None, operation_count: None })
+                    };
+                }
+            }
+        }
+    }
+    crate::commands::parse_assistant_result_from_text(text)
+}
+
 #[tauri::command]
 pub async fn assistant_message_openrouter_v2(prompt: String, provider: Option<GenerationProvider>, references: Option<Vec<ReferenceImageInput>>, context: Option<GenerationContext>) -> Result<AssistantResult, String> {
     let references = references.unwrap_or_default();
@@ -73,6 +96,6 @@ pub async fn assistant_message_openrouter_v2(prompt: String, provider: Option<Ge
         return Ok(AssistantResult::Chat { message, source: "openrouter".to_string() });
     }
     let text = openrouter_text(config, &prompt, &system_prompt, &references).await?;
-    let result = crate::commands::parse_assistant_result_from_text(&text).map_err(|error| format!("OpenRouter returned invalid Strut JSON: {error}. Response preview: {}", response_preview(&text)))?;
+    let result = parse_openrouter_result(&text).map_err(|error| format!("OpenRouter returned invalid Strut JSON: {error}. Response preview: {}", response_preview(&text)))?;
     Ok(normalize_assistant_result_layout(result))
 }
