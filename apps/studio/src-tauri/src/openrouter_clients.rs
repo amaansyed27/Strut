@@ -11,7 +11,6 @@ OpenRouter economy generation mode:
 - GenerationPlan must include id, name, subject, parts, states, timelines.
 - Keep parts to 10-18 semantic layers. Keep timelines compact but active.
 - Use supported properties only: translation.x, translation.y, rotation, scale, scale.x, scale.y, opacity.
-- For coin prompts include named parts for shadow, rim depth, front face, back face, H mark, T mark, edge ridges, highlight sweep, and glints.
 "#;
 
 async fn openrouter_text(config: &ByokProviderConfig, prompt: &str, system_prompt: &str, references: &[ReferenceImageInput]) -> Result<String, String> {
