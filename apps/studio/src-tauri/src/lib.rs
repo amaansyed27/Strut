@@ -13,6 +13,8 @@ pub mod cli;
 pub mod motion;
 pub mod utils;
 pub mod provider_clients;
+pub mod openrouter_clients;
+pub mod openrouter_transport;
 pub mod layout_normalizer;
 pub mod quality_gate;
 mod dice_repair;
@@ -32,6 +34,8 @@ pub use cli::*;
 pub use motion::*;
 pub use utils::*;
 pub use provider_clients::*;
+pub use openrouter_clients::*;
+pub use openrouter_transport::*;
 pub use layout_normalizer::*;
 pub use quality_gate::*;
 
@@ -59,6 +63,7 @@ pub fn run() {
             open_project_folder,
             assistant_message,
             assistant_message_v2,
+            assistant_message_openrouter_v2,
             local_agent_adapters,
             test_local_adapter,
             test_local_adapter_v2,
